@@ -42,6 +42,9 @@ chrono = { version = "0.4", features = ["serde"] }
 # Argon2密码哈希
 argon2 = "0.5"
 
+# TOTP 2FA
+totp-rs = { version = "5.7", features = ["serde", "qr", "gen_secret"] }
+
 # uuid
 uuid = { version = "1", features = ["v4", "v7", "serde"] }
 
