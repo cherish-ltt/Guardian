@@ -61,8 +61,8 @@ pub fn create_token_pair(
         sub: admin_id.to_string(),
         username: username.clone(),
         is_super_admin,
-        exp: (chrono::Utc::now() + TokenType::Access.duration()).timestamp() as usize,
-        iat: chrono::Utc::now().timestamp() as usize,
+        exp: (chrono::Local::now() + TokenType::Access.duration()).timestamp() as usize,
+        iat: chrono::Local::now().timestamp() as usize,
     };
 
     let access_token = encode(
@@ -77,8 +77,8 @@ pub fn create_token_pair(
         sub: admin_id.to_string(),
         username,
         is_super_admin,
-        exp: (chrono::Utc::now() + TokenType::Refresh.duration()).timestamp() as usize,
-        iat: chrono::Utc::now().timestamp() as usize,
+        exp: (chrono::Local::now() + TokenType::Refresh.duration()).timestamp() as usize,
+        iat: chrono::Local::now().timestamp() as usize,
     };
 
     let refresh_token = encode(
@@ -108,8 +108,8 @@ pub fn refresh_access_token(refresh_token: &str) -> Result<AccessToken> {
         sub: claims.sub.clone(),
         username: claims.username.clone(),
         is_super_admin: claims.is_super_admin,
-        exp: (chrono::Utc::now() + TokenType::Access.duration()).timestamp() as usize,
-        iat: chrono::Utc::now().timestamp() as usize,
+        exp: (chrono::Local::now() + TokenType::Access.duration()).timestamp() as usize,
+        iat: chrono::Local::now().timestamp() as usize,
     };
 
     let access_token = encode(
