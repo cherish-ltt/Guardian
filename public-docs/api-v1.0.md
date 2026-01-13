@@ -10,7 +10,7 @@
     <img src="https://img.shields.io/badge/status-stable-green.svg" alt="license"/>
   </a>
   </p>
-
+</div>
   
 
 完整的 Guardian 认证系统 API 文档。
@@ -695,4 +695,3 @@ curl http://localhost:6123/guardian-auth/v1/admins?page=1&page_size=20 \
 - ✅ 所有表名添加 guardian_ 前缀
 
 ---
-
