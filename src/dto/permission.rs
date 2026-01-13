@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize)]
@@ -44,7 +44,7 @@ pub struct PermissionResponse {
     pub parent_id: Option<i64>,
     pub sort_order: i32,
     pub is_system: bool,
-    pub created_at: DateTime<Utc>,
+    pub created_at: DateTime<Local>,
 }
 
 #[derive(Debug, Serialize)]

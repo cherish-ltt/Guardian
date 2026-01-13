@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Local};
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -37,8 +37,8 @@ pub struct AdminResponse {
     pub username: String,
     pub is_super_admin: bool,
     pub status: i16,
-    pub last_login_at: Option<DateTime<Utc>>,
-    pub created_at: DateTime<Utc>,
+    pub last_login_at: Option<DateTime<Local>>,
+    pub created_at: DateTime<Local>,
 }
 
 #[derive(Debug, Serialize)]
@@ -47,11 +47,11 @@ pub struct AdminDetailResponse {
     pub username: String,
     pub is_super_admin: bool,
     pub status: i16,
-    pub last_login_at: Option<DateTime<Utc>>,
+    pub last_login_at: Option<DateTime<Local>>,
     pub login_attempts: i32,
-    pub locked_until: Option<DateTime<Utc>>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    pub locked_until: Option<DateTime<Local>>,
+    pub created_at: DateTime<Local>,
+    pub updated_at: DateTime<Local>,
 }
 
 #[derive(Debug, Serialize)]
