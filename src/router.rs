@@ -7,7 +7,7 @@ use sea_orm::{Database, DatabaseConnection};
 use tower_http::cors::{Any, CorsLayer};
 
 use crate::controller::{auth_controller::*, root};
-use crate::middleware::middleware_api::auth_middleware;
+use crate::middleware::middleware_api::{auth_middleware, rate_limit_middleware};
 
 const API_PREFIX: &str = "/guardian-auth/v1";
 
@@ -41,6 +41,7 @@ pub(crate) async fn get_router() -> Result<Router> {
     let app = Router::new()
         .merge(public_routes)
         .merge(protected_routes)
+        .route_layer(axum::middleware::from_fn(rate_limit_middleware))
         .layer(
             CorsLayer::new()
                 .allow_origin(Any)

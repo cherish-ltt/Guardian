@@ -62,4 +62,7 @@ rand = "0.8"
 # 环境变量
 dotenv = "0.15"
 
+# 并发数据结构
+dashmap = "6"
+
 [dev-dependencies]
