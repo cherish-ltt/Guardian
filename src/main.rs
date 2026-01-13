@@ -17,10 +17,17 @@ use log::info;
 async fn main() {
     dotenv().ok();
     tracing_subscriber::fmt().init();
-    
+
     let app = get_router().await.unwrap();
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:6123").await.unwrap();
-    info!("listening to 0.0.0.0:6123");
+    let host = std::env::var("SERVER_HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
+    let port = std::env::var("SERVER_PORT")
+        .unwrap_or_else(|_| "6123".to_string())
+        .parse::<u16>()
+        .unwrap_or(6123);
+
+    let addr = format!("{}:{}", host, port);
+    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
+    info!("listening to {}", addr);
     axum::serve(listener, app).await.unwrap();
 }
