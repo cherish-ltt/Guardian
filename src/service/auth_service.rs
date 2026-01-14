@@ -57,7 +57,7 @@ pub async fn login_service(
 
     if admin.two_fa_secret.is_some() {
         if payload.two_fa_code.is_none() {
-            return Ok(Response::failed("请输入2FA验证码".to_string()));
+            return Ok(Response::from_code(ResponseCode::InvalidTwoFaCode, None));
         }
     }
 

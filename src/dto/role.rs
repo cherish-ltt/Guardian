@@ -1,19 +1,20 @@
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 #[derive(Debug, Deserialize)]
 pub struct CreateRoleRequest {
     pub code: String,
     pub name: String,
     pub description: Option<String>,
-    pub permission_ids: Option<Vec<i64>>,
+    pub permission_ids: Option<Vec<Uuid>>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct UpdateRoleRequest {
     pub name: Option<String>,
     pub description: Option<String>,
-    pub permission_ids: Option<Vec<i64>>,
+    pub permission_ids: Option<Vec<Uuid>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -23,9 +24,9 @@ pub struct RoleListQuery {
     pub keyword: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Default)]
 pub struct RoleResponse {
-    pub id: i64,
+    pub id: Uuid,
     pub code: String,
     pub name: String,
     pub description: Option<String>,
@@ -33,9 +34,9 @@ pub struct RoleResponse {
     pub created_at: DateTime<Local>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Default)]
 pub struct RoleDetailResponse {
-    pub id: i64,
+    pub id: Uuid,
     pub code: String,
     pub name: String,
     pub description: Option<String>,
@@ -47,12 +48,12 @@ pub struct RoleDetailResponse {
 
 #[derive(Debug, Serialize)]
 pub struct PermissionSimple {
-    pub id: i64,
+    pub id: Uuid,
     pub code: String,
     pub name: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Default)]
 pub struct RoleListResponse {
     pub total: u64,
     pub page: u64,
