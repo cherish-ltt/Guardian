@@ -208,5 +208,5 @@ pub async fn update_admin_service(
 }
 
 pub async fn delete_admin_service(state: AppState, id: uuid::Uuid) -> Result<Response<()>> {
-    Ok(Response::ok_msg(Some("密码修改成功".to_string())))
+    Ok(Response::ok_msg(Some("暂不支持".to_string())))
 }
