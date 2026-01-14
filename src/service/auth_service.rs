@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow};
+use anyhow::{Ok, Result, anyhow};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, NotSet, QueryFilter, Set,
 };
@@ -59,6 +59,29 @@ pub async fn login_service(
     if admin.two_fa_secret.is_some() {
         if payload.two_fa_code.is_none() {
             return Ok(Response::from_code(ResponseCode::InvalidTwoFaCode, None));
+        }
+        let two_fa_code = payload.two_fa_code.unwrap();
+
+        let two_fa_secret = admin.two_fa_secret.as_ref().unwrap();
+        let secret = Secret::Encoded(two_fa_secret.to_string());
+
+        let totp = TOTP::new(
+            totp_rs::Algorithm::SHA1,
+            6,
+            1,
+            30,
+            secret.to_bytes()?,
+            Some("Guardian".to_string()),
+            admin.username.clone(),
+        )
+        .map_err(|e| anyhow!("生成TOTP失败: {}", e))?;
+
+        let is_valid = totp
+            .check_current(&two_fa_code)
+            .map_err(|e| anyhow!("验证2FA失败: {}", e))?;
+
+        if !is_valid {
+            return Ok(ResponseCode::InvalidTwoFaCode.to_response(None));
         }
     }
 

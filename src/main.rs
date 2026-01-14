@@ -17,7 +17,7 @@ use log::info;
 async fn main() {
     dotenv().ok();
     tracing_subscriber::fmt().init();
-    println!("{}",hash_password("123456"));
+    println!("{}", hash_password("123456"));
 
     let app = get_router().await.unwrap();
 

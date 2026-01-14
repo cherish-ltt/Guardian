@@ -5,8 +5,8 @@ use axum::{
 };
 
 use crate::dto::{
-    AdminDetailResponse, AdminListQuery, AdminListResponse, AdminResponse,
-    CreateAdminRequest, UpdateAdminRequest,
+    AdminDetailResponse, AdminListQuery, AdminListResponse, AdminResponse, CreateAdminRequest,
+    UpdateAdminRequest,
 };
 use crate::response::Response;
 use crate::router::AppState;
