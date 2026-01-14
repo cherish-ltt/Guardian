@@ -8,7 +8,7 @@ mod router;
 mod service;
 mod utils;
 
-use crate::router::get_router;
+use crate::{router::get_router, utils::hash_password};
 use axum::Router;
 use dotenv::dotenv;
 use log::info;
@@ -17,6 +17,7 @@ use log::info;
 async fn main() {
     dotenv().ok();
     tracing_subscriber::fmt().init();
+    println!("{}", hash_password("123456"));
 
     let app = get_router().await.unwrap();
 

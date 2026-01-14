@@ -1,11 +1,12 @@
-use anyhow::{Result, anyhow};
+use anyhow::{Ok, Result, anyhow};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, NotSet, QueryFilter, Set,
 };
 use totp_rs::{Secret, TOTP};
 
 use crate::dto::{
-    LoginRequest, LoginResponse, RefreshTokenResponse, TwoFaSetupResponse, TwoFaVerifyResponse,
+    LoginRequest, LoginResponse, RefreshTokenResponse, TwoFaDisableResponse, TwoFaSetupResponse,
+    TwoFaVerifyResponse,
 };
 use crate::entities::{admins, token_blacklist};
 use crate::middleware::auth::AuthContext;
@@ -57,7 +58,30 @@ pub async fn login_service(
 
     if admin.two_fa_secret.is_some() {
         if payload.two_fa_code.is_none() {
-            return Ok(Response::failed("请输入2FA验证码".to_string()));
+            return Ok(Response::from_code(ResponseCode::InvalidTwoFaCode, None));
+        }
+        let two_fa_code = payload.two_fa_code.unwrap();
+
+        let two_fa_secret = admin.two_fa_secret.as_ref().unwrap();
+        let secret = Secret::Encoded(two_fa_secret.to_string());
+
+        let totp = TOTP::new(
+            totp_rs::Algorithm::SHA1,
+            6,
+            1,
+            30,
+            secret.to_bytes()?,
+            Some("Guardian".to_string()),
+            admin.username.clone(),
+        )
+        .map_err(|e| anyhow!("生成TOTP失败: {}", e))?;
+
+        let is_valid = totp
+            .check_current(&two_fa_code)
+            .map_err(|e| anyhow!("验证2FA失败: {}", e))?;
+
+        if !is_valid {
+            return Ok(ResponseCode::InvalidTwoFaCode.to_response(None));
         }
     }
 
@@ -208,4 +232,25 @@ pub async fn verify_2fa_service(
     } else {
         Ok(ResponseCode::InvalidTwoFaCode.to_response(None))
     }
+}
+
+pub async fn disable_2fa_service(
+    state: AppState,
+    auth_context: AuthContext,
+) -> Result<Response<TwoFaDisableResponse>> {
+    let admin = admins::Entity::find()
+        .filter(admins::Column::Id.eq(auth_context.admin_id))
+        .one(&state.conn)
+        .await?
+        .ok_or_else(|| anyhow!("管理员不存在"))?;
+
+    if admin.two_fa_secret.is_none() {
+        return Ok(ResponseCode::TwoFaNotEnabled.to_response(None));
+    }
+
+    let mut admin_model: admins::ActiveModel = admin.into_active_model();
+    admin_model.two_fa_secret = Set(None);
+    admin_model.update(&state.conn).await?;
+
+    Ok(Response::ok_data(TwoFaDisableResponse { disabled: true }))
 }

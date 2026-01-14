@@ -23,6 +23,8 @@
 
   Guardian 是一个功能完整、高性能的认证授权系统，专为现代 Web 应用程序设计。它提供了完整的用户认证、权限管理和操作审计功能，采用模块化架构设计，确保高可用性和易维护性。
 
+推荐-前端页面：[Guardian-Website](https://github.com/cherish-ltt/Guardian-Website)
+
 ## ✨ 核心特性
 
 ### 🔐 安全认证
@@ -317,3 +319,4 @@ Guardian Team - @opencode - <opencode@opencode.ai>
 
 <div align="center">  
   <p>Built with ❤️ by the Guardian team</p>
+
