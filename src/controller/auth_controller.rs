@@ -1,8 +1,8 @@
 use axum::{Json, extract::State, http::StatusCode};
 
 use crate::dto::{
-    LoginRequest, LoginResponse, RefreshTokenRequest, RefreshTokenResponse, TwoFaSetupResponse,
-    TwoFaVerifyRequest, TwoFaVerifyResponse,
+    LoginRequest, LoginResponse, RefreshTokenRequest, RefreshTokenResponse, TwoFaDisableResponse,
+    TwoFaSetupResponse, TwoFaVerifyRequest, TwoFaVerifyResponse,
 };
 use crate::middleware::auth::AuthContext;
 use crate::response::{Response, ResponseCode};
@@ -66,6 +66,19 @@ pub async fn verify_2fa(
     Json(payload): Json<TwoFaVerifyRequest>,
 ) -> (StatusCode, Json<Response<TwoFaVerifyResponse>>) {
     match crate::service::verify_2fa_service(state, auth_context.0, payload.code).await {
+        Ok(res) => (StatusCode::OK, Json(res)),
+        Err(e) => (
+            StatusCode::OK,
+            Json(ResponseCode::InternalError.to_response(Some(e.to_string()))),
+        ),
+    }
+}
+
+pub async fn disable_2fa(
+    State(state): State<AppState>,
+    auth_context: axum::Extension<AuthContext>,
+) -> (StatusCode, Json<Response<TwoFaDisableResponse>>) {
+    match crate::service::disable_2fa_service(state, auth_context.0).await {
         Ok(res) => (StatusCode::OK, Json(res)),
         Err(e) => (
             StatusCode::OK,

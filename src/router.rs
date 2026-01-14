@@ -7,7 +7,8 @@ use sea_orm::{Database, DatabaseConnection};
 use tower_http::cors::{Any, CorsLayer};
 
 use crate::controller::{
-    admin_controller::*, auth_controller::*, permission_controller::*, role_controller::*, root,
+    admin_controller::*, auth_controller::disable_2fa, auth_controller::*,
+    permission_controller::*, role_controller::*, root,
 };
 use crate::middleware::middleware_api::{auth_middleware, rate_limit_middleware};
 
@@ -38,6 +39,10 @@ pub(crate) async fn get_router() -> Result<Router> {
         .route(&format!("{}/auth/logout", API_PREFIX), post(logout))
         .route(&format!("{}/auth/2fa/setup", API_PREFIX), post(setup_2fa))
         .route(&format!("{}/auth/2fa/verify", API_PREFIX), post(verify_2fa))
+        .route(
+            &format!("{}/auth/2fa/disable", API_PREFIX),
+            post(disable_2fa),
+        )
         .route(&format!("{}/admins", API_PREFIX), get(list_admin))
         .route(&format!("{}/admins", API_PREFIX), post(create_admin))
         .route(&format!("{}/admins/id", API_PREFIX), get(get_admin))

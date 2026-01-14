@@ -5,7 +5,8 @@ use sea_orm::{
 use totp_rs::{Secret, TOTP};
 
 use crate::dto::{
-    LoginRequest, LoginResponse, RefreshTokenResponse, TwoFaSetupResponse, TwoFaVerifyResponse,
+    LoginRequest, LoginResponse, RefreshTokenResponse, TwoFaDisableResponse, TwoFaSetupResponse,
+    TwoFaVerifyResponse,
 };
 use crate::entities::{admins, token_blacklist};
 use crate::middleware::auth::AuthContext;
@@ -208,4 +209,25 @@ pub async fn verify_2fa_service(
     } else {
         Ok(ResponseCode::InvalidTwoFaCode.to_response(None))
     }
+}
+
+pub async fn disable_2fa_service(
+    state: AppState,
+    auth_context: AuthContext,
+) -> Result<Response<TwoFaDisableResponse>> {
+    let admin = admins::Entity::find()
+        .filter(admins::Column::Id.eq(auth_context.admin_id))
+        .one(&state.conn)
+        .await?
+        .ok_or_else(|| anyhow!("管理员不存在"))?;
+
+    if admin.two_fa_secret.is_none() {
+        return Ok(ResponseCode::TwoFaNotEnabled.to_response(None));
+    }
+
+    let mut admin_model: admins::ActiveModel = admin.into_active_model();
+    admin_model.two_fa_secret = Set(None);
+    admin_model.update(&state.conn).await?;
+
+    Ok(Response::ok_data(TwoFaDisableResponse { disabled: true }))
 }

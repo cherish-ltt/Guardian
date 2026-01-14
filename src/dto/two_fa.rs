@@ -16,3 +16,8 @@ pub struct TwoFaVerifyRequest {
 pub struct TwoFaVerifyResponse {
     pub verified: bool,
 }
+
+#[derive(Debug, Serialize, Default)]
+pub struct TwoFaDisableResponse {
+    pub disabled: bool,
+}
