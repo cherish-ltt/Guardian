@@ -66,7 +66,7 @@ pub(crate) async fn get_router() -> Result<Router> {
         .route(&format!("{}/roles/{{id}}", API_PREFIX), put(update_role))
         .route(&format!("{}/roles/{{id}}", API_PREFIX), delete(delete_role))
         .route(
-            &format!("{}/roles/id/permissions", API_PREFIX),
+            &format!("{}/roles/{{id}}/permissions", API_PREFIX),
             post(assign_permissions),
         )
         .route(
