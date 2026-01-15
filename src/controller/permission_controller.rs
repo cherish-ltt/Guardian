@@ -1,7 +1,7 @@
 use axum::{
     Json,
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::StatusCode, response::IntoResponse,
 };
 
 use crate::dto::{
@@ -16,7 +16,7 @@ use uuid::Uuid;
 pub async fn list_permission(
     State(state): State<AppState>,
     Query(query): Query<PermissionListQuery>,
-) -> (StatusCode, Json<Response<PermissionListResponse>>) {
+) -> impl IntoResponse {
     match list_permission_service(state, query).await {
         Ok(res) => (StatusCode::OK, Json(res)),
         Err(e) => (
@@ -28,7 +28,7 @@ pub async fn list_permission(
 
 pub async fn get_permission_tree(
     State(state): State<AppState>,
-) -> (StatusCode, Json<Response<Vec<PermissionTreeResponse>>>) {
+) -> impl IntoResponse {
     match get_permission_tree_service(state).await {
         Ok(res) => (StatusCode::OK, Json(res)),
         Err(e) => (
@@ -41,7 +41,7 @@ pub async fn get_permission_tree(
 pub async fn get_permission(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
-) -> (StatusCode, Json<Response<PermissionResponse>>) {
+) -> impl IntoResponse {
     match get_permission_service(state, id).await {
         Ok(res) => (StatusCode::OK, Json(res)),
         Err(e) => (StatusCode::OK, Json(Response::failed(e.to_string()))),
@@ -51,7 +51,7 @@ pub async fn get_permission(
 pub async fn create_permission(
     State(state): State<AppState>,
     Json(payload): Json<CreatePermissionRequest>,
-) -> (StatusCode, Json<Response<PermissionResponse>>) {
+) -> impl IntoResponse {
     match create_permission_service(state, payload).await {
         Ok(res) => (StatusCode::OK, Json(res)),
         Err(e) => (StatusCode::OK, Json(Response::failed(e.to_string()))),
@@ -62,7 +62,7 @@ pub async fn update_permission(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
     Json(payload): Json<UpdatePermissionRequest>,
-) -> (StatusCode, Json<Response<PermissionResponse>>) {
+) -> impl IntoResponse {
     match update_permission_service(state, id, payload).await {
         Ok(res) => (StatusCode::OK, Json(res)),
         Err(e) => (StatusCode::OK, Json(Response::failed(e.to_string()))),
@@ -72,7 +72,7 @@ pub async fn update_permission(
 pub async fn delete_permission(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
-) -> (StatusCode, Json<Response<()>>) {
+) -> impl IntoResponse {
     match delete_permission_service(state, id).await {
         Ok(res) => (StatusCode::OK, Json(res)),
         Err(e) => (StatusCode::OK, Json(Response::failed(e.to_string()))),

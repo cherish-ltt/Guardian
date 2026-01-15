@@ -1,7 +1,7 @@
 use axum::{
     Json,
     extract::{Query, State},
-    http::StatusCode,
+    http::StatusCode, response::IntoResponse,
 };
 
 use crate::dto::{SystemInfoQuery, SystemInfoResponse};
@@ -12,7 +12,7 @@ use crate::service::list_system_info_service;
 pub async fn list_system_info(
     State(state): State<AppState>,
     Query(query): Query<SystemInfoQuery>,
-) -> (StatusCode, Json<Response<Vec<SystemInfoResponse>>>) {
+) -> impl IntoResponse {
     match list_system_info_service(state, query).await {
         Ok(res) => (StatusCode::OK, Json(res)),
         Err(e) => (
