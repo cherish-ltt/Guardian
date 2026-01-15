@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
 import asyncio
-import asyncpg
-import psutil
 import os
-from datetime import datetime, timezone
+import signal
+import sys
+import time
+from datetime import datetime, timedelta, timezone
+
+import asyncpg
+import croniter
+import psutil
 
 CONFIG = {
     "host": "127.0.0.1",
@@ -17,15 +22,36 @@ DATABASE_URL = f"postgresql://{CONFIG['user']}:{CONFIG['password']}@{CONFIG['hos
 
 
 class SystemMonitor:
-    def __init__(self, db_url: str):
+    def __init__(self, db_url: str, cron_expression: str = "*/5 * * * *"):
         self.db_url = db_url
         self.pool = None
         self.last_network_stats = None
+        self.running = True
+        self.cron_expression = cron_expression
+        self.cron = croniter.croniter(cron_expression, datetime.now())
 
     async def init(self):
         self.pool = await asyncpg.create_pool(
             self.db_url, min_size=1, max_size=5, command_timeout=60
         )
+
+    def get_next_run_time(self) -> datetime:
+        """使用croniter获取下一次运行时间"""
+        return self.cron.get_next(datetime)
+
+    def calculate_sleep_time(self) -> float:
+        """计算到下一次运行需要等待的秒数"""
+        now = datetime.now()
+        next_run = self.get_next_run_time()
+
+        # 计算时间差
+        wait_seconds = (next_run - now).total_seconds()
+
+        # 避免负数或过小的等待时间
+        if wait_seconds < 1:
+            wait_seconds = 1
+
+        return wait_seconds
 
     async def collect_metrics(self):
         cpu_count = psutil.cpu_count(logical=False) or 1
@@ -67,8 +93,8 @@ class SystemMonitor:
         async with self.pool.acquire() as conn:
             await conn.execute(
                 """
-                INSERT INTO guardian_systeminfo 
-                (cpu_count, cpu_total_load, memory_used, memory_total, 
+                INSERT INTO guardian_systeminfo
+                (cpu_count, cpu_total_load, memory_used, memory_total,
                  disk_used, disk_total, network_upload, network_download)
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             """,
@@ -82,24 +108,62 @@ class SystemMonitor:
                 metrics["network_download"],
             )
 
-    async def run(self, interval: int = 300):
+    async def run(self):
         await self.init()
 
-        print(f"Starting system monitoring (interval: {interval}s)")
+        print(f"Starting system monitoring (cron expression: {self.cron_expression})")
         print("Collecting initial network stats...")
 
-        while True:
-            metrics = await self.collect_metrics()
-            await self.insert_metrics(metrics)
+        # 信号处理，优雅关闭
+        def signal_handler(signum, frame):
+            print(f"\nReceived signal {signum}, shutting down...")
+            self.running = False
 
-            timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-            print(
-                f"[{timestamp}] CPU: {metrics['cpu_total_load']:.1f}%, "
-                f"Memory: {metrics['memory_used'] / 1024 / 1024 / 1024:.2f}GB/{metrics['memory_total'] / 1024 / 1024 / 1024:.2f}GB, "
-                f"Disk: {metrics['disk_used'] / 1024 / 1024 / 1024:.2f}GB/{metrics['disk_total'] / 1024 / 1024 / 1024:.2f}GB"
-            )
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
 
-            await asyncio.sleep(interval)
+        # 先收集一次初始网络统计
+        _ = await self.collect_metrics()
+        print("Initial metrics collected, starting monitoring loop...")
+
+        while self.running:
+            try:
+                # 计算下一次运行时间
+                next_run_time = self.get_next_run_time()
+                wait_seconds = self.calculate_sleep_time()
+
+                print(
+                    f"Next run at: {next_run_time.strftime('%Y-%m-%d %H:%M:%S')} "
+                    f"(in {wait_seconds:.1f} seconds)"
+                )
+
+                # 等待到下一次运行时间
+                await asyncio.sleep(wait_seconds)
+
+                # 检查是否在等待期间收到了关闭信号
+                if not self.running:
+                    break
+
+                # 收集和存储指标
+                metrics = await self.collect_metrics()
+                await self.insert_metrics(metrics)
+
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                print(
+                    f"[{timestamp}] CPU: {metrics['cpu_total_load']:.1f}%, "
+                    f"Memory: {metrics['memory_used'] / 1024 / 1024 / 1024:.2f}GB/{metrics['memory_total'] / 1024 / 1024 / 1024:.2f}GB, "
+                    f"Disk: {metrics['disk_used'] / 1024 / 1024 / 1024:.2f}GB/{metrics['disk_total'] / 1024 / 1024 / 1024:.2f}GB, "
+                    f"Network: ↑{metrics['network_upload'] / 1024 / 1024:.2f}MB ↓{metrics['network_download'] / 1024 / 1024:.2f}MB"
+                )
+
+            except asyncio.CancelledError:
+                print("Task cancelled, shutting down...")
+                self.running = False
+                break
+            except Exception as e:
+                print(f"Error during monitoring: {e}")
+                # 出错时等待1分钟后重试
+                await asyncio.sleep(60)
 
     async def close(self):
         if self.pool:
@@ -107,11 +171,18 @@ class SystemMonitor:
 
 
 async def main():
-    monitor = SystemMonitor(DATABASE_URL)
+    # 使用cron表达式，每5分钟运行一次
+    cron_expression = "*/5 * * * *"  # 分钟 小时 日 月 星期
+
+    # 或者可以使用更具体的表达式
+    # cron_expression = "0,5,10,15,20,25,30,35,40,45,50,55 * * * *"
+
+    monitor = SystemMonitor(DATABASE_URL, cron_expression)
     try:
-        await monitor.run(interval=300)
+        await monitor.run()
     except KeyboardInterrupt:
         print("\nShutting down monitor...")
+    finally:
         await monitor.close()
 
 
