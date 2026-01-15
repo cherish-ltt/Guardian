@@ -1,7 +1,8 @@
 use axum::{
     Json,
     extract::{Path, Query, State},
-    http::StatusCode, response::IntoResponse,
+    http::StatusCode,
+    response::IntoResponse,
 };
 
 use crate::dto::{
@@ -26,9 +27,7 @@ pub async fn list_permission(
     }
 }
 
-pub async fn get_permission_tree(
-    State(state): State<AppState>,
-) -> impl IntoResponse {
+pub async fn get_permission_tree(State(state): State<AppState>) -> impl IntoResponse {
     match get_permission_tree_service(state).await {
         Ok(res) => (StatusCode::OK, Json(res)),
         Err(e) => (

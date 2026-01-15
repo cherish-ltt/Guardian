@@ -36,11 +36,19 @@ pub(crate) async fn get_router() -> Result<Router> {
     let public_routes = Router::new()
         .route("/", get(root))
         .route(&format!("{}/auth/login", API_PREFIX), post(login))
-        .route(&format!("{}/auth/refresh", API_PREFIX), post(refresh_token));
+        .route(&format!("{}/auth/refresh", API_PREFIX), post(refresh_token))
+        .route(
+            &format!("{}/auth/reset-password", API_PREFIX),
+            post(reset_password),
+        );
 
     // 受保护路由（需要认证）
     let protected_routes = Router::new()
         .route(&format!("{}/auth/logout", API_PREFIX), post(logout))
+        .route(
+            &format!("{}/auth/change-password", API_PREFIX),
+            post(change_password),
+        )
         .route(&format!("{}/auth/2fa/setup", API_PREFIX), post(setup_2fa))
         .route(&format!("{}/auth/2fa/verify", API_PREFIX), post(verify_2fa))
         .route(

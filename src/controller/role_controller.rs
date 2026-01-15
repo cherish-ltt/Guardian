@@ -1,7 +1,8 @@
 use axum::{
     Json,
     extract::{Path, Query, State},
-    http::StatusCode, response::IntoResponse,
+    http::StatusCode,
+    response::IntoResponse,
 };
 
 use crate::dto::{
@@ -26,10 +27,7 @@ pub async fn list_role(
     }
 }
 
-pub async fn get_role(
-    State(state): State<AppState>,
-    Path(id): Path<Uuid>,
-) -> impl IntoResponse {
+pub async fn get_role(State(state): State<AppState>, Path(id): Path<Uuid>) -> impl IntoResponse {
     match get_role_service(state, id).await {
         Ok(res) => (StatusCode::OK, Json(res)),
         Err(e) => (StatusCode::OK, Json(Response::failed(e.to_string()))),
@@ -57,10 +55,7 @@ pub async fn update_role(
     }
 }
 
-pub async fn delete_role(
-    State(state): State<AppState>,
-    Path(id): Path<Uuid>,
-) -> impl IntoResponse {
+pub async fn delete_role(State(state): State<AppState>, Path(id): Path<Uuid>) -> impl IntoResponse {
     match delete_role_service(state, id).await {
         Ok(res) => (StatusCode::OK, Json(res)),
         Err(e) => (StatusCode::OK, Json(Response::failed(e.to_string()))),

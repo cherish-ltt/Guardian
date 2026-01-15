@@ -2,17 +2,15 @@ use axum::response::IntoResponse;
 use axum::{Json, extract::State, http::StatusCode};
 
 use crate::dto::{
-    LoginRequest, LoginResponse, RefreshTokenRequest, RefreshTokenResponse, TwoFaDisableResponse,
-    TwoFaSetupResponse, TwoFaVerifyRequest, TwoFaVerifyResponse,
+    ChangeOwnPasswordRequest, LoginRequest, LoginResponse, RefreshTokenRequest,
+    RefreshTokenResponse, ResetPasswordRequest, TwoFaDisableResponse, TwoFaSetupResponse,
+    TwoFaVerifyRequest, TwoFaVerifyResponse,
 };
 use crate::middleware::auth::AuthContext;
 use crate::response::{Response, ResponseCode};
 use crate::router::AppState;
 
-pub async fn login(
-    state: State<AppState>,
-    Json(payload): Json<LoginRequest>,
-) -> impl IntoResponse {
+pub async fn login(state: State<AppState>, Json(payload): Json<LoginRequest>) -> impl IntoResponse {
     match crate::service::login_service(state.0, payload).await {
         Ok(res) => (StatusCode::OK, Json(res)),
         Err(e) => (
@@ -80,6 +78,33 @@ pub async fn disable_2fa(
     auth_context: axum::Extension<AuthContext>,
 ) -> impl IntoResponse {
     match crate::service::disable_2fa_service(state, auth_context.0).await {
+        Ok(res) => (StatusCode::OK, Json(res)),
+        Err(e) => (
+            StatusCode::OK,
+            Json(ResponseCode::InternalError.to_response(Some(e.to_string()))),
+        ),
+    }
+}
+
+pub async fn change_password(
+    State(state): State<AppState>,
+    auth_context: axum::Extension<AuthContext>,
+    Json(payload): Json<ChangeOwnPasswordRequest>,
+) -> impl IntoResponse {
+    match crate::service::change_own_password_service(state, auth_context.0, payload).await {
+        Ok(res) => (StatusCode::OK, Json(res)),
+        Err(e) => (
+            StatusCode::OK,
+            Json(ResponseCode::InternalError.to_response(Some(e.to_string()))),
+        ),
+    }
+}
+
+pub async fn reset_password(
+    state: State<AppState>,
+    Json(payload): Json<ResetPasswordRequest>,
+) -> impl IntoResponse {
+    match crate::service::reset_password_service(state.0, payload).await {
         Ok(res) => (StatusCode::OK, Json(res)),
         Err(e) => (
             StatusCode::OK,

@@ -1,7 +1,8 @@
 use axum::{
     Json,
     extract::{Query, State},
-    http::StatusCode, response::IntoResponse,
+    http::StatusCode,
+    response::IntoResponse,
 };
 
 use crate::dto::{SystemInfoQuery, SystemInfoResponse};
