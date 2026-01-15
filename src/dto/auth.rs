@@ -25,3 +25,15 @@ pub struct RefreshTokenResponse {
     pub access_token: String,
     pub expires_in: i64,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct ChangeOwnPasswordRequest {
+    pub new_password: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ResetPasswordRequest {
+    pub username: String,
+    pub two_fa_code: String,
+    pub new_password: String,
+}

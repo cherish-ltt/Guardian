@@ -5,6 +5,7 @@ pub mod prelude;
 pub mod admin_roles;
 pub mod admins;
 pub mod audit_logs;
+pub mod guardian_systeminfo;
 pub mod links;
 pub mod permissions;
 pub mod role_permissions;

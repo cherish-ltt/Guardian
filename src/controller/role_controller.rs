@@ -2,6 +2,7 @@ use axum::{
     Json,
     extract::{Path, Query, State},
     http::StatusCode,
+    response::IntoResponse,
 };
 
 use crate::dto::{
@@ -26,10 +27,7 @@ pub async fn list_role(
     }
 }
 
-pub async fn get_role(
-    State(state): State<AppState>,
-    Path(id): Path<Uuid>,
-) -> (StatusCode, Json<Response<RoleDetailResponse>>) {
+pub async fn get_role(State(state): State<AppState>, Path(id): Path<Uuid>) -> impl IntoResponse {
     match get_role_service(state, id).await {
         Ok(res) => (StatusCode::OK, Json(res)),
         Err(e) => (StatusCode::OK, Json(Response::failed(e.to_string()))),
@@ -39,7 +37,7 @@ pub async fn get_role(
 pub async fn create_role(
     State(state): State<AppState>,
     Json(payload): Json<CreateRoleRequest>,
-) -> (StatusCode, Json<Response<RoleResponse>>) {
+) -> impl IntoResponse {
     match create_role_service(state, payload).await {
         Ok(res) => (StatusCode::OK, Json(res)),
         Err(e) => (StatusCode::OK, Json(Response::failed(e.to_string()))),
@@ -50,17 +48,14 @@ pub async fn update_role(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
     Json(payload): Json<UpdateRoleRequest>,
-) -> (StatusCode, Json<Response<RoleResponse>>) {
+) -> impl IntoResponse {
     match update_role_service(state, id, payload).await {
         Ok(res) => (StatusCode::OK, Json(res)),
         Err(e) => (StatusCode::OK, Json(Response::failed(e.to_string()))),
     }
 }
 
-pub async fn delete_role(
-    State(state): State<AppState>,
-    Path(id): Path<Uuid>,
-) -> (StatusCode, Json<Response<()>>) {
+pub async fn delete_role(State(state): State<AppState>, Path(id): Path<Uuid>) -> impl IntoResponse {
     match delete_role_service(state, id).await {
         Ok(res) => (StatusCode::OK, Json(res)),
         Err(e) => (StatusCode::OK, Json(Response::failed(e.to_string()))),
@@ -71,7 +66,7 @@ pub async fn assign_permissions(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
     Json(payload): Json<serde_json::Value>,
-) -> (StatusCode, Json<Response<()>>) {
+) -> impl IntoResponse {
     let permission_ids: Vec<Uuid> = payload
         .get("permission_ids")
         .and_then(|v| v.as_array())

@@ -125,6 +125,7 @@ COMMENT ON COLUMN guardian_admins.updated_at IS '更新时间';""",
 CREATE INDEX IF NOT EXISTS idx_guardian_admins_username ON guardian_admins(username);
 CREATE INDEX IF NOT EXISTS idx_guardian_admins_status ON guardian_admins(status);""",
             """-- 创建触发器：自动更新 updated_at
+DROP TRIGGER IF EXISTS guardian_admins_updated_at ON guardian_admins;
 CREATE TRIGGER guardian_admins_updated_at BEFORE UPDATE ON guardian_admins
 FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();""",
         ]
@@ -156,6 +157,7 @@ COMMENT ON COLUMN guardian_roles.updated_at IS '更新时间';""",
             """-- 创建索引
 CREATE INDEX IF NOT EXISTS idx_guardian_roles_code ON guardian_roles(code);""",
             """-- 创建触发器：自动更新 updated_at
+DROP TRIGGER IF EXISTS guardian_roles_updated_at ON guardian_roles;
 CREATE TRIGGER guardian_roles_updated_at BEFORE UPDATE ON guardian_roles
 FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();""",
         ]
@@ -199,6 +201,7 @@ CREATE INDEX IF NOT EXISTS idx_guardian_permissions_code ON guardian_permissions
 CREATE INDEX IF NOT EXISTS idx_guardian_permissions_resource ON guardian_permissions(resource_type, resource_path);
 CREATE INDEX IF NOT EXISTS idx_guardian_permissions_parent ON guardian_permissions(parent_id);""",
             """-- 创建触发器：自动更新 updated_at
+DROP TRIGGER IF EXISTS guardian_permissions_updated_at ON guardian_permissions;
 CREATE TRIGGER guardian_permissions_updated_at BEFORE UPDATE ON guardian_permissions
 FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();""",
         ]
@@ -316,6 +319,40 @@ CREATE INDEX IF NOT EXISTS idx_guardian_audit_logs_created_at ON guardian_audit_
         ]
     )
 
+    # ========== guardian_systeminfo 表 ==========
+    statements.extend(
+        [
+            """-- 创建系统信息表
+CREATE TABLE IF NOT EXISTS guardian_systeminfo (
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
+    cpu_count INTEGER NOT NULL,
+    cpu_total_load NUMERIC(5, 2) NOT NULL,
+    memory_used BIGINT NOT NULL,
+    memory_total BIGINT NOT NULL,
+    disk_used BIGINT NOT NULL,
+    disk_total BIGINT NOT NULL,
+    network_upload BIGINT NOT NULL,
+    network_download BIGINT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);""",
+            """-- 表注释
+COMMENT ON TABLE guardian_systeminfo IS '系统监控信息表';""",
+            """-- 字段注释
+COMMENT ON COLUMN guardian_systeminfo.id IS '记录ID（UUIDv7）';
+COMMENT ON COLUMN guardian_systeminfo.cpu_count IS 'CPU核心数';
+COMMENT ON COLUMN guardian_systeminfo.cpu_total_load IS 'CPU总使用率（%）';
+COMMENT ON COLUMN guardian_systeminfo.memory_used IS '已使用内存（字节）';
+COMMENT ON COLUMN guardian_systeminfo.memory_total IS '总内存（字节）';
+COMMENT ON COLUMN guardian_systeminfo.disk_used IS '已使用磁盘空间（字节）';
+COMMENT ON COLUMN guardian_systeminfo.disk_total IS '总磁盘空间（字节）';
+COMMENT ON COLUMN guardian_systeminfo.network_upload IS '网络上传量（字节）';
+COMMENT ON COLUMN guardian_systeminfo.network_download IS '网络下载量（字节）';
+COMMENT ON COLUMN guardian_systeminfo.created_at IS '记录创建时间';""",
+            """-- 创建索引
+CREATE INDEX IF NOT EXISTS idx_guardian_systeminfo_created_at ON guardian_systeminfo(created_at);""",
+        ]
+    )
+
     return statements
 
 
@@ -382,6 +419,7 @@ def verify_tables():
         "guardian_role_permissions",
         "guardian_token_blacklist",
         "guardian_audit_logs",
+        "guardian_systeminfo",
     ]
 
     print(f"  期望的表: {', '.join(expected_tables)}")
@@ -435,10 +473,10 @@ def verify_tables():
     # 验证触发器
     print("\n⚙️  验证触发器...")
     cursor.execute("""
-        SELECT table_name, trigger_name
+        SELECT event_object_table, trigger_name
         FROM information_schema.triggers
         WHERE trigger_schema = 'public'
-        ORDER BY table_name, trigger_name
+        ORDER BY event_object_table, trigger_name
     """)
     triggers = cursor.fetchall()
     if triggers:

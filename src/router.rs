@@ -1,14 +1,18 @@
 use anyhow::{Ok, Result};
 use axum::{
-    Json, Router,
+    Router,
     routing::{delete, get, post, put},
 };
 use sea_orm::{Database, DatabaseConnection};
 use tower_http::cors::{Any, CorsLayer};
 
 use crate::controller::{
-    admin_controller::*, auth_controller::disable_2fa, auth_controller::*,
-    permission_controller::*, role_controller::*, root,
+    admin_controller::*,
+    auth_controller::{disable_2fa, *},
+    permission_controller::*,
+    role_controller::*,
+    root,
+    system_info_controller::*,
 };
 use crate::middleware::middleware_api::{auth_middleware, rate_limit_middleware};
 
@@ -32,11 +36,19 @@ pub(crate) async fn get_router() -> Result<Router> {
     let public_routes = Router::new()
         .route("/", get(root))
         .route(&format!("{}/auth/login", API_PREFIX), post(login))
-        .route(&format!("{}/auth/refresh", API_PREFIX), post(refresh_token));
+        .route(&format!("{}/auth/refresh", API_PREFIX), post(refresh_token))
+        .route(
+            &format!("{}/auth/reset-password", API_PREFIX),
+            post(reset_password),
+        );
 
     // 受保护路由（需要认证）
     let protected_routes = Router::new()
         .route(&format!("{}/auth/logout", API_PREFIX), post(logout))
+        .route(
+            &format!("{}/auth/change-password", API_PREFIX),
+            post(change_password),
+        )
         .route(&format!("{}/auth/2fa/setup", API_PREFIX), post(setup_2fa))
         .route(&format!("{}/auth/2fa/verify", API_PREFIX), post(verify_2fa))
         .route(
@@ -78,8 +90,8 @@ pub(crate) async fn get_router() -> Result<Router> {
             &format!("{}/permissions/id", API_PREFIX),
             delete(delete_permission),
         )
+        .route(&format!("{}/systeminfo", API_PREFIX), get(list_system_info))
         .route_layer(axum::middleware::from_fn(auth_middleware));
-
     let app = Router::new()
         .merge(public_routes)
         .merge(protected_routes)
