@@ -8,11 +8,11 @@ import croniter
 import psutil
 
 CONFIG = {
-    "host": "127.0.0.1",
-    "port": 5432,
-    "user": "postgres",
-    "password": "123456",
-    "database": "guardian_auth",
+    "host": os.getenv("DB_HOST", "127.0.0.1"),
+    "port": int(os.getenv("DB_PORT", 5432)),
+    "user": os.getenv("DB_USER", "postgres"),
+    "password": os.getenv("DB_PASSWORD"),
+    "database": os.getenv("DB_NAME", "guardian_auth"),
 }
 
 DATABASE_URL = f"postgresql://{CONFIG['user']}:{CONFIG['password']}@{CONFIG['host']}:{CONFIG['port']}/{CONFIG['database']}"
