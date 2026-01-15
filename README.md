@@ -140,7 +140,11 @@ cargo build --release
 
 ## 📚 API 文档
 
-完整的 API 文档请参考：[public-docs/api-v1.0.md](https://github.com/cherish-ltt/Guardian/blob/main/public-docs/api-v1.0.md)
+完整的 API 文档请参考：
+
+~~[public-docs/api-v1.0.md](https://github.com/cherish-ltt/Guardian/blob/main/public-docs/api-v1.0.md)~~
+
+[public-docs/api-v1.1.md](https://github.com/cherish-ltt/Guardian/blob/main/public-docs/api-v1.1.md)
 
 ### API 概览
 
@@ -319,4 +323,3 @@ Guardian Team - @opencode - <opencode@opencode.ai>
 
 <div align="center">  
   <p>Built with ❤️ by the Guardian team</p>
-
