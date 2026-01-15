@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
 import asyncio
-import os
 import signal
-import sys
-import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 
 import asyncpg
 import croniter
@@ -28,24 +25,23 @@ class SystemMonitor:
         self.last_network_stats = None
         self.running = True
         self.cron_expression = cron_expression
-        self.cron = croniter.croniter(cron_expression, datetime.now())
 
     async def init(self):
         self.pool = await asyncpg.create_pool(
             self.db_url, min_size=1, max_size=5, command_timeout=60
         )
 
-    def get_next_run_time(self) -> datetime:
+    def get_next_run_time(self, current_time: datetime) -> datetime:
         """使用croniter获取下一次运行时间"""
-        return self.cron.get_next(datetime)
+        cron = croniter.croniter(self.cron_expression, current_time)
+        return cron.get_next(datetime)
 
-    def calculate_sleep_time(self) -> float:
+    def calculate_sleep_time(self, current_time: datetime) -> float:
         """计算到下一次运行需要等待的秒数"""
-        now = datetime.now()
-        next_run = self.get_next_run_time()
+        next_run = self.get_next_run_time(current_time)
 
         # 计算时间差
-        wait_seconds = (next_run - now).total_seconds()
+        wait_seconds = (next_run - current_time).total_seconds()
 
         # 避免负数或过小的等待时间
         if wait_seconds < 1:
@@ -128,10 +124,14 @@ class SystemMonitor:
 
         while self.running:
             try:
-                # 计算下一次运行时间
-                next_run_time = self.get_next_run_time()
-                wait_seconds = self.calculate_sleep_time()
+                # 获取当前时间
+                now = datetime.now()
 
+                # 计算下一次运行时间
+                next_run_time = self.get_next_run_time(now)
+                wait_seconds = self.calculate_sleep_time(now)
+
+                print(f"Current time: {now.strftime('%Y-%m-%d %H:%M:%S')}")
                 print(
                     f"Next run at: {next_run_time.strftime('%Y-%m-%d %H:%M:%S')} "
                     f"(in {wait_seconds:.1f} seconds)"
@@ -173,9 +173,6 @@ class SystemMonitor:
 async def main():
     # 使用cron表达式，每5分钟运行一次
     cron_expression = "*/5 * * * *"  # 分钟 小时 日 月 星期
-
-    # 或者可以使用更具体的表达式
-    # cron_expression = "0,5,10,15,20,25,30,35,40,45,50,55 * * * *"
 
     monitor = SystemMonitor(DATABASE_URL, cron_expression)
     try:
