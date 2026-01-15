@@ -57,7 +57,7 @@ COMMENT ON TABLE "public"."guardian_admins" IS '管理员表';
 -- Records of guardian_admins
 -- ----------------------------
 BEGIN;
-INSERT INTO "public"."guardian_admins" ("id", "username", "password_hash", "two_fa_secret", "is_super_admin", "status", "last_login_at", "login_attempts", "locked_until", "created_at", "updated_at") VALUES ('019bbbe1-9c3b-7bcd-ac94-9b0616086ed8', 'guardian', '$argon2id$v=19$m=19456,t=2,p=1$asZwK0KoNslPiCA1F1EWtA$kiviXMRZv5XtfsnaHXto3T8cAq19oSSouydTzVBKX6g', 'YPUYQCQFP2DYQ4ROHYGTPHF3DUXQMFPE', 't', 1, '2026-01-15 23:52:48.186314+08', 0, NULL, '2026-01-14 17:41:23.642658+08', '2026-01-16 00:23:39.671314+08');
+INSERT INTO "public"."guardian_admins" ("id", "username", "password_hash", "two_fa_secret", "is_super_admin", "status", "last_login_at", "login_attempts", "locked_until", "created_at", "updated_at") VALUES ('019bbbe1-9c3b-7bcd-ac94-9b0616086ed8', 'guardian', '$argon2id$v=19$m=19456,t=2,p=1$7KszMmwG69nCXa+uXpH6bw$f67x/bi8Nxjpx3y1a6nBaVkfscHFAnLVCaM2IIk4a6I', NULL, 't', 1, '2026-01-14 19:29:26.185307+08', 0, NULL, '2026-01-14 17:41:23.642658+08', '2026-01-14 21:51:25.303372+08');
 COMMIT;
 
 -- ----------------------------
