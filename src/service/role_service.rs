@@ -8,7 +8,7 @@ use crate::dto::{
     CreateRoleRequest, PermissionSimple, RoleDetailResponse, RoleListQuery, RoleListResponse,
     RoleResponse, UpdateRoleRequest,
 };
-use crate::entities::{prelude::*, role_permissions, roles};
+use crate::entities::{permissions, prelude::*, role_permissions, roles};
 use crate::response::Response;
 use crate::router::AppState;
 
@@ -71,9 +71,9 @@ pub async fn get_role_service(
         .await?
         .ok_or_else(|| anyhow!("角色不存在"))?;
 
-    let role_permissions_list = RolePermissions::find()
+    let role_permissions_list = role_permissions::Entity::find()
         .filter(role_permissions::Column::RoleId.eq(id))
-        .find_also_related(Permissions)
+        .find_also_related(permissions::Entity)
         .all(&state.conn)
         .await?;
 

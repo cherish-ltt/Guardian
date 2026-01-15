@@ -1,14 +1,18 @@
 use anyhow::{Ok, Result};
 use axum::{
-    Json, Router,
+    Router,
     routing::{delete, get, post, put},
 };
 use sea_orm::{Database, DatabaseConnection};
 use tower_http::cors::{Any, CorsLayer};
 
 use crate::controller::{
-    admin_controller::*, auth_controller::disable_2fa, auth_controller::*,
-    permission_controller::*, role_controller::*, root,
+    admin_controller::*,
+    auth_controller::{disable_2fa, *},
+    permission_controller::*,
+    role_controller::*,
+    root,
+    system_info_controller::*,
 };
 use crate::middleware::middleware_api::{auth_middleware, rate_limit_middleware};
 
@@ -78,8 +82,8 @@ pub(crate) async fn get_router() -> Result<Router> {
             &format!("{}/permissions/id", API_PREFIX),
             delete(delete_permission),
         )
+        .route(&format!("{}/systeminfo", API_PREFIX), get(list_system_info))
         .route_layer(axum::middleware::from_fn(auth_middleware));
-
     let app = Router::new()
         .merge(public_routes)
         .merge(protected_routes)

@@ -26,3 +26,4 @@ Thumbs.db
 .ruff_cache
 .venv
 design-docs
+.opencode

@@ -21,7 +21,7 @@ pub async fn list_permission_service(
     let page_size = query.page_size.unwrap_or(20);
     let offset = (page - 1) * page_size;
 
-    let mut select = Permissions::find();
+    let mut select = permissions::Entity::find();
 
     if let Some(resource_type) = &query.resource_type {
         select = select.filter(permissions::Column::ResourceType.eq(resource_type));
@@ -77,7 +77,7 @@ pub async fn list_permission_service(
 pub async fn get_permission_tree_service(
     state: AppState,
 ) -> Result<Response<Vec<PermissionTreeResponse>>> {
-    let all_permissions = Permissions::find()
+    let all_permissions = permissions::Entity::find()
         .order_by_asc(permissions::Column::SortOrder)
         .all(&state.conn)
         .await?;
@@ -118,7 +118,7 @@ pub async fn get_permission_service(
     state: AppState,
     id: uuid::Uuid,
 ) -> Result<Response<PermissionResponse>> {
-    let permission = Permissions::find_by_id(id)
+    let permission = permissions::Entity::find_by_id(id)
         .one(&state.conn)
         .await?
         .ok_or_else(|| anyhow!("权限不存在"))?;
@@ -145,7 +145,7 @@ pub async fn create_permission_service(
     state: AppState,
     payload: CreatePermissionRequest,
 ) -> Result<Response<PermissionResponse>> {
-    let existing = Permissions::find()
+    let existing = permissions::Entity::find()
         .filter(permissions::Column::Code.eq(&payload.code))
         .one(&state.conn)
         .await?;
@@ -194,7 +194,7 @@ pub async fn update_permission_service(
     id: uuid::Uuid,
     payload: UpdatePermissionRequest,
 ) -> Result<Response<PermissionResponse>> {
-    let permission = Permissions::find_by_id(id)
+    let permission = permissions::Entity::find_by_id(id)
         .one(&state.conn)
         .await?
         .ok_or_else(|| anyhow!("权限不存在"))?;
