@@ -23,7 +23,7 @@
 
   Guardian 是一个功能完整、高性能的认证授权系统，专为现代 Web 应用程序设计。它提供了完整的用户认证、权限管理和操作审计功能，采用模块化架构设计，确保高可用性和易维护性。
 
-推荐-前端页面：[Guardian-Website](https://github.com/cherish-ltt/Guardian-Website)
+推荐前端页面：[Guardian-Website](https://github.com/cherish-ltt/Guardian-Website) 
 
 ## ✨ 核心特性
 
@@ -92,9 +92,49 @@
 ## 🚀 快速开始
 
 ### 环境要求
-- Rust 1.92+ 
-- PostgreSQL 17+
-- Cargo（Rust 包管理器）
+
+#### 必需软件
+- **Rust 1.92+** - 使用 rustup 安装：
+  ```bash
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+  source $HOME/.cargo/env
+  ```
+  验证安装：`rustc --version` 和 `cargo --version`
+
+- **PostgreSQL 17+** - 数据库服务：
+  - **macOS** (使用 Homebrew):
+    ```bash
+    brew install postgresql@17
+    brew services start postgresql@17
+    ```
+  - **Linux (RHEL/CentOS)**:
+    ```bash
+    # 添加 PostgreSQL 17 仓库
+    sudo dnf install https://download.postgresql.org/pub/repos/yum/reporpms/EL-8-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+    sudo dnf install postgresql17-server
+    sudo /usr/pgsql-17/bin/postgresql-17-setup initdb
+    sudo systemctl start postgresql-17
+    ```
+  - **Ubuntu/Debian**:
+    ```bash
+    sudo apt update
+    sudo apt install postgresql-17
+    sudo systemctl start postgresql
+    ```
+  - **验证安装**：`psql --version` 应显示 `psql (PostgreSQL) 17.x`
+
+- **Python 3.8+** - 用于运行脚本工具（system_monitor.py, init_db.py）
+
+#### Python 依赖（用于脚本）
+```bash
+pip install asyncpg psutil croniter psycopg2
+```
+
+> 📦 Python 包说明：
+> - `asyncpg` - 异步 PostgreSQL 客户端（system_monitor.py 使用）
+> - `psutil` - 系统信息收集（CPU、内存、磁盘、网络）
+> - `croniter` - Cron 表达式解析（定时任务调度）
+> - `psycopg2` - 同步 PostgreSQL 客户端（init_db.py 使用）
 
 ### 1. 克隆项目
 ```bash
@@ -103,40 +143,282 @@ cd Guardian
 ```
 
 ### 2. 配置数据库
+
+#### 方法 A：使用初始化脚本（无默认账号）
 创建 PostgreSQL 数据库并运行初始化脚本：
 
 ```bash
+# 编辑 scripts/init_db.py 中的数据库配置（如需要）
 python3 scripts/init_db.py
 ```
 
-这会创建所有必要的表和初始数据。
+这会创建数据库、所有表和初始数据。
 
-### 3. 配置环境变量
-复制 `.env.example` 为 `.env` 并配置：
+#### 方法 B：导入 public.sql（推荐，有默认账号）
+如果已有 PostgreSQL 数据库，直接导入 SQL 文件：
 
-```env
-DATABASE_URL=postgresql://postgres:password@localhost:5432/guardian_auth
-JWT_SECRET=your-very-strong-secret-key-min-32-chars
+```bash
+# 确保数据库已创建（如未创建，请先运行 init_db.py 或手动创建）
+psql -h 127.0.0.1 -p 5432 -U postgres -d guardian_auth -f scripts/public.sql
 ```
 
-### 4. 创建超级管理员
-创建默认超级管理员账号。
+#### 默认管理员账户
+
+使用 `public.sql` 导入后，系统包含一个默认超级管理员：
+
+- **用户名**：`guardian`
+- **密码**：`123456`
+- **角色**：超级管理员（SuperAdmin）
+- **权限**：拥有所有系统权限
+
+> ⚠️ **安全提醒**：生产环境请立即登录并修改默认密码！
+
+> 💡 **提示**：`public.sql` 文件包含完整的数据库架构和初始数据，包括系统内置角色、权限和默认管理员。
+
+### 3. 配置环境变量
+
+使用 `.env-public` 作为模板创建 `.env` 文件：
+
+```bash
+cp .env-public .env
+```
+
+编辑 `.env` 文件，配置以下环境变量：
+
+#### 数据库配置
+```env
+DATABASE_URL=postgresql://postgres:123456@127.0.0.1:5432/guardian_auth
+```
+- `DATABASE_URL`：PostgreSQL 连接字符串
+- 格式：`postgresql://用户名:密码@主机:端口/数据库名`
+
+#### JWT 配置
+```env
+JWT_SECRET=your-super-secret-jwt-key-min-32-chars
+```
+- `JWT_SECRET`：JWT 令牌签名密钥
+- **⚠️ 生产环境必须使用强随机密钥（至少 32 字符）**
+- 用于签名 Access Token 和 Refresh Token
+
+#### 加密配置
+```env
+ENCRYPTION_KEY=32-byte-encryption-key-for-chacha20
+```
+- `ENCRYPTION_KEY`：ChaCha20 加密密钥（用于 2FA secret 存储）
+- **⚠️ 生产环境必须使用 32 字节强密钥**
+- 用于加密/解密 TOTP secret
+
+#### 日志缓冲配置
+```env
+LOG_BUFFER_SIZE=1000
+LOG_BATCH_SIZE=10
+LOG_FLUSH_INTERVAL_SECS=3
+```
+- `LOG_BUFFER_SIZE`：审计日志缓冲池大小
+- `LOG_BATCH_SIZE`：每次批量写入的日志数量
+- `LOG_FLUSH_INTERVAL_SECS`：批量写入间隔（秒）
+
+#### 速率限制
+```env
+RATE_LIMIT_MAX_REQUESTS=100
+RATE_LIMIT_WINDOW_SECS=60
+```
+- `RATE_LIMIT_MAX_REQUESTS`：时间窗口内最大请求数
+- `RATE_LIMIT_WINDOW_SECS`：速率限制时间窗口（秒）
+- 防止暴力攻击和 API 滥用
+
+#### 服务器配置
+```env
+SERVER_HOST=0.0.0.0
+SERVER_PORT=6123
+```
+- `SERVER_HOST`：服务器监听地址（`0.0.0.0` 监听所有接口）
+- `SERVER_PORT`：服务器端口（默认 6123）
+
+#### Python 脚本环境变量（system_monitor.py）
+
+```bash
+DB_HOST=127.0.0.1
+DB_PORT=5432
+DB_USER=postgres
+DB_PASSWORD=123456
+DB_NAME=guardian_auth
+```
+
+> 💡 **提示**：`.env-public` 文件包含所有环境变量的示例配置和详细注释。生产环境请复制为 `.env` 并修改敏感信息。
+
+### 3.5 系统监控脚本（可选）
+
+`scripts/system_monitor.py` 是一个系统性能监控脚本，自动收集系统指标并存储到数据库。
+
+#### 功能特性
+- **系统指标收集**：CPU、内存、磁盘、网络使用情况
+- **Cron 定时调度**：默认每 5 分钟运行一次（可配置）
+- **异步写入**：使用 asyncpg 高效写入数据库
+- **优雅关闭**：支持 SIGINT/SIGTERM 信号
+
+#### 运行方式
+
+```bash
+# 使用默认配置（每 5 分钟）
+python3 scripts/system_monitor.py
+
+# 或自定义 cron 表达式（例如每 10 分钟）
+CRON="*/10 * * * *" python3 scripts/system_monitor.py
+```
+
+#### 环境变量配置
+
+```bash
+export DB_HOST=127.0.0.1
+export DB_PORT=5432
+export DB_USER=postgres
+export DB_PASSWORD=123456
+export DB_NAME=guardian_auth
+```
+
+#### Cron 表达式示例
+
+- `*/5 * * * *` - 每 5 分钟运行（默认）
+- `*/10 * * * *` - 每 10 分钟运行
+- `0 */2 * * *` - 每 2 小时运行
+- `0 0 * * *` - 每天午夜运行
+
+#### 监控数据
+
+监控数据存储在 `guardian_systeminfo` 表中，可通过 API 端点查询：
+
+```
+GET /guardian-auth/v1/systeminfo?page=1&limit=10
+```
+
+返回最近的系统监控记录，包括：
+- CPU 核心数和使用率
+- 内存使用量/总量
+- 磁盘使用量/总量
+- 网络上传/下载量
+- 记录时间戳
+
+> 💡 **提示**：system_monitor.py 是可选的，但推荐在生产环境运行以监控系统健康状况。
+
+### 4. 创建超级管理员（可选）
+
+如未使用 `public.sql` 导入，可通过 API 或直接插入数据库创建新的超级管理员账户。
+
+参考 `public.sql` 中的默认管理员配置作为示例。
 
 ### 5. 构建并运行
 
-**开发模式：**
-
+#### 开发模式
 ```bash
 cargo run
 ```
+服务器将在 `http://localhost:6123` 启动。
 
-**生产模式：**
+#### 生产模式
 ```bash
+# 编译发布版本
 cargo build --release
+
+# 运行
 ./target/release/Guardian
 ```
 
-服务器将在 `http://localhost:6123` 启动。
+#### 验证服务
+```bash
+# 检查服务器状态
+curl http://localhost:6123/health
+
+# 测试默认管理员登录
+curl -X POST http://localhost:6123/guardian-auth/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"guardian","password":"123456"}'
+```
+
+成功登录应返回：
+```json
+{
+  "code": 200,
+  "msg": "登录成功",
+  "data": {
+    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "expires_in": 900
+  }
+}
+```
+
+#### 后台运行（生产环境推荐）
+
+使用 systemd、supervisor 或 pm2 管理服务进程：
+
+**systemd 示例** (`/etc/systemd/system/guardian.service`):
+
+```ini
+[Unit]
+Description=Guardian Auth Service
+After=network.target
+
+[Service]
+Type=simple
+User=guardian
+WorkingDirectory=/opt/guardian
+ExecStart=/opt/guardian/target/release/Guardian
+Restart=on-failure
+RestartSec=10s
+
+[Install]
+WantedBy=multi-user.target
+```
+
+启动服务：
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable guardian
+sudo systemctl start guardian
+sudo systemctl status guardian
+```
+
+### 6.[Guardian-Website](https://github.com/cherish-ltt/Guardian-Website)（可选）
+
+Guardian-Website 是基于 **Next.js 16** + **React 19** + **Tailwind CSS 4** + **shadcn/ui** 构建的现代化前端界面，为 Guardian 后端提供完整的 Web 管理界面。
+
+#### 前端核心特性
+
+- 🔐 **完整的认证流程** - 登录、2FA、JWT 令牌管理
+- 🎨 **现代化 UI 设计** - shadcn/ui 组件库，支持深色/浅色主题
+- 📱 **响应式布局** - 完美适配桌面和移动设备
+- 🔄 **完善的 API 集成** - 自动 Token 刷新和错误处理
+- 🚀 **高性能架构** - React Server Components，Turbopack 构建优化
+- 🌐 **类型安全** - 完整的 TypeScript 类型定义
+
+#### 快速启动前端
+
+```bash
+# 克隆前端仓库
+git clone https://github.com/cherish-ltt/Guardian-Website.git
+cd Guardian-Website
+
+# 安装依赖（需要 pnpm）
+pnpm install
+
+# 配置 API 地址
+echo 'NEXT_PUBLIC_API_BASE_URL=http://localhost:6123/guardian-auth/v1' > .env.local
+
+# 启动开发服务器
+pnpm dev
+```
+
+前端将在 `http://localhost:3000` 启动。
+
+#### 前后端集成
+
+- **API 连接**：通过 `NEXT_PUBLIC_API_BASE_URL` 配置
+- **认证方式**：JWT Bearer Token 存储
+- **错误处理**：统一的 code/msg/data 响应格式
+- **完整文档**：前端包含完整的 API v1.0 文档
+
+> 💡 **提示**：Guardian-Website 是**可选的**，Guardian 后端可独立作为 REST API 使用。前端可作为参考实现或直接使用。
 
 ## 📚 API 文档
 
@@ -264,7 +546,9 @@ Guardian/
 │   ├── error.rs           # 错误定义
 │   └── main.rs            # 程序入口
 ├── scripts/               # 脚本工具
-│   └── init_db.py         # 数据库初始化
+│   ├── init_db.py         # 数据库初始化脚本
+│   ├── system_monitor.py  # 系统监控脚本（可选）
+│   └── public.sql         # 数据库导入文件（包含默认管理员）
 ├── design-docs/           # 设计文档
 │   └── public-docs/       # 公开文档
 │       └── api-v1.0.md    # API详细文档
@@ -323,3 +607,4 @@ Guardian Team - @opencode - <opencode@opencode.ai>
 
 <div align="center">  
   <p>Built with ❤️ by the Guardian team</p>
+
