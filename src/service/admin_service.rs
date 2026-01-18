@@ -55,6 +55,10 @@ pub async fn list_admin_service(
                 .created_at
                 .map(|dt| dt.into())
                 .unwrap_or_else(chrono::Local::now),
+            updated_at: admin
+                .updated_at
+                .map(|dt| dt.into())
+                .unwrap_or_else(chrono::Local::now),
         })
         .collect();
 
@@ -160,6 +164,10 @@ pub async fn create_admin_service(
                 .created_at
                 .map(|dt| dt.into())
                 .unwrap_or_else(chrono::Local::now),
+            updated_at: admin
+                .updated_at
+                .map(|dt| dt.into())
+                .unwrap_or_else(chrono::Local::now),
         },
     ))
 }
@@ -213,6 +221,10 @@ pub async fn update_admin_service(
             last_login_at: admin.last_login_at.map(|dt| dt.into()),
             created_at: admin
                 .created_at
+                .map(|dt| dt.into())
+                .unwrap_or_else(chrono::Local::now),
+            updated_at: admin
+                .updated_at
                 .map(|dt| dt.into())
                 .unwrap_or_else(chrono::Local::now),
         },

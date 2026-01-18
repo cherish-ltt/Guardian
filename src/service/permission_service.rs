@@ -63,6 +63,10 @@ pub async fn list_permission_service(
                 .created_at
                 .map(|dt| dt.into())
                 .unwrap_or_else(chrono::Local::now),
+            updated_at: perm
+                .updated_at
+                .map(|dt| dt.into())
+                .unwrap_or_else(chrono::Local::now),
         })
         .collect();
 
@@ -138,6 +142,10 @@ pub async fn get_permission_service(
             .created_at
             .map(|dt| dt.into())
             .unwrap_or_else(chrono::Local::now),
+        updated_at: permission
+            .updated_at
+            .map(|dt| dt.into())
+            .unwrap_or_else(chrono::Local::now),
     }))
 }
 
@@ -184,6 +192,10 @@ pub async fn create_permission_service(
         is_system: permission.is_system.unwrap_or(false),
         created_at: permission
             .created_at
+            .map(|dt| dt.into())
+            .unwrap_or_else(chrono::Local::now),
+        updated_at: permission
+            .updated_at
             .map(|dt| dt.into())
             .unwrap_or_else(chrono::Local::now),
     }))
@@ -249,6 +261,10 @@ pub async fn update_permission_service(
         is_system: permission.is_system.unwrap_or(false),
         created_at: permission
             .created_at
+            .map(|dt| dt.into())
+            .unwrap_or_else(chrono::Local::now),
+        updated_at: permission
+            .updated_at
             .map(|dt| dt.into())
             .unwrap_or_else(chrono::Local::now),
     }))

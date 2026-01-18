@@ -47,6 +47,7 @@ pub struct AdminResponse {
     pub status: i16,
     pub last_login_at: Option<DateTime<Local>>,
     pub created_at: DateTime<Local>,
+    pub updated_at: DateTime<Local>,
 }
 
 #[derive(Debug, Serialize, Default)]
