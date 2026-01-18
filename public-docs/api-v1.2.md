@@ -738,7 +738,7 @@ curl -X GET "http://localhost:6123/guardian-auth/v1/admins?status=1&page=1&page_
 | total | number | 总记录数 |
 | page | number | 当前页码 |
 | page_size | number | 每页数量 |
-| list | array | 权限列表 |
+| list | array | 管理员列表 |
 
 ---
 

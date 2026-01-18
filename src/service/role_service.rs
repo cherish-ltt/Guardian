@@ -1,7 +1,7 @@
 use anyhow::{Result, anyhow};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, PaginatorTrait, QueryFilter,
-    QueryOrder, QuerySelect, Set,
+    QueryOrder, QuerySelect, Set, TransactionTrait,
 };
 
 use crate::dto::{
@@ -122,31 +122,49 @@ pub async fn create_role_service(
         return Ok(Response::failed("角色代码已存在".to_string()));
     }
 
-    let role = roles::ActiveModel {
-        id: Set(uuid::Uuid::new_v4()),
-        code: Set(payload.code),
-        name: Set(payload.name),
-        description: Set(payload.description),
-        is_system: Set(Some(false)),
-        created_at: Set(Some(chrono::Local::now().into())),
-        updated_at: Set(Some(chrono::Local::now().into())),
-    };
+    let payload_clone = payload.clone();
 
-    let role = role.insert(&state.conn).await?;
+    state
+        .conn
+        .transaction::<_, roles::Model, sea_orm::DbErr>(|txn| {
+            Box::pin(async move {
+                let role = roles::ActiveModel {
+                    id: Set(uuid::Uuid::new_v4()),
+                    code: Set(payload_clone.code.clone()),
+                    name: Set(payload_clone.name.clone()),
+                    description: Set(payload_clone.description.clone()),
+                    is_system: Set(Some(false)),
+                    created_at: Set(Some(chrono::Local::now().into())),
+                    updated_at: Set(Some(chrono::Local::now().into())),
+                };
 
-    if let Some(permission_ids) = payload.permission_ids {
-        for permission_id in permission_ids {
-            let role_perm = role_permissions::ActiveModel {
-                role_id: Set(role.id),
-                permission_id: Set(permission_id),
-                ..Default::default()
-            };
-            role_perm.insert(&state.conn).await?;
-        }
-    }
+                let role = role.insert(txn).await?;
+
+                if let Some(permission_ids) = payload_clone.permission_ids.clone() {
+                    for permission_id in permission_ids {
+                        let role_perm = role_permissions::ActiveModel {
+                            role_id: Set(role.id),
+                            permission_id: Set(permission_id),
+                            ..Default::default()
+                        };
+                        role_perm.insert(txn).await?;
+                    }
+                }
+
+                Ok::<_, sea_orm::DbErr>(role)
+            })
+        })
+        .await
+        .map_err(|e| anyhow!("创建角色失败: {}", e))?;
+
+    let role = roles::Entity::find()
+        .filter(roles::Column::Code.eq(&payload.code))
+        .one(&state.conn)
+        .await?
+        .ok_or_else(|| anyhow!("角色创建后查询失败"))?;
 
     Ok(Response::ok(
-        Some("创建成功".to_string()),
+        Some("更新成功".to_string()),
         RoleResponse {
             id: role.id,
             code: role.code,
@@ -179,34 +197,49 @@ pub async fn update_role_service(
         return Ok(Response::failed("系统内置角色不可修改".to_string()));
     }
 
-    let mut role_model: roles::ActiveModel = role.into_active_model();
+    state
+        .conn
+        .transaction::<_, roles::Model, sea_orm::DbErr>(|txn| {
+            Box::pin(async move {
+                let mut role_model: roles::ActiveModel = role.into_active_model();
 
-    if let Some(name) = payload.name {
-        role_model.name = Set(name);
-    }
+                if let Some(name) = &payload.name {
+                    role_model.name = Set(name.clone());
+                }
 
-    if let Some(description) = payload.description {
-        role_model.description = Set(Some(description));
-    }
+                if let Some(description) = &payload.description {
+                    role_model.description = Set(Some(description.clone()));
+                }
 
-    if let Some(permission_ids) = payload.permission_ids {
-        RolePermissions::delete_many()
-            .filter(role_permissions::Column::RoleId.eq(id))
-            .exec(&state.conn)
-            .await?;
+                if let Some(permission_ids) = &payload.permission_ids {
+                    RolePermissions::delete_many()
+                        .filter(role_permissions::Column::RoleId.eq(id))
+                        .exec(txn)
+                        .await?;
 
-        for permission_id in permission_ids {
-            let role_perm = role_permissions::ActiveModel {
-                role_id: Set(id),
-                permission_id: Set(permission_id),
-                ..Default::default()
-            };
-            role_perm.insert(&state.conn).await?;
-        }
-    }
+                    for permission_id in permission_ids {
+                        let role_perm = role_permissions::ActiveModel {
+                            role_id: Set(id),
+                            permission_id: Set(*permission_id),
+                            ..Default::default()
+                        };
+                        role_perm.insert(txn).await?;
+                    }
+                }
 
-    role_model.updated_at = Set(Some(chrono::Local::now().into()));
-    let role = role_model.update(&state.conn).await?;
+                role_model.updated_at = Set(Some(chrono::Local::now().into()));
+                let role = role_model.update(txn).await?;
+
+                Ok::<_, sea_orm::DbErr>(role)
+            })
+        })
+        .await
+        .map_err(|e| anyhow!("更新角色失败: {}", e))?;
+
+    let role = Roles::find_by_id(id)
+        .one(&state.conn)
+        .await?
+        .ok_or_else(|| anyhow!("角色更新后查询失败"))?;
 
     Ok(Response::ok(
         Some("更新成功".to_string()),
@@ -259,19 +292,29 @@ pub async fn assign_permissions_service(
         .await?
         .ok_or_else(|| anyhow!("角色不存在"))?;
 
-    RolePermissions::delete_many()
-        .filter(role_permissions::Column::RoleId.eq(id))
-        .exec(&state.conn)
-        .await?;
+    state
+        .conn
+        .transaction::<_, (), sea_orm::DbErr>(|txn| {
+            Box::pin(async move {
+                RolePermissions::delete_many()
+                    .filter(role_permissions::Column::RoleId.eq(id))
+                    .exec(txn)
+                    .await?;
 
-    for permission_id in permission_ids {
-        let role_perm = role_permissions::ActiveModel {
-            role_id: Set(id),
-            permission_id: Set(permission_id),
-            ..Default::default()
-        };
-        role_perm.insert(&state.conn).await?;
-    }
+                for permission_id in permission_ids {
+                    let role_perm = role_permissions::ActiveModel {
+                        role_id: Set(id),
+                        permission_id: Set(permission_id),
+                        ..Default::default()
+                    };
+                    role_perm.insert(txn).await?;
+                }
+
+                Ok::<_, sea_orm::DbErr>(())
+            })
+        })
+        .await
+        .map_err(|e| anyhow!("分配权限失败: {}", e))?;
 
     Ok(Response::ok_msg(Some("权限分配成功".to_string())))
 }

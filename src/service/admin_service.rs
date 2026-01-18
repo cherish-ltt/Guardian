@@ -1,6 +1,7 @@
 use anyhow::{Result, anyhow};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, ModelTrait, NotSet, PaginatorTrait, QueryFilter, QueryOrder, RelationTrait, Set
+    ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, ModelTrait, NotSet,
+    PaginatorTrait, QueryFilter, QueryOrder, RelationTrait, Set, TransactionTrait,
 };
 
 use crate::dto::{
@@ -123,33 +124,50 @@ pub async fn create_admin_service(
     }
 
     let password_hash = hash_password(&payload.password);
+    let payload_clone = payload.clone();
 
-    let admin = admins::ActiveModel {
-        id: Set(uuid::Uuid::new_v4()),
-        username: Set(payload.username),
-        password_hash: Set(password_hash),
-        is_super_admin: Set(payload.is_super_admin),
-        status: Set(Some(1)),
-        two_fa_secret: Set(None),
-        last_login_at: Set(None),
-        login_attempts: Set(Some(0)),
-        locked_until: Set(None),
-        created_at: Set(Some(chrono::Local::now().into())),
-        updated_at: Set(Some(chrono::Local::now().into())),
-    };
+    state
+        .conn
+        .transaction::<_, admins::Model, sea_orm::DbErr>(|txn| {
+            Box::pin(async move {
+                let admin = admins::ActiveModel {
+                    id: Set(uuid::Uuid::new_v4()),
+                    username: Set(payload_clone.username.clone()),
+                    password_hash: Set(password_hash.clone()),
+                    is_super_admin: Set(payload_clone.is_super_admin),
+                    status: Set(Some(1)),
+                    two_fa_secret: Set(None),
+                    last_login_at: Set(None),
+                    login_attempts: Set(Some(0)),
+                    locked_until: Set(None),
+                    created_at: Set(Some(chrono::Local::now().into())),
+                    updated_at: Set(Some(chrono::Local::now().into())),
+                };
 
-    let admin = admin.insert(&state.conn).await?;
+                let admin = admin.insert(txn).await?;
 
-    if let Some(role_ids) = payload.role_ids {
-        for role_id in role_ids {
-            let admin_role = admin_roles::ActiveModel {
-                admin_id: Set(admin.id),
-                role_id: Set(role_id),
-                ..Default::default()
-            };
-            admin_role.insert(&state.conn).await?;
-        }
-    }
+                if let Some(role_ids) = payload_clone.role_ids.clone() {
+                    for role_id in role_ids {
+                        let admin_role = admin_roles::ActiveModel {
+                            admin_id: Set(admin.id),
+                            role_id: Set(role_id),
+                            ..Default::default()
+                        };
+                        admin_role.insert(txn).await?;
+                    }
+                }
+
+                Ok::<_, sea_orm::DbErr>(admin)
+            })
+        })
+        .await
+        .map_err(|e| anyhow!("创建管理员失败: {}", e))?;
+
+    let admin = Admins::find()
+        .filter(admins::Column::Username.eq(&payload.username))
+        .one(&state.conn)
+        .await?
+        .ok_or_else(|| anyhow!("管理员创建后查询失败"))?;
 
     Ok(Response::ok(
         Some("创建成功".to_string()),
@@ -181,34 +199,51 @@ pub async fn update_admin_service(
         .await?
         .ok_or_else(|| anyhow!("管理员不存在"))?;
 
-    let mut admin_model: admins::ActiveModel = admin.into_active_model();
+    let password_hash = payload.password.as_ref().map(|p| hash_password(p));
 
-    if let Some(password) = payload.password {
-        admin_model.password_hash = Set(hash_password(&password));
-    }
+    state
+        .conn
+        .transaction::<_, admins::Model, sea_orm::DbErr>(|txn| {
+            Box::pin(async move {
+                let mut admin_model: admins::ActiveModel = admin.into_active_model();
 
-    if let Some(status) = payload.status {
-        admin_model.status = Set(Some(status));
-    }
+                if let Some(hash) = password_hash {
+                    admin_model.password_hash = Set(hash);
+                }
 
-    if let Some(role_ids) = payload.role_ids {
-        admin_roles::Entity::delete_many()
-            .filter(admin_roles::Column::AdminId.eq(id))
-            .exec(&state.conn)
-            .await?;
+                if let Some(status) = payload.status {
+                    admin_model.status = Set(Some(status));
+                }
 
-        for role_id in role_ids {
-            let admin_role = admin_roles::ActiveModel {
-                created_at: NotSet,
-                admin_id: Set(id),
-                role_id: Set(role_id),
-            };
-            admin_role.insert(&state.conn).await?;
-        }
-    }
+                if let Some(role_ids) = &payload.role_ids {
+                    admin_roles::Entity::delete_many()
+                        .filter(admin_roles::Column::AdminId.eq(id))
+                        .exec(txn)
+                        .await?;
 
-    admin_model.updated_at = Set(Some(chrono::Local::now().into()));
-    let admin = admin_model.update(&state.conn).await?;
+                    for role_id in role_ids {
+                        let admin_role = admin_roles::ActiveModel {
+                            created_at: NotSet,
+                            admin_id: Set(id),
+                            role_id: Set(*role_id),
+                        };
+                        admin_role.insert(txn).await?;
+                    }
+                }
+
+                admin_model.updated_at = Set(Some(chrono::Local::now().into()));
+                let admin = admin_model.update(txn).await?;
+
+                Ok::<_, sea_orm::DbErr>(admin)
+            })
+        })
+        .await
+        .map_err(|e| anyhow!("更新管理员失败: {}", e))?;
+
+    let admin = Admins::find_by_id(id)
+        .one(&state.conn)
+        .await?
+        .ok_or_else(|| anyhow!("管理员更新后查询失败"))?;
 
     Ok(Response::ok(
         Some("更新成功".to_string()),
@@ -248,19 +283,29 @@ pub async fn assign_roles_service(
         return Ok(Response::failed("超级管理员不可分配角色".to_string()));
     }
 
-    admin_roles::Entity::delete_many()
-        .filter(admin_roles::Column::AdminId.eq(id))
-        .exec(&state.conn)
-        .await?;
+    state
+        .conn
+        .transaction::<_, (), sea_orm::DbErr>(|txn| {
+            Box::pin(async move {
+                admin_roles::Entity::delete_many()
+                    .filter(admin_roles::Column::AdminId.eq(id))
+                    .exec(txn)
+                    .await?;
 
-    for role_id in role_ids {
-        let admin_role = admin_roles::ActiveModel {
-            admin_id: Set(id),
-            role_id: Set(role_id),
-            ..Default::default()
-        };
-        admin_role.insert(&state.conn).await?;
-    }
+                for role_id in role_ids {
+                    let admin_role = admin_roles::ActiveModel {
+                        admin_id: Set(id),
+                        role_id: Set(role_id),
+                        ..Default::default()
+                    };
+                    admin_role.insert(txn).await?;
+                }
+
+                Ok::<_, sea_orm::DbErr>(())
+            })
+        })
+        .await
+        .map_err(|e| anyhow!("分配角色失败: {}", e))?;
 
     Ok(Response::ok_msg(Some("角色分配成功".to_string())))
 }

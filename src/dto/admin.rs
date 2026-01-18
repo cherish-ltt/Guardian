@@ -10,7 +10,7 @@ pub struct RoleSimple {
     pub name: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct CreateAdminRequest {
     pub username: String,
     pub password: String,
