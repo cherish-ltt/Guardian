@@ -1,12 +1,12 @@
 use anyhow::{Result, anyhow};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, NotSet, PaginatorTrait,
-    QueryFilter, QueryOrder, Set,
+    QueryFilter, QueryOrder, RelationTrait, Set,
 };
 
 use crate::dto::{
     AdminDetailResponse, AdminListQuery, AdminListResponse, AdminResponse, CreateAdminRequest,
-    UpdateAdminRequest,
+    RoleSimple, UpdateAdminRequest,
 };
 use crate::entities::prelude::*;
 use crate::entities::{admin_roles, admins};
@@ -75,6 +75,17 @@ pub async fn get_admin_service(
         .await?
         .ok_or_else(|| anyhow!("管理员不存在"))?;
 
+    let roles = admin.find_related(Roles).all(&state.conn).await?;
+
+    let roles_vec: Vec<RoleSimple> = roles
+        .into_iter()
+        .map(|role| RoleSimple {
+            id: role.id,
+            code: role.code,
+            name: role.name,
+        })
+        .collect();
+
     Ok(Response::ok_data(AdminDetailResponse {
         id: admin.id,
         username: admin.username,
@@ -91,6 +102,7 @@ pub async fn get_admin_service(
             .updated_at
             .map(|dt| dt.into())
             .unwrap_or_else(chrono::Local::now),
+        roles: roles_vec,
     }))
 }
 

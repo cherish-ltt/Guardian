@@ -795,7 +795,19 @@ curl -X GET http://localhost:6123/guardian-auth/v1/admins/0190a1e8-7b3e-7a3f-8c1
     "login_attempts": 0,
     "locked_until": null,
     "created_at": "2023-12-01T00:00:00Z",
-    "updated_at": "2024-01-01T12:00:00Z"
+    "updated_at": "2024-01-01T12:00:00Z",
+    "roles": [
+      {
+        "id": "0190b2f9-8c4f-8b4g-9d2b-0f3g4b5c6d7e",
+        "code": "ADMIN",
+        "name": "管理员角色"
+      },
+      {
+        "id": "0190c3g0-9d5g-9c5h-0e3c-1g4h5c6d7e8f",
+        "code": "EDITOR",
+        "name": "编辑器角色"
+      }
+    ]
   }
 }
 ```
@@ -813,6 +825,15 @@ curl -X GET http://localhost:6123/guardian-auth/v1/admins/0190a1e8-7b3e-7a3f-8c1
 | locked_until | datetime | 锁定到期时间（ISO 8601 格式，未锁定则为 null） |
 | created_at | datetime | 创建时间（ISO 8601 格式） |
 | updated_at | datetime | 更新时间（ISO 8601 格式） |
+| roles | array | 关联的角色列表 |
+
+**roles 项字段说明**:
+
+| 字段名 | 类型 | 说明 |
+|--------|------|------|
+| id | UUID | 角色 ID |
+| code | string | 角色代码 |
+| name | string | 角色名称 |
 
 ---
 
