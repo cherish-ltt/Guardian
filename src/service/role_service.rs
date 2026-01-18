@@ -51,6 +51,10 @@ pub async fn list_role_service(
                 .created_at
                 .map(|dt| dt.into())
                 .unwrap_or_else(chrono::Local::now),
+            updated_at: role
+                .updated_at
+                .map(|dt| dt.into())
+                .unwrap_or_else(chrono::Local::now),
         })
         .collect();
 
@@ -153,6 +157,10 @@ pub async fn create_role_service(
                 .created_at
                 .map(|dt| dt.into())
                 .unwrap_or_else(chrono::Local::now),
+            updated_at: role
+                .updated_at
+                .map(|dt| dt.into())
+                .unwrap_or_else(chrono::Local::now),
         },
     ))
 }
@@ -210,6 +218,10 @@ pub async fn update_role_service(
             is_system: role.is_system.unwrap_or(false),
             created_at: role
                 .created_at
+                .map(|dt| dt.into())
+                .unwrap_or_else(chrono::Local::now),
+            updated_at: role
+                .updated_at
                 .map(|dt| dt.into())
                 .unwrap_or_else(chrono::Local::now),
         },

@@ -32,6 +32,7 @@ pub struct RoleResponse {
     pub description: Option<String>,
     pub is_system: bool,
     pub created_at: DateTime<Local>,
+    pub updated_at: DateTime<Local>,
 }
 
 #[derive(Debug, Serialize, Default)]

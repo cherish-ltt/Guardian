@@ -9,7 +9,6 @@ mod service;
 mod utils;
 
 use crate::{router::get_router, utils::hash_password};
-use axum::Router;
 use dotenv::dotenv;
 use log::info;
 

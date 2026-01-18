@@ -46,6 +46,7 @@ pub struct PermissionResponse {
     pub sort_order: i32,
     pub is_system: bool,
     pub created_at: DateTime<Local>,
+    pub updated_at: DateTime<Local>,
 }
 
 #[derive(Debug, Serialize, Default)]

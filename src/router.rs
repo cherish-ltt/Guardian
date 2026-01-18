@@ -14,7 +14,9 @@ use crate::controller::{
     root,
     system_info_controller::*,
 };
-use crate::middleware::middleware_api::{auth_middleware, rate_limit_middleware};
+use crate::middleware::middleware_api::{
+    auth_middleware, permission_middleware, rate_limit_middleware,
+};
 
 const API_PREFIX: &str = "/guardian-auth/v1";
 
@@ -59,7 +61,14 @@ pub(crate) async fn get_router() -> Result<Router> {
         .route(&format!("{}/admins", API_PREFIX), post(create_admin))
         .route(&format!("{}/admins/{{id}}", API_PREFIX), get(get_admin))
         .route(&format!("{}/admins/{{id}}", API_PREFIX), put(update_admin))
-        .route(&format!("{}/admins/{{id}}", API_PREFIX), delete(delete_admin))
+        .route(
+            &format!("{}/admins/{{id}}", API_PREFIX),
+            delete(delete_admin),
+        )
+        .route(
+            &format!("{}/admins/{{id}}/roles", API_PREFIX),
+            post(assign_roles),
+        )
         .route(&format!("{}/roles", API_PREFIX), get(list_role))
         .route(&format!("{}/roles", API_PREFIX), post(create_role))
         .route(&format!("{}/roles/{{id}}", API_PREFIX), get(get_role))
@@ -91,6 +100,10 @@ pub(crate) async fn get_router() -> Result<Router> {
             delete(delete_permission),
         )
         .route(&format!("{}/systeminfo", API_PREFIX), get(list_system_info))
+        .route_layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            permission_middleware,
+        ))
         .route_layer(axum::middleware::from_fn(auth_middleware));
     let app = Router::new()
         .merge(public_routes)

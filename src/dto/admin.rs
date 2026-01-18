@@ -3,6 +3,13 @@ use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+#[derive(Debug, Serialize)]
+pub struct RoleSimple {
+    pub id: Uuid,
+    pub code: String,
+    pub name: String,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct CreateAdminRequest {
     pub username: String,
@@ -40,6 +47,7 @@ pub struct AdminResponse {
     pub status: i16,
     pub last_login_at: Option<DateTime<Local>>,
     pub created_at: DateTime<Local>,
+    pub updated_at: DateTime<Local>,
 }
 
 #[derive(Debug, Serialize, Default)]
@@ -53,6 +61,7 @@ pub struct AdminDetailResponse {
     pub locked_until: Option<DateTime<Local>>,
     pub created_at: DateTime<Local>,
     pub updated_at: DateTime<Local>,
+    pub roles: Vec<RoleSimple>,
 }
 
 #[derive(Debug, Serialize, Default)]

@@ -1,12 +1,11 @@
 use anyhow::{Result, anyhow};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, NotSet, PaginatorTrait,
-    QueryFilter, QueryOrder, Set,
+    ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, ModelTrait, NotSet, PaginatorTrait, QueryFilter, QueryOrder, RelationTrait, Set
 };
 
 use crate::dto::{
     AdminDetailResponse, AdminListQuery, AdminListResponse, AdminResponse, CreateAdminRequest,
-    UpdateAdminRequest,
+    RoleSimple, UpdateAdminRequest,
 };
 use crate::entities::prelude::*;
 use crate::entities::{admin_roles, admins};
@@ -55,6 +54,10 @@ pub async fn list_admin_service(
                 .created_at
                 .map(|dt| dt.into())
                 .unwrap_or_else(chrono::Local::now),
+            updated_at: admin
+                .updated_at
+                .map(|dt| dt.into())
+                .unwrap_or_else(chrono::Local::now),
         })
         .collect();
 
@@ -75,6 +78,17 @@ pub async fn get_admin_service(
         .await?
         .ok_or_else(|| anyhow!("管理员不存在"))?;
 
+    let roles = admin.find_related(Roles).all(&state.conn).await?;
+
+    let roles_vec: Vec<RoleSimple> = roles
+        .into_iter()
+        .map(|role| RoleSimple {
+            id: role.id,
+            code: role.code,
+            name: role.name,
+        })
+        .collect();
+
     Ok(Response::ok_data(AdminDetailResponse {
         id: admin.id,
         username: admin.username,
@@ -91,6 +105,7 @@ pub async fn get_admin_service(
             .updated_at
             .map(|dt| dt.into())
             .unwrap_or_else(chrono::Local::now),
+        roles: roles_vec,
     }))
 }
 
@@ -148,6 +163,10 @@ pub async fn create_admin_service(
                 .created_at
                 .map(|dt| dt.into())
                 .unwrap_or_else(chrono::Local::now),
+            updated_at: admin
+                .updated_at
+                .map(|dt| dt.into())
+                .unwrap_or_else(chrono::Local::now),
         },
     ))
 }
@@ -203,10 +222,45 @@ pub async fn update_admin_service(
                 .created_at
                 .map(|dt| dt.into())
                 .unwrap_or_else(chrono::Local::now),
+            updated_at: admin
+                .updated_at
+                .map(|dt| dt.into())
+                .unwrap_or_else(chrono::Local::now),
         },
     ))
 }
 
 pub async fn delete_admin_service(state: AppState, id: uuid::Uuid) -> Result<Response<()>> {
     Ok(Response::ok_msg(Some("暂不支持".to_string())))
+}
+
+pub async fn assign_roles_service(
+    state: AppState,
+    id: uuid::Uuid,
+    role_ids: Vec<uuid::Uuid>,
+) -> Result<Response<()>> {
+    let admin = Admins::find_by_id(id)
+        .one(&state.conn)
+        .await?
+        .ok_or_else(|| anyhow!("管理员不存在"))?;
+
+    if admin.is_super_admin.unwrap_or(false) {
+        return Ok(Response::failed("超级管理员不可分配角色".to_string()));
+    }
+
+    admin_roles::Entity::delete_many()
+        .filter(admin_roles::Column::AdminId.eq(id))
+        .exec(&state.conn)
+        .await?;
+
+    for role_id in role_ids {
+        let admin_role = admin_roles::ActiveModel {
+            admin_id: Set(id),
+            role_id: Set(role_id),
+            ..Default::default()
+        };
+        admin_role.insert(&state.conn).await?;
+    }
+
+    Ok(Response::ok_msg(Some("角色分配成功".to_string())))
 }
