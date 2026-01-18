@@ -210,3 +210,34 @@ pub async fn update_admin_service(
 pub async fn delete_admin_service(state: AppState, id: uuid::Uuid) -> Result<Response<()>> {
     Ok(Response::ok_msg(Some("暂不支持".to_string())))
 }
+
+pub async fn assign_roles_service(
+    state: AppState,
+    id: uuid::Uuid,
+    role_ids: Vec<uuid::Uuid>,
+) -> Result<Response<()>> {
+    let admin = Admins::find_by_id(id)
+        .one(&state.conn)
+        .await?
+        .ok_or_else(|| anyhow!("管理员不存在"))?;
+
+    if admin.is_super_admin.unwrap_or(false) {
+        return Ok(Response::failed("超级管理员不可分配角色".to_string()));
+    }
+
+    admin_roles::Entity::delete_many()
+        .filter(admin_roles::Column::AdminId.eq(id))
+        .exec(&state.conn)
+        .await?;
+
+    for role_id in role_ids {
+        let admin_role = admin_roles::ActiveModel {
+            admin_id: Set(id),
+            role_id: Set(role_id),
+            ..Default::default()
+        };
+        admin_role.insert(&state.conn).await?;
+    }
+
+    Ok(Response::ok_msg(Some("角色分配成功".to_string())))
+}

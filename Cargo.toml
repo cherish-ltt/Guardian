@@ -70,4 +70,7 @@ dashmap = "6"
 # Decimal 类型
 rust_decimal = "1.32"
 
+# 正则表达式
+regex = "1"
+
 [dev-dependencies]
