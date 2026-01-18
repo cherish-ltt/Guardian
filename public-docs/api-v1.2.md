@@ -1,5 +1,4 @@
 
-
 <div align="center">
   <h1>Guardian Auth API v1.2</h1>
   <p>
@@ -40,9 +39,12 @@ Guardian API v1.2 提供了完整的用户认证、权限管理、操作审计�
 **字符编码**: `UTF-8`
 
 **v1.2 新增功能**：
-- ✅ **管理员-角色绑定**：为指定管理员分配/替换角色
-- ✅ **权限验证中间件**：API 类型权限验证，支持通配符和路径参数匹配
-- ✅ **完整的 CRUD 接口**：管理员、角色、权限的全套增删改查功能
+- ✅ 完整的管理员 CRUD 接口（增删改查）
+- ✅ 完整的角色 CRUD 接口（增删改查）
+- ✅ 完整的权限 CRUD 接口（增删改查）
+- ✅ 管理员-角色绑定接口
+- ✅ 角色-权限绑定接口
+- ✅ 禁用2FA 接口
 
 ---
 
@@ -50,15 +52,15 @@ Guardian API v1.2 提供了完整的用户认证、权限管理、操作审计�
 
 ### JWT 认证
 
-对于需要认证的接口，使用 `Authorization` 请求头：
+对于需要认证的接口,使用 `Authorization` 请求头：
 
 ```
 Authorization: Bearer <access_token>
 ```
 
 **令牌说明**:
-- **Access Token**: 有效期 15 分钟，用于访问受保护接口
-- **Refresh Token**: 有效期 7 天，用于刷新 Access Token
+- **Access Token**: 有效期 15 分钟,用于访问受保护接口
+- **Refresh Token**: 有效期 7 天,用于刷新 Access Token
 
 ---
 
@@ -68,9 +70,9 @@ Authorization: Bearer <access_token>
 
 ```json
 {
-  "code": 200,           // 业务状态码，200 表示成功
-  "msg": "操作成功",      // 消息描述，可为 null
-  "data": { ... },         // 响应数据，成功时包含
+  "code": 200,           // 业务状态码,200 表示成功
+  "msg": "操作成功",      // 消息描述,可为 null
+  "data": { ... },         // 响应数据,成功时包含
   "timestamp": 1700000000000  // 时间戳（部分接口包含）
 }
 ```
@@ -105,7 +107,7 @@ Authorization: Bearer <access_token>
 
 ### 用户登录
 
-**接口描述**: 使用用户名和密码登录系统，获取访问令牌
+**接口描述**: 使用用户名和密码登录系统,获取访问令牌
 
 **请求方式**: `POST`
 
@@ -122,7 +124,7 @@ Content-Type: application/json
 |--------|------|--------|------|
 | username | string | 是 | 用户名 |
 | password | string | 是 | 密码 |
-| two_fa_code | string | 否 | 2FA验证码（如果账户启用了2FA，此参数必填） |
+| two_fa_code | string | 否 | 2FA验证码（如果账户启用了2FA,此参数必填） |
 
 **请求示例**:
 
@@ -130,7 +132,7 @@ Content-Type: application/json
 curl -X POST http://localhost:6123/guardian-auth/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{
-    "username": "admin",
+    "username": "guardian",
     "password": "123456"
   }'
 ```
@@ -222,7 +224,7 @@ curl -X POST http://localhost:6123/guardian-auth/v1/auth/refresh \
 
 ### 用户登出
 
-**接口描述**: 登出系统，使 refresh token 失效
+**接口描述**: 登出系统,使 refresh token 失效
 
 **请求方式**: `POST`
 
@@ -297,7 +299,7 @@ curl -X POST http://localhost:6123/guardian-auth/v1/auth/2fa/setup \
   "msg": null,
   "data": {
     "secret": "JBSWY3DPEHPK3PXP",
-    "qr_code_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...",
+    "qr_code_url": "otpauth://totp/Guardian:admin?secret=JBSWY3DPEHPK3PXP&issuer=Guardian",
     "backup_codes": [
       "12345678",
       "23456789",
@@ -319,14 +321,14 @@ curl -X POST http://localhost:6123/guardian-auth/v1/auth/2fa/setup \
 | 字段名 | 类型 | 说明 |
 |--------|------|------|
 | secret | string | TOTP 密钥 |
-| qr_code_url | string | 二维码图片（Base64 编码） |
+| qr_code_url | string | 二维码 URL（otpauth:// 格式） |
 | backup_codes | array | 10个备用验证码 |
 
 **业务规则**:
 - 每个账户只能设置一次 2FA
-- 如果已经启用 2FA，会返回错误（17010: 已启用2FA）
-- 响应包含 TOTP 密钥、二维码和10个备用验证码
-- 请妥善保存备用验证码，每个验证码只能使用一次
+- 如果已经启用 2FA,会返回错误（17010: 已启用2FA）
+- 响应包含 TOTP 密钥、二维码 URL 和10个备用验证码
+- 请妥善保存备用验证码,每个验证码只能使用一次
 
 **错误响应示例**:
 
@@ -402,13 +404,13 @@ curl -X POST http://localhost:6123/guardian-auth/v1/auth/2fa/verify \
 ```
 
 **业务规则**:
-- 如果未启用 2FA，会返回错误（17009: 未启用2FA）
+- 如果未启用 2FA,会返回错误（17009: 未启用2FA）
 - 验证码有效期为 30 秒
 - 验证失败不会锁定账户
 
 ---
 
-### 禁用2FA
+### 禁用2FA（v1.2 新增）
 
 **接口描述**: 禁用当前账户的双因素认证
 
@@ -450,6 +452,10 @@ curl -X POST http://localhost:6123/guardian-auth/v1/auth/2fa/disable \
 |--------|------|------|
 | disabled | boolean | 是否成功禁用 |
 
+**业务规则**:
+- 如果未启用 2FA,会返回错误（17009: 未启用2FA）
+- 禁用后,登录时不再需要 2FA 验证码
+
 ---
 
 ### 重置密码（通过 2FA）
@@ -481,7 +487,7 @@ Content-Type: application/json
 curl -X POST http://localhost:6123/guardian-auth/v1/auth/reset-password \
   -H "Content-Type: application/json" \
   -d '{
-    "username": "admin",
+    "username": "guardian",
     "two_fa_code": "123456",
     "new_password": "NewSecurePassword123"
   }'
@@ -512,7 +518,7 @@ curl -X POST http://localhost:6123/guardian-auth/v1/auth/reset-password \
 ```json
 {
   "code": 17009,
-  "msg": "未启用2FA，无法通过此方式重置密码",
+  "msg": "未启用2FA,无法通过此方式重置密码",
   "data": null
 }
 ```
@@ -531,7 +537,7 @@ curl -X POST http://localhost:6123/guardian-auth/v1/auth/reset-password \
 - 2FA 验证码有效期为 30 秒
 - 新密码会使用 Argon2 算法哈希后存储
 - 密码重置后会自动更新 `updated_at` 时间戳
-- 此接口无需 JWT token，适用于忘记密码场景
+- 此接口无需 JWT token,适用于忘记密码场景
 
 ---
 
@@ -599,6 +605,184 @@ curl -X POST http://localhost:6123/guardian-auth/v1/auth/change-password \
 
 ## 管理员接口
 
+### 查询管理员列表
+
+**接口描述**: 分页查询管理员列表
+
+**请求方式**: `GET`
+
+**请求路径**: `/admins`
+
+**认证**: 需要 JWT
+
+**请求头**:
+```
+Authorization: Bearer <access_token>
+```
+
+**查询参数**:
+
+| 参数名 | 类型 | 必填 | 默认值 | 说明 |
+|--------|------|--------|--------|------|
+| page | number | 否 | 1 | 页码 |
+| page_size | number | 否 | 20 | 每页数量 |
+| status | number | 否 | - | 状态筛选（1-正常,0-禁用） |
+| keyword | string | 否 | - | 用户名关键字搜索 |
+
+**请求示例**:
+
+```bash
+# 获取第 1 页,每页 20 条
+curl -X GET "http://localhost:6123/guardian-auth/v1/admins?page=1&page_size=20" \
+  -H "Authorization: Bearer <access_token>"
+
+# 使用 keyword 搜索
+curl -X GET "http://localhost:6123/guardian-auth/v1/admins?keyword=admin&page=1&page_size=20" \
+  -H "Authorization: Bearer <access_token>"
+
+# 同时筛选状态
+curl -X GET "http://localhost:6123/guardian-auth/v1/admins?status=1&page=1&page_size=20" \
+  -H "Authorization: Bearer <access_token>"
+```
+
+**响应示例**:
+
+```json
+{
+  "code": 200,
+  "msg": null,
+  "data": {
+    "total": 100,
+    "page": 1,
+    "page_size": 20,
+    "list": [
+      {
+        "id": "0190a1e8-7b3e-7a3f-8c1a-9e2f3a4b5c6d",
+        "username": "guardian",
+        "is_super_admin": true,
+        "status": 1,
+        "last_login_at": "2024-01-01T10:30:00+08:00",
+        "created_at": "2023-12-01T00:00:00+08:00",
+        "updated_at": "2024-01-01T12:00:00+08:00"
+      }
+    ]
+  }
+}
+```
+
+**响应字段说明**:
+
+| 字段名 | 类型 | 说明 |
+|--------|------|------|
+| total | number | 总记录数 |
+| page | number | 当前页码 |
+| page_size | number | 每页数量 |
+| list | array | 管理员列表 |
+
+**list 项字段说明**:
+
+| 字段名 | 类型 | 说明 |
+|--------|------|------|
+| id | UUID | 管理员 ID |
+| username | string | 用户名 |
+| is_super_admin | boolean | 是否为超级管理员 |
+| status | number | 状态（1-正常,0-禁用） |
+| last_login_at | datetime | 最后登录时间（ISO 8601 格式,本地时区） |
+| created_at | datetime | 创建时间（ISO 8601 格式,本地时区） |
+| updated_at | datetime | 更新时间（ISO 8601 格式,本地时区） |
+
+---
+
+### 获取管理员详情（v1.2 新增）
+
+**接口描述**: 获取指定管理员的详细信息
+
+**请求方式**: `GET`
+
+**请求路径**: `/admins/:id`
+
+**认证**: 需要 JWT
+
+**请求头**:
+```
+Authorization: Bearer <access_token>
+```
+
+**路径参数**:
+
+| 参数名 | 类型 | 必填 | 说明 |
+|--------|------|--------|------|
+| id | string(UUID) | 是 | 管理员 ID |
+
+**请求示例**:
+
+```bash
+curl -X GET http://localhost:6123/guardian-auth/v1/admins/0190a1e8-7b3e-7a3f-8c1a-9e2f3a4b5c6d \
+  -H "Authorization: Bearer <access_token>"
+```
+
+**响应示例**:
+
+```json
+{
+  "code": 200,
+  "msg": null,
+  "data": {
+    "id": "0190a1e8-7b3e-7a3f-8c1a-9e2f3a4b5c6d",
+    "username": "guardian",
+    "is_super_admin": true,
+    "status": 1,
+    "last_login_at": "2024-01-01T10:30:00+08:00",
+    "login_attempts": 0,
+    "locked_until": null,
+    "created_at": "2023-12-01T00:00:00+08:00",
+    "updated_at": "2024-01-01T12:00:00+08:00",
+    "roles": [
+      {
+        "id": "0190b2f9-8c4f-8b4g-9d2b-0f3g4b5c6d7e",
+        "code": "SUPER_ADMIN",
+        "name": "超级管理员"
+      }
+    ]
+  }
+}
+```
+
+**响应字段说明**:
+
+| 字段名 | 类型 | 说明 |
+|--------|------|------|
+| id | UUID | 管理员 ID |
+| username | string | 用户名 |
+| is_super_admin | boolean | 是否为超级管理员 |
+| status | number | 状态（1-正常,0-禁用） |
+| last_login_at | datetime | 最后登录时间（ISO 8601 格式,本地时区） |
+| login_attempts | number | 登录失败次数 |
+| locked_until | datetime | 锁定到期时间（ISO 8601 格式,本地时区,未锁定为 null） |
+| created_at | datetime | 创建时间（ISO 8601 格式,本地时区） |
+| updated_at | datetime | 更新时间（ISO 8601 格式,本地时区） |
+| roles | array | 关联的角色列表 |
+
+**roles 项字段说明**:
+
+| 字段名 | 类型 | 说明 |
+|--------|------|------|
+| id | UUID | 角色 ID |
+| code | string | 角色代码 |
+| name | string | 角色名称 |
+
+**错误响应示例**:
+
+```json
+{
+  "code": 17005,
+  "msg": "资源不存在",
+  "data": null
+}
+```
+
+---
+
 ### 创建管理员
 
 **接口描述**: 创建新的管理员账号
@@ -620,7 +804,7 @@ Authorization: Bearer <access_token>
 | 参数名 | 类型 | 必填 | 说明 |
 |--------|------|--------|------|
 | username | string | 是 | 用户名（唯一） |
-| password | string | 是 | 密码（明文，将进行 Argon2 哈希） |
+| password | string | 是 | 密码（明文,将进行 Argon2 哈希） |
 | is_super_admin | boolean | 否 | 是否为超级管理员（默认 false） |
 | role_ids | array | 否 | 关联的角色 ID 数组（UUID） |
 
@@ -649,7 +833,9 @@ curl -X POST http://localhost:6123/guardian-auth/v1/admins \
     "username": "newadmin",
     "is_super_admin": false,
     "status": 1,
-    "created_at": "2024-01-01T12:00:00Z"
+    "last_login_at": null,
+    "created_at": "2024-01-01T12:00:00+08:00",
+    "updated_at": "2024-01-01T12:00:00+08:00"
   }
 }
 ```
@@ -661,18 +847,236 @@ curl -X POST http://localhost:6123/guardian-auth/v1/admins \
 | id | UUID | 管理员 ID |
 | username | string | 用户名 |
 | is_super_admin | boolean | 是否为超级管理员 |
-| status | number | 状态（1-正常，0-禁用） |
-| created_at | datetime | 创建时间（ISO 8601 格式） |
+| status | number | 状态（1-正常） |
+| last_login_at | datetime | 最后登录时间（新建为 null） |
+| created_at | datetime | 创建时间（ISO 8601 格式,本地时区） |
+| updated_at | datetime | 更新时间（ISO 8601 格式,本地时区） |
 
 ---
 
-### 查询管理员列表
+### 更新管理员（v1.2 新增）
 
-**接口描述**: 分页查询管理员列表
+**接口描述**: 更新管理员信息
+
+**请求方式**: `PUT`
+
+**请求路径**: `/admins/:id`
+
+**认证**: 需要 JWT
+
+**请求头**:
+```
+Content-Type: application/json
+Authorization: Bearer <access_token>
+```
+
+**路径参数**:
+
+| 参数名 | 类型 | 必填 | 说明 |
+|--------|------|--------|------|
+| id | string(UUID) | 是 | 管理员 ID |
+
+**请求参数**:
+
+| 参数名 | 类型 | 必填 | 说明 |
+|--------|------|--------|------|
+| password | string | 否 | 新密码（将进行 Argon2 哈希） |
+| status | number | 否 | 状态（1-正常,0-禁用） |
+| role_ids | array | 否 | 关联的角色 ID 数组（UUID,全量替换） |
+
+**请求示例**:
+
+```bash
+# 更新状态
+curl -X PUT http://localhost:6123/guardian-auth/v1/admins/0190a1e8-7b3e-7a3f-8c1a-9e2f3a4b5c6d \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <access_token>" \
+  -d '{
+    "status": 0
+  }'
+
+# 更新密码
+curl -X PUT http://localhost:6123/guardian-auth/v1/admins/0190a1e8-7b3e-7a3f-8c1a-9e2f3a4b5c6d \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <access_token>" \
+  -d '{
+    "password": "NewPassword123"
+  }'
+
+# 更新角色（替换）
+curl -X PUT http://localhost:6123/guardian-auth/v1/admins/0190a1e8-7b3e-7a3f-8c1a-9e2f3a4b5c6d \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <access_token>" \
+  -d '{
+    "role_ids": ["0190a1e8-7b3e-7a3f-8c1a-9e2f3a4b5c6d", "0190b2f9-8c4f-8b4g-9d2b-0f3g4b5c6d7e"]
+  }'
+```
+
+**响应示例**:
+
+```json
+{
+  "code": 200,
+  "msg": "更新成功",
+  "data": {
+    "id": "0190a1e8-7b3e-7a3f-8c1a-9e2f3a4b5c6d",
+    "username": "guardian",
+    "is_super_admin": true,
+    "status": 0,
+    "last_login_at": "2024-01-01T10:30:00+08:00",
+    "created_at": "2023-12-01T00:00:00+08:00",
+    "updated_at": "2024-01-01T12:00:00+08:00"
+  }
+}
+```
+
+**响应字段说明**:
+
+| 字段名 | 类型 | 说明 |
+|--------|------|------|
+| id | UUID | 管理员 ID |
+| username | string | 用户名 |
+| is_super_admin | boolean | 是否为超级管理员 |
+| status | number | 状态（1-正常,0-禁用） |
+| last_login_at | datetime | 最后登录时间（ISO 8601 格式,本地时区） |
+| created_at | datetime | 创建时间（ISO 8601 格式,本地时区） |
+| updated_at | datetime | 更新时间（ISO 8601 格式,本地时区） |
+
+**业务规则**:
+- 所有参数都是可选的
+- `role_ids` 会全量替换管理员的角色关联
+- 不能将超级管理员改为非超级管理员
+- 不能修改超级管理员的密码
+
+---
+
+### 删除管理员（v1.2 新增）
+
+**接口描述**: 删除指定的管理员账号
+
+**请求方式**: `DELETE`
+
+**请求路径**: `/admins/:id`
+
+**认证**: 需要 JWT
+
+**请求头**:
+```
+Authorization: Bearer <access_token>
+```
+
+**路径参数**:
+
+| 参数名 | 类型 | 必填 | 说明 |
+|--------|------|--------|------|
+| id | string(UUID) | 是 | 要删除的管理员 ID |
+
+**请求示例**:
+
+```bash
+curl -X DELETE http://localhost:6123/guardian-auth/v1/admins/0190a1e8-7b3e-7a3f-8c1a-9e2f3a4b5c6d \
+  -H "Authorization: Bearer <access_token>"
+```
+
+**响应示例**:
+
+```json
+{
+  "code": 200,
+  "msg": "删除成功",
+  "data": null
+}
+```
+
+**业务规则**:
+- 不能删除超级管理员
+- 不能删除自己
+
+**错误响应示例**:
+
+```json
+{
+  "code": 17000,
+  "msg": "无法删除超级管理员或自己",
+  "data": null
+}
+```
+
+---
+
+### 为管理员分配角色（v1.2 新增）
+
+**接口描述**: 为管理员分配/替换角色
+
+**请求方式**: `POST`
+
+**请求路径**: `/admins/:id/roles`
+
+**认证**: 需要 JWT
+
+**请求头**:
+```
+Content-Type: application/json
+Authorization: Bearer <access_token>
+```
+
+**路径参数**:
+
+| 参数名 | 类型 | 必填 | 说明 |
+|--------|------|--------|------|
+| id | string(UUID) | 是 | 管理员 ID |
+
+**请求参数**:
+
+| 参数名 | 类型 | 必填 | 说明 |
+|--------|------|--------|------|
+| role_ids | array | 是 | 要分配的角色 ID 数组（UUID,全量替换） |
+
+**请求示例**:
+
+```bash
+# 为管理员分配 2 个角色
+curl -X POST http://localhost:6123/guardian-auth/v1/admins/0190a1e8-7b3e-7a3f-8c1a-9e2f3a4b5c6d/roles \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <access_token>" \
+  -d '{
+    "role_ids": ["0190a1e8-7b3e-7a3f-8c1a-9e2f3a4b5c6d", "0190b2f9-8c4f-8b4g-9d2b-0f3g4b5c6d7e"]
+  }'
+
+# 清空所有角色
+curl -X POST http://localhost:6123/guardian-auth/v1/admins/0190a1e8-7b3e-7a3f-8c1a-9e2f3a4b5c6d/roles \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <access_token>" \
+  -d '{
+    "role_ids": []
+  }'
+```
+
+**响应示例**:
+
+```json
+{
+  "code": 200,
+  "msg": "角色分配成功",
+  "data": null
+}
+```
+
+**业务规则**:
+- 此接口会全量替换管理员关联的角色
+- 不能为超级管理员分配角色（超级管理员拥有所有权限）
+
+---
+
+## 角色接口
+
+### 查询角色列表
+
+**接口描述**: 分页查询角色列表
 
 **请求方式**: `GET`
 
-**请求路径**: `/admins`
+**请求路径**: `/roles`
 
 **认证**: 需要 JWT
 
@@ -687,22 +1091,17 @@ Authorization: Bearer <access_token>
 |--------|------|--------|--------|------|
 | page | number | 否 | 1 | 页码 |
 | page_size | number | 否 | 20 | 每页数量 |
-| status | number | 否 | - | 状态筛选（1-正常，0-禁用） |
-| keyword | string | 否 | - | 用户名关键字搜索 |
+| keyword | string | 否 | - | 角色名或代码关键字搜索 |
 
 **请求示例**:
 
 ```bash
-# 获取第 1 页，每页 20 条
-curl -X GET "http://localhost:6123/guardian-auth/v1/admins?page=1&page_size=20" \
+# 获取第 1 页,每页 20 条
+curl -X GET "http://localhost:6123/guardian-auth/v1/roles?page=1&page_size=20" \
   -H "Authorization: Bearer <access_token>"
 
 # 使用 keyword 搜索
-curl -X GET "http://localhost:6123/guardian-auth/v1/admins?keyword=admin&page=1&page_size=20" \
-  -H "Authorization: Bearer <access_token>"
-
-# 同时筛选状态
-curl -X GET "http://localhost:6123/guardian-auth/v1/admins?status=1&page=1&page_size=20" \
+curl -X GET "http://localhost:6123/guardian-auth/v1/roles?keyword=admin&page=1&page_size=20" \
   -H "Authorization: Bearer <access_token>"
 ```
 
@@ -713,18 +1112,18 @@ curl -X GET "http://localhost:6123/guardian-auth/v1/admins?status=1&page=1&page_
   "code": 200,
   "msg": null,
   "data": {
-    "total": 100,
+    "total": 50,
     "page": 1,
     "page_size": 20,
     "list": [
       {
         "id": "0190a1e8-7b3e-7a3f-8c1a-9e2f3a4b5c6d",
-        "username": "admin",
-        "is_super_admin": true,
-        "status": 1,
-        "last_login_at": "2024-01-01T10:30:00Z",
-        "created_at": "2023-12-01T00:00:00Z",
-        "updated_at": "2024-01-01T12:00:00Z"
+        "code": "SUPER_ADMIN",
+        "name": "超级管理员",
+        "description": "拥有所有权限",
+        "is_system": true,
+        "created_at": "2023-12-01T00:00:00+08:00",
+        "updated_at": "2024-01-01T09:15:00+08:00"
       }
     ]
   }
@@ -738,13 +1137,25 @@ curl -X GET "http://localhost:6123/guardian-auth/v1/admins?status=1&page=1&page_
 | total | number | 总记录数 |
 | page | number | 当前页码 |
 | page_size | number | 每页数量 |
-| list | array | 管理员列表 |
+| list | array | 角色列表 |
+
+**list 项字段说明**:
+
+| 字段名 | 类型 | 说明 |
+|--------|------|------|
+| id | UUID | 角色 ID |
+| code | string | 角色代码 |
+| name | string | 角色名称 |
+| description | string | 角色描述 |
+| is_system | boolean | 是否为系统内置角色 |
+| created_at | datetime | 创建时间（ISO 8601 格式,本地时区） |
+| updated_at | datetime | 更新时间（ISO 8601 格式,本地时区） |
 
 ---
 
-### 获取角色详情
+### 获取角色详情（v1.2 新增）
 
-**接口描述**: 获取角色的详细信息，包括关联的权限列表
+**接口描述**: 获取角色的详细信息,包括关联的权限列表
 
 **请求方式**: `GET`
 
@@ -778,32 +1189,24 @@ curl -X GET http://localhost:6123/guardian-auth/v1/roles/0190a1e8-7b3e-7a3f-8c1a
   "msg": null,
   "data": {
     "id": "0190a1e8-7b3e-7a3f-8c1a-9e2f3a4b5c6d",
-    "code": "EDITOR_ROLE",
-    "name": "编辑器角色",
-    "description": "可以编辑内容和权限",
-    "is_system": false,
+    "code": "SUPER_ADMIN",
+    "name": "超级管理员",
+    "description": "拥有所有权限",
+    "is_system": true,
     "permissions": [
       {
         "id": "0190b2f9-8c4f-8b4g-9d2b-0f3g4b5c6d7e",
         "code": "ADMIN_READ",
-        "name": "管理员列表",
-        "resource_type": "api",
-        "http_method": "GET",
-        "resource_path": "/guardian-auth/v1/admins",
-        "sort_order": 1
+        "name": "查看管理员"
       },
       {
         "id": "0190c3g0-9d5g-9c5h-0e3c-1g4h5c6d7e8f",
         "code": "ADMIN_CREATE",
-        "name": "创建管理员",
-        "resource_type": "api",
-        "http_method": "POST",
-        "resource_path": "/guardian-auth/v1/admins",
-        "sort_order": 2
+        "name": "创建管理员"
       }
     ],
-    "created_at": "2024-01-01T12:00:00Z",
-    "updated_at": "2024-01-01T09:15:00Z"
+    "created_at": "2024-01-01T12:00:00+08:00",
+    "updated_at": "2024-01-01T09:15:00+08:00"
   }
 }
 ```
@@ -818,8 +1221,8 @@ curl -X GET http://localhost:6123/guardian-auth/v1/roles/0190a1e8-7b3e-7a3f-8c1a
 | description | string | 角色描述 |
 | is_system | boolean | 是否为系统内置角色 |
 | permissions | array | 关联的权限列表 |
-| created_at | datetime | 创建时间（ISO 8601 格式） |
-| updated_at | datetime | 更新时间（ISO 8601 格式） |
+| created_at | datetime | 创建时间（ISO 8601 格式,本地时区） |
+| updated_at | datetime | 更新时间（ISO 8601 格式,本地时区） |
 
 **permissions 项字段说明**:
 
@@ -828,14 +1231,93 @@ curl -X GET http://localhost:6123/guardian-auth/v1/roles/0190a1e8-7b3e-7a3f-8c1a
 | id | UUID | 权限 ID |
 | code | string | 权限代码 |
 | name | string | 权限名称 |
-| resource_type | string | 资源类型（api/menu/button） |
-| http_method | string | HTTP 方法 |
-| resource_path | string | 资源路径 |
-| sort_order | number | 排序字段 |
+
+**错误响应示例**:
+
+```json
+{
+  "code": 17005,
+  "msg": "资源不存在",
+  "data": null
+}
+```
 
 ---
 
-### 更新角色
+### 创建角色（v1.2 新增）
+
+**接口描述**: 创建新的角色
+
+**请求方式**: `POST`
+
+**请求路径**: `/roles`
+
+**认证**: 需要 JWT
+
+**请求头**:
+```
+Content-Type: application/json
+Authorization: Bearer <access_token>
+```
+
+**请求参数**:
+
+| 参数名 | 类型 | 必填 | 说明 |
+|--------|------|--------|------|
+| code | string | 是 | 角色代码（唯一,如 "EDITOR"） |
+| name | string | 是 | 角色名称 |
+| description | string | 否 | 角色描述 |
+| permission_ids | array | 否 | 关联的权限 ID 数组（UUID） |
+
+**请求示例**:
+
+```bash
+curl -X POST http://localhost:6123/guardian-auth/v1/roles \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <access_token>" \
+  -d '{
+    "code": "EDITOR",
+    "name": "编辑器",
+    "description": "可以编辑内容和权限",
+    "permission_ids": ["0190a1e8-7b3e-7a3f-8c1a-9e2f3a4b5c6d", "0190b2f9-8c4f-8b4g-9d2b-0f3g4b5c6d7e"]
+  }'
+```
+
+**响应示例**:
+
+```json
+{
+  "code": 200,
+  "msg": "创建成功",
+  "data": {
+    "id": "0190b2f9-8c4f-8b4g-9d2b-0f3g4b5c6d7e",
+    "code": "EDITOR",
+    "name": "编辑器",
+    "description": "可以编辑内容和权限",
+    "is_system": false,
+    "created_at": "2024-01-01T12:00:00+08:00",
+    "updated_at": "2024-01-01T12:00:00+08:00"
+  }
+}
+```
+
+**响应字段说明**:
+
+| 字段名 | 类型 | 说明 |
+|--------|------|------|
+| id | UUID | 角色 ID |
+| code | string | 角色代码 |
+| name | string | 角色名称 |
+| description | string | 角色描述 |
+| is_system | boolean | 是否为系统内置角色 |
+| created_at | datetime | 创建时间（ISO 8601 格式,本地时区） |
+| updated_at | datetime | 更新时间（ISO 8601 格式,本地时区） |
+
+---
+
+### 更新角色（v1.2 新增）
+
+**接口描述**: 更新角色信息
 
 **请求方式**: `PUT`
 
@@ -861,7 +1343,7 @@ Authorization: Bearer <access_token>
 |--------|------|--------|------|
 | name | string | 否 | 角色名称 |
 | description | string | 否 | 角色描述 |
-| permission_ids | array | 否 | 关联的权限 ID 数组（UUID，全量替换） |
+| permission_ids | array | 否 | 关联的权限 ID 数组（UUID,全量替换） |
 
 **请求示例**:
 
@@ -871,7 +1353,7 @@ curl -X PUT http://localhost:6123/guardian-auth/v1/roles/0190a1e8-7b3e-7a3f-8c1a
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <access_token>" \
   -d '{
-    "name": "编辑器角色（已更新）"
+    "name": "编辑器（已更新）"
   }'
 
 # 更新角色描述
@@ -899,20 +1381,23 @@ curl -X PUT http://localhost:6123/guardian-auth/v1/roles/0190a1e8-7b3e-7a3f-8c1a
   "msg": "更新成功",
   "data": {
     "id": "0190a1e8-7b3e-7a3f-8c1a-9e2f3a4b5c6d",
-    "code": "EDITOR_ROLE",
-    "name": "编辑器角色（已更新）",
+    "code": "EDITOR",
+    "name": "编辑器（已更新）",
+    "description": "更新了角色描述",
     "is_system": false,
-    "created_at": "2024-01-01T12:00:00Z"
+    "created_at": "2024-01-01T12:00:00+08:00",
+    "updated_at": "2024-01-01T12:00:00+08:00"
   }
 }
 ```
 
 **业务规则**:
 - 不能修改系统内置角色（`is_system = true`）的 code 字段
+- `permission_ids` 会全量替换角色关联的权限
 
 ---
 
-### 删除角色
+### 删除角色（v1.2 新增）
 
 **接口描述**: 删除指定的角色
 
@@ -953,11 +1438,20 @@ curl -X DELETE http://localhost:6123/guardian-auth/v1/roles/0190a1e8-7b3e-7a3f-8
 **业务规则**:
 - 不能删除系统内置角色（`is_system = true`）
 - 有管理员关联的角色不能删除
-- 删除角色前需要解除所有管理员关联
+
+**错误响应示例**:
+
+```json
+{
+  "code": 17000,
+  "msg": "无法删除系统内置角色或有关联管理员的角色",
+  "data": null
+}
+```
 
 ---
 
-### 为角色分配权限（**v1.2 新增**）
+### 为角色分配权限（v1.2 新增）
 
 **接口描述**: 为角色分配/替换权限
 
@@ -983,7 +1477,7 @@ Authorization: Bearer <access_token>
 
 | 参数名 | 类型 | 必填 | 说明 |
 |--------|------|--------|------|
-| permission_ids | array | 是 | 要分配的权限 ID 数组（UUID，全量替换） |
+| permission_ids | array | 是 | 要分配的权限 ID 数组（UUID,全量替换） |
 
 **请求示例**:
 
@@ -1017,7 +1511,6 @@ curl -X POST http://localhost:6123/guardian-auth/v1/roles/0190a1e8-7b3e-7a3f-8c1
 
 **业务规则**:
 - 此接口会全量替换角色关联的权限
-- 不能为系统内置角色分配权限
 
 ---
 
@@ -1058,6 +1551,8 @@ curl -X GET http://localhost:6123/guardian-auth/v1/permissions/tree \
       "name": "用户管理",
       "description": "用户管理相关权限",
       "resource_type": "menu",
+      "http_method": null,
+      "resource_path": null,
       "sort_order": 1,
       "is_system": false,
       "children": [
@@ -1167,10 +1662,11 @@ curl -X GET "http://localhost:6123/guardian-auth/v1/permissions?keyword=user&pag
         "resource_type": "api",
         "http_method": "GET",
         "resource_path": "/guardian-auth/v1/admins",
+        "parent_id": null,
         "sort_order": 1,
         "is_system": false,
-        "created_at": "2024-01-01T00:00:00Z",
-        "updated_at": "2024-01-01T00:00:00Z"
+        "created_at": "2024-01-01T00:00:00+08:00",
+        "updated_at": "2024-01-01T00:00:00+08:00"
       },
       {
         "id": "0190b2f9-8c4f-8b4g-9d2b-0f3g4b5c6d7e",
@@ -1180,10 +1676,11 @@ curl -X GET "http://localhost:6123/guardian-auth/v1/permissions?keyword=user&pag
         "resource_type": "api",
         "http_method": "POST",
         "resource_path": "/guardian-auth/v1/admins",
+        "parent_id": null,
         "sort_order": 2,
         "is_system": false,
-        "created_at": "2024-01-01T00:00:00Z",
-        "updated_at": "2024-01-01T00:00:00Z"
+        "created_at": "2024-01-01T00:00:00+08:00",
+        "updated_at": "2024-01-01T00:00:00+08:00"
       }
     ]
   }
@@ -1197,7 +1694,7 @@ curl -X GET "http://localhost:6123/guardian-auth/v1/permissions?keyword=user&pag
 | total | number | 总记录数 |
 | page | number | 当前页码 |
 | page_size | number | 每页数量 |
-| list | array | 角色列表 |
+| list | array | 权限列表 |
 
 **list 项字段说明**:
 
@@ -1213,110 +1710,12 @@ curl -X GET "http://localhost:6123/guardian-auth/v1/permissions?keyword=user&pag
 | parent_id | UUID | 父权限 ID |
 | sort_order | number | 排序字段 |
 | is_system | boolean | 是否为系统内置权限 |
-| created_at | datetime | 创建时间（ISO 8601 格式） |
-| updated_at | datetime | 更新时间（ISO 8601 格式） |
+| created_at | datetime | 创建时间（ISO 8601 格式,本地时区） |
+| updated_at | datetime | 更新时间（ISO 8601 格式,本地时区） |
 
 ---
 
-### 创建权限
-
-**接口描述**: 创建新的权限
-
-**请求方式**: `POST`
-
-**请求路径**: `/permissions`
-
-**认证**: 需要 JWT
-
-**请求头**:
-```
-Content-Type: application/json
-Authorization: Bearer <access_token>
-```
-
-**请求参数**:
-
-| 参数名 | 类型 | 必填 | 说明 |
-|--------|------|--------|------|
-| code | string | 是 | 权限代码（唯一） |
-| name | string | 是 | 权限名称 |
-| description | string | 否 | 权限描述 |
-| resource_type | string | 是 | 资源类型（api/menu/button） |
-| http_method | string | 否 | HTTP 方法（GET/POST/PUT/DELETE） |
-| resource_path | string | 否 | 资源路径（支持通配符 * 和路径参数 {id}） |
-| parent_id | string(UUID) | 否 | 父权限 ID |
-| sort_order | number | 否 | 排序字段 |
-
-**请求示例**:
-
-```bash
-# 创建管理员列表 API 权限
-curl -X POST http://localhost:6123/guardian-auth/v1/permissions \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <access_token>" \
-  -d '{
-    "code": "ADMIN_READ",
-    "name": "管理员列表",
-    "resource_type": "api",
-    "http_method": "GET",
-    "resource_path": "/guardian-auth/v1/admins"
-  }'
-
-# 创建菜单权限
-curl -X POST http://localhost:6123/guardian-auth/v1/permissions \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <access_token>" \
-  -d '{
-    "code": "MENU_VIEW",
-    "name": "菜单查看",
-    "resource_type": "menu",
-    "resource_path": "/guardian-auth/v1/menu/view",
-    "sort_order": 1
-  }'
-
-# 创建按钮权限
-curl -X POST http://localhost:6123/guardian-auth/v1/permissions \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <access_token>" \
-  -d '{
-    "code": "BUTTON_CLICK",
-    "name": "按钮点击",
-    "resource_type": "button",
-    "resource_path": "/guardian-auth/v1/button/click",
-    "http_method": "POST",
-    "sort_order": 1
-  }'
-```
-
-**权限类型说明**：
-- `api` - API 权限：用于后端 API 访问控制
-- `menu` - 菜单权限：用于前端菜单显示
-- `button` - 按钮权限：用于前端按钮显示
-
-**响应示例**:
-
-```json
-{
-  "code": 200,
-  "msg": null,
-  "data": {
-    "id": "0190a1e8-7b3e-7a3f-8c1a-9e2f3a4b5c6d",
-    "code": "ADMIN_READ",
-    "name": "管理员列表",
-    "description": "查看管理员列表",
-    "resource_type": "api",
-    "http_method": "GET",
-    "resource_path": "/guardian-auth/v1/admins",
-    "sort_order": 1,
-    "is_system": false,
-    "created_at": "2024-01-01T00:00:00Z"
-  }
-}
-```
-
----
-
-### 获取权限详情
+### 获取权限详情（v1.2 新增）
 
 **接口描述**: 获取指定权限的详细信息
 
@@ -1361,14 +1760,163 @@ curl -X GET http://localhost:6123/guardian-auth/v1/permissions/0190a1e8-7b3e-7a3
     "parent_id": null,
     "sort_order": 1,
     "is_system": false,
-    "created_at": "2024-01-01T00:00:00Z"
+    "created_at": "2024-01-01T00:00:00+08:00",
+    "updated_at": "2024-01-01T00:00:00+08:00"
   }
+}
+```
+
+**响应字段说明**:
+
+| 字段名 | 类型 | 说明 |
+|--------|------|------|
+| id | UUID | 权限 ID |
+| code | string | 权限代码 |
+| name | string | 权限名称 |
+| description | string | 权限描述 |
+| resource_type | string | 资源类型（api/menu/button） |
+| http_method | string | HTTP 方法 |
+| resource_path | string | 资源路径 |
+| parent_id | UUID | 父权限 ID |
+| sort_order | number | 排序字段 |
+| is_system | boolean | 是否为系统内置权限 |
+| created_at | datetime | 创建时间（ISO 8601 格式,本地时区） |
+| updated_at | datetime | 更新时间（ISO 8601 格式,本地时区） |
+
+**错误响应示例**:
+
+```json
+{
+  "code": 17005,
+  "msg": "资源不存在",
+  "data": null
 }
 ```
 
 ---
 
-### 更新权限
+### 创建权限（v1.2 新增）
+
+**接口描述**: 创建新的权限
+
+**请求方式**: `POST`
+
+**请求路径**: `/permissions`
+
+**认证**: 需要 JWT
+
+**请求头**:
+```
+Content-Type: application/json
+Authorization: Bearer <access_token>
+```
+
+**请求参数**:
+
+| 参数名 | 类型 | 必填 | 说明 |
+|--------|------|--------|------|
+| code | string | 是 | 权限代码（唯一） |
+| name | string | 是 | 权限名称 |
+| description | string | 否 | 权限描述 |
+| resource_type | string | 是 | 资源类型（api/menu/button） |
+| http_method | string | 否 | HTTP 方法（GET/POST/PUT/DELETE） |
+| resource_path | string | 否 | 资源路径（支持通配符 * 和路径参数 {id}） |
+| parent_id | string(UUID) | 否 | 父权限 ID |
+| sort_order | number | 否 | 排序字段 |
+
+**请求示例**:
+
+```bash
+# 创建管理员列表 API 权限
+curl -X POST http://localhost:6123/guardian-auth/v1/permissions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <access_token>" \
+  -d '{
+    "code": "ADMIN_READ",
+    "name": "管理员列表",
+    "description": "查看管理员列表",
+    "resource_type": "api",
+    "http_method": "GET",
+    "resource_path": "/guardian-auth/v1/admins",
+    "sort_order": 1
+  }'
+
+# 创建菜单权限
+curl -X POST http://localhost:6123/guardian-auth/v1/permissions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <access_token>" \
+  -d '{
+    "code": "MENU_VIEW",
+    "name": "菜单查看",
+    "description": "查看菜单",
+    "resource_type": "menu",
+    "resource_path": "/guardian-auth/v1/menu/view",
+    "sort_order": 1
+  }'
+
+# 创建按钮权限
+curl -X POST http://localhost:6123/guardian-auth/v1/permissions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <access_token>" \
+  -d '{
+    "code": "BUTTON_CLICK",
+    "name": "按钮点击",
+    "description": "点击按钮",
+    "resource_type": "button",
+    "resource_path": "/guardian-auth/v1/button/click",
+    "http_method": "POST",
+    "sort_order": 1
+  }'
+```
+
+**权限类型说明**:
+- `api` - API 权限:用于后端 API 访问控制
+- `menu` - 菜单权限:用于前端菜单显示
+- `button` - 按钮权限:用于前端按钮显示
+
+**响应示例**:
+
+```json
+{
+  "code": 200,
+  "msg": "创建成功",
+  "data": {
+    "id": "0190a1e8-7b3e-7a3f-8c1a-9e2f3a4b5c6d",
+    "code": "ADMIN_READ",
+    "name": "管理员列表",
+    "description": "查看管理员列表",
+    "resource_type": "api",
+    "http_method": "GET",
+    "resource_path": "/guardian-auth/v1/admins",
+    "parent_id": null,
+    "sort_order": 1,
+    "is_system": false,
+    "created_at": "2024-01-01T00:00:00+08:00",
+    "updated_at": "2024-01-01T00:00:00+08:00"
+  }
+}
+```
+
+**响应字段说明**:
+
+| 字段名 | 类型 | 说明 |
+|--------|------|------|
+| id | UUID | 权限 ID |
+| code | string | 权限代码 |
+| name | string | 权限名称 |
+| description | string | 权限描述 |
+| resource_type | string | 资源类型（api/menu/button） |
+| http_method | string | HTTP 方法 |
+| resource_path | string | 资源路径 |
+| parent_id | UUID | 父权限 ID |
+| sort_order | number | 排序字段 |
+| is_system | boolean | 是否为系统内置权限 |
+| created_at | datetime | 创建时间（ISO 8601 格式,本地时区） |
+| updated_at | datetime | 更新时间（ISO 8601 格式,本地时区） |
+
+---
+
+### 更新权限（v1.2 新增）
 
 **接口描述**: 更新权限信息
 
@@ -1438,16 +1986,18 @@ curl -X PUT http://localhost:6123/guardian-auth/v1/permissions/0190a1e8-7b3e-7a3
     "description": "更新了描述",
     "resource_type": "button",
     "resource_path": "/guardian-auth/v1/button/click",
+    "parent_id": null,
     "sort_order": 1,
     "is_system": false,
-    "created_at": "2024-01-01T00:00:00Z"
+    "created_at": "2024-01-01T00:00:00+08:00",
+    "updated_at": "2024-01-01T00:00:00+08:00"
   }
 }
 ```
 
 ---
 
-### 删除权限
+### 删除权限（v1.2 新增）
 
 **接口描述**: 删除指定的权限
 
@@ -1488,7 +2038,16 @@ curl -X DELETE http://localhost:6123/guardian-auth/v1/permissions/0190a1e8-7b3e-
 **业务规则**:
 - 不能删除系统内置权限（`is_system = true`）
 - 有角色关联的权限不能删除
-- 删除权限前需要从角色中移除关联
+
+**错误响应示例**:
+
+```json
+{
+  "code": 17000,
+  "msg": "无法删除系统内置权限或有关联角色的权限",
+  "data": null
+}
+```
 
 ---
 
@@ -1496,7 +2055,7 @@ curl -X DELETE http://localhost:6123/guardian-auth/v1/permissions/0190a1e8-7b3e-
 
 ### 查询系统信息列表
 
-**接口描述**: 获取系统监控信息列表，包括 CPU、内存、磁盘和网络使用情况
+**接口描述**: 获取系统监控信息列表,包括 CPU、内存、磁盘和网络使用情况
 
 **请求方式**: `GET`
 
@@ -1571,7 +2130,7 @@ curl -X GET "http://localhost:6123/guardian-auth/v1/systeminfo?limit=10" \
 | disk_total | integer | 总磁盘空间（字节） |
 | network_upload | integer | 网络上传流量（字节） |
 | network_download | integer | 网络下载流量（字节） |
-| created_at | datetime | 记录创建时间（ISO 8601 格式） |
+| created_at | datetime | 记录创建时间（ISO 8601 UTC 格式） |
 
 **业务规则**:
 - 数据按创建时间倒序排列（最新的在最前）
@@ -1605,7 +2164,7 @@ curl -X GET "http://localhost:6123/guardian-auth/v1/systeminfo?limit=10" \
 
 ### 密码安全
 - 密码使用 Argon2 哈希存储（业界最安全的密码哈希算法）
-- 密码强度建议：至少 8 位，包含字母和数字
+- 密码强度建议:至少 8 位,包含字母和数字
 - 首次登录后建议修改默认密码
 
 ### 令牌安全
@@ -1637,7 +2196,7 @@ curl -X GET "http://localhost:6123/guardian-auth/v1/systeminfo?limit=10" \
 curl -X POST http://localhost:6123/guardian-auth/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{
-    "username": "admin",
+    "username": "guardian",
     "password": "123456"
   }'
 ```
@@ -1673,7 +2232,7 @@ curl -X GET http://localhost:6123/guardian-auth/v1/systeminfo?limit=10 \
 
 ### A. 默认账号
 
-系统初始化后的默认管理员账号：
+系统初始化后的默认管理员账号:
 
 ```
 用户名: guardian
@@ -1683,21 +2242,31 @@ curl -X GET http://localhost:6123/guardian-auth/v1/systeminfo?limit=10 \
 
 **⚠️ 重要提示**: 首次登录后请立即修改默认密码！
 
+### B. 状态码对照表
+
+| 业务状态 | HTTP 状态 | 说明 |
+|---------|-----------|------|
+| 成功 | 200 | 请求处理成功 |
+| 业务错误 | 200 | 业务逻辑错误,code 字段包含错误码 |
+| 参数错误 | 200 | 请求参数验证失败 |
+| 认证错误 | 200 | 需要登录或令牌无效 |
+| 权限错误 | 200 | 没有足够的权限 |
+| 服务器错误 | 500 | 服务器内部错误 |
+
 ---
 
 ## 更新日志
 
 ### v1.2.0 (2026-01-19)
-- ✅ 新增管理员-角色绑定接口（`POST /admins/:id/roles`）
-- ✅ 新增角色-权限绑定接口（`POST /roles/:id/permissions`）
-- ✅ 完善管理员 CRUD 接口文档和示例
-- ✅ 完善角色 CRUD 接口文档和示例
-- ✅ 完善权限 CRUD 接口文档和示例
-- ✅ 新增权限详情查询接口（`GET /permissions/:id`）
-- ✅ 新增 2FA 禁用接口（`POST /auth/2fa/disable`）
-- ✅ 统一文档格式，移除冗余内容
-- ✅ 补充所有接口的完整请求/响应示例
+- ✅ 新增管理员 CRUD 接口（GET /admins/:id, PUT /admins/:id, DELETE /admins/:id）
+- ✅ 新增管理员-角色绑定接口（POST /admins/:id/roles）
+- ✅ 新增角色 CRUD 接口（GET /roles/:id, POST /roles, PUT /roles/:id, DELETE /roles/:id）
+- ✅ 新增角色-权限绑定接口（POST /roles/:id/permissions）
+- ✅ 新增权限 CRUD 接口（GET /permissions/:id, POST /permissions, PUT /permissions/:id, DELETE /permissions/:id）
+- ✅ 新增禁用 2FA 接口（POST /auth/2fa/disable）
+- ✅ 完善所有接口的请求/响应示例
 - ✅ 添加详细的字段说明
+- ✅ 统一文档格式
 
 ### v1.1.1 (2026-01-15)
 - ✅ 新增重置密码接口（`/auth/reset-password`）- 通过 2FA 重置密码
@@ -1705,6 +2274,7 @@ curl -X GET http://localhost:6123/guardian-auth/v1/systeminfo?limit=10 \
 - ✅ 重置密码接口为公开接口（无需 JWT 认证）
 - ✅ 修改密码接口为受保护接口（需要 JWT 认证）
 - ✅ 两个接口都使用 Argon2 密码哈希加密
+- 📝 更新 API 文档,添加两个密码相关接口说明
 
 ### v1.1.0 (2026-01-15)
 - ✅ 新增系统信息接口（`/systeminfo`）
@@ -1712,6 +2282,7 @@ curl -X GET http://localhost:6123/guardian-auth/v1/systeminfo?limit=10 \
 - ✅ 支持查询系统 CPU、内存、磁盘、网络监控数据
 - ✅ 系统信息按时间倒序排列
 - ✅ 支持自定义返回记录数量（limit 参数）
+- 📝 更新 API 文档,添加系统信息接口说明
 
 ### v1.0.0 (2026-01-14)
 - ✅ 实现基础认证功能（登录、登出、刷新令牌）
@@ -1723,8 +2294,10 @@ curl -X GET http://localhost:6123/guardian-auth/v1/systeminfo?limit=10 \
 - ✅ 实现令牌黑名单机制
 - ✅ 数据库自动维护 created_at 和 updated_at 字段
 - ✅ 所有表名添加 guardian_ 前缀
-- ✅ 添加完整的认证接口文档（refresh、logout、2fa）
-- ✅ 修正所有 ID 类型为 UUID
-- ✅ 新增错误码 17008、17009、17010
+- 📝 更新 API 文档,修正登录接口参数和响应格式
+- 📝 添加完整的认证接口文档（refresh、logout、2fa）
+- 📝 标记未实现的接口（管理员、角色、权限）
+- 📝 修正所有 ID 类型为 UUID
+- 📝 新增错误码 17008、17009、17010
 
 ---
