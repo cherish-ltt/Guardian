@@ -70,6 +70,36 @@
 - 移除上游的旧品牌文档资产（`docs/assets/logo.png`、`docs/assets/flow-1.png` 与 `docs/live-panel/` 动效面板），
   README 改用文本描述架构与流程。
 
+### 测试
+
+- **端点契约矩阵**：新增 `tests/contract_tests.rs`，把 Router 上注册的全部 83 个 `(方法, 路径)`
+  按「需要权限码 64 个 / 只需登录 10 个 / 完全公开 9 个」三张表逐条锁定，表格驱动断言：
+  - 74 个受保护端点缺令牌一律 401 + 「未认证或登录已过期」；脚手架自带、走 `CurrentUser`
+    的 4 个接口（`/auth/session`、`/examples/{id}`、`/transactions`、`/transactions/{id}`）
+    保留英文原文 `Unauthorized: missing Authorization header`，两套提取器的文案差异被显式固定下来。
+  - 64 个权限码端点用零权限账号（种子里的 `linjh`）访问一律 403 + 「没有访问权限」。
+  - 超管令牌不会被鉴权层拦下（证明表里的路径确实挂在 Router 上），9 个公开端点免令牌返回 200。
+  - 404 / 405 / 400 文案矩阵：未知路径「资源不存在」、方法不支持「不支持的请求方法: {method}」、
+    查询参数非法「参数 {key} 必须是整数」、后台请求体走 `ApiJson` 时统一 400「请求体格式错误」。
+- **后台与监控接口黑盒补全**（`tests/admin_api_tests.rs`、`tests/monitor_api_tests.rs`）：
+  补齐此前没有任何用例的 4 个端点 —— `GET /system/depts/export`、`GET /system/dict/types/export`、
+  `GET /system/roles/export`、`PUT /system/dict/types/{id}`，并断言导出响应的
+  `content-type: text/csv; charset=UTF-8` 与 `content-disposition` 附件名；
+  新增列表筛选（`keyword` / `status` 下推到 SQL）、非超管动态路由只返回被授权菜单、
+  停用账号立即失效既有会话并留下「账号已停用」失败日志、验证码缺失统一 400 且不写登录日志、
+  顶层部门 `ancestors` 为空串、操作日志导出的 13 列内容、登录失败阈值取自
+  `sys.login.alertThreshold` 且达到阈值时在热力图给出告警、时间线非法 `date` 一律 400、
+  转发头里的非本机地址记为「内网」、工作台汇总统计已落库操作量、写操作指向不存在的目标时
+  报业务错、可选字段缺省回落到稳定默认值等行为用例。
+- **单元测试**：补 `util/csv.rs` 的 `number_cell`、`domain/models/audit_log.rs` 的 `truncate`
+  （按字符计数、多字节安全）、`domain/models/monitor.rs` 的 `window_start` 三档窗口起点、
+  `api/dto/admin.rs` 的非法 `%` 转义保留原字符、`services/dashboard.rs` 的未知统计键兜底，
+  单元测试由 99 个增加到 105 个。
+- **覆盖率**：`cargo llvm-cov --features docs --summary-only` 实测行覆盖率由 93.73% 提升到
+  **97.02%**（region 90.63% → 95.10%，函数 90.33% → 93.38%），满足 `AGENTS.md` 第 10.1 节
+  ≥80% 的要求；`docs/TESTING.md` 记录命令、口径，以及未纳入目标的 `src/main.rs`（二进制入口）
+  与 `src/infrastructure/services/redis_store.rs`（需外部 Redis）及原因。
+
 ## [0.6.0] - 2026-10-13
 
 ### 修复

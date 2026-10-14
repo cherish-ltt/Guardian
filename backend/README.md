@@ -224,7 +224,13 @@ cargo build
 cargo test --features docs
 ```
 
-单元测试覆盖率使用 `cargo llvm-cov` 检测，要求不低于 80%。
+单元测试覆盖率使用 `cargo llvm-cov` 检测，要求行覆盖率不低于 80%：
+
+```bash
+cargo llvm-cov --features docs --summary-only
+```
+
+命令口径与未纳入目标的两处文件（`src/main.rs`、`redis_store.rs`）见 [docs/TESTING.md](docs/TESTING.md)。
 
 ## 许可证
 

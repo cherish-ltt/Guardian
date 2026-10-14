@@ -58,15 +58,50 @@ cargo test --features docs
 
 新增接口时按同样方式补一条 `oneshot` 用例即可，无需启动服务或 mock 端口。
 
+### 覆盖率检测
+
+```bash
+cargo llvm-cov --features docs --summary-only
+```
+
+`AGENTS.md` 第 10.1 节要求**行覆盖率 ≥ 80%**：全局口径，不按文件考核；
+命令与 CI 的测试口径保持一致（同样带 `--features docs`，否则 `docs` 门控的代码不在统计范围内）。
+当前实测：**行 97.02% / 函数 93.38% / region 95.10%**（244 个用例，`cargo-llvm-cov 0.9.1`）。
+这只是当时的快照，改动后需重新测量，不要把数字当常量。
+
+下面两处不计入覆盖率目标，也无需为它们写测试：
+
+| 文件 | 不统计的原因 |
+| --- | --- |
+| `src/main.rs` | 二进制入口：进程启动、信号监听与优雅退出，单测进程覆盖不到（要覆盖必须拉起真实进程与端口）。 |
+| `src/infrastructure/services/redis_store.rs` | 生产用的 `RedisAuthStore` 需要外部 Redis 实例；集成测试统一用 `MemoryAuthStore`，不让测试依赖外部服务。 |
+
+除这两处外，剩余未覆盖行只有三类，都不值得为覆盖率補断言：
+
+- **防御性兜底**：如各仓储的 `.ok_or_else(|| AppError::internal(...))`（数据库时钟无返回值）、
+  `offset` 整数溢出的 `checked_*` 守卫、`seed_user_assignments` 的 `assigned == 0`。
+- **需要故障注入的错误分支**：写盘失败回退缓冲（`logging.rs`）、响应体收集失败
+  （`middleware/trace.rs`）、留痕写入失败（`middleware/audit.rs`）、事务回滚失败
+  （`services/support.rs`）—— 它们的存在本身就是“不让未预期失败掩盖真因”。
+- **已无调用点的死代码**：`repositories/sql.rs` 的 `float` / `flag`、
+  `repositories/permission_graph.rs` 的 `GRAPH_MENU_SELECT` / `map_graph_menu`、
+  `util/time.rs` 的 `today`。按 `AGENTS.md` 第 9 节「不得私自改动结构」保留不动，
+  测试也不为它们写占位断言。
+
 ### 后台管理与监控接口测试
 
 `tests/support/mod.rs` 提供公共装置：临时 SQLite 装配、登录（自动取验证码）与带令牌请求构造、
-原始响应读取。基于它的三个契约测试文件：
+原始响应读取。基于它的四个契约测试文件：
 
 | 文件 | 覆盖范围 |
 | --- | --- |
+| `tests/contract_tests.rs` | 全部 83 个 `(方法, 路径)` 的鉴权与错误语义矩阵：74 个受保护端点缺令牌一律 401、64 个权限码端点用零权限账号一律 403、9 个公开端点免令牌；404 / 405 / 400 的统一文案 |
 | `tests/admin_api_tests.rs` | 认证全流程、用户 / 角色 / 菜单 / 部门 / 岗位 / 字典 / 参数的 CRUD 与校验文案、导出、403 与数据范围、404 / 405 文案 |
 | `tests/monitor_api_tests.rs` | 写操作留痕的内容与脱敏、操作 / 登录日志的列表与统计、时间线、热力图、导出、删除与清空、工作台聚合 |
 | `tests/generator_api_tests.rs` | 候选表与导入幂等、字段元数据、7 个生成文件的内容、ZIP 条目、留痕动作 |
+
+`tests/contract_tests.rs` 的三张端点表与 `src/api/controllers` 的路由注册一一对应：
+新增或删除端点时必须同步这三张表，否则 `endpoint_tables_cover_every_registered_route`
+这个计数断言会先失败——它就是为了让「加了接口但忘了加鉴权」在测试里暴露。
 
 这些用例按字节断言生成的 Java / TS / Vue / SQL 文件内容，因此修改代码生成模板必须同步更新断言。

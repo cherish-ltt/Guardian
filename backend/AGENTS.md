@@ -348,11 +348,15 @@ msrv = "1.99.0"
 - 单元测试直接写在源码文件的 `#[cfg(test)] mod tests` 模块中（如 `src/error.rs`、`src/util/password.rs`）。
 - 集成测试放在 `tests/` 目录，按职责拆分文件：
   - `tests/api_tests.rs`：通过 `create_app` + `tower::ServiceExt::oneshot` 覆盖 HTTP 接口层（controllers、DTO、extractor、JWT 鉴权、Swagger 文档）。
+  - `tests/contract_tests.rs`：用表格驱动锁定全部端点的鉴权与错误语义（401 / 403 / 404 / 405 / 400）。
+    新增或删除路由必须同步三张端点表，否则 `endpoint_tables_cover_every_registered_route` 会失败。
   - `tests/config_tests.rs`：覆盖 `AppConfig::from_env` 的默认值、覆盖项与全部校验分支。
   - `tests/logging_tests.rs`：覆盖日志初始化与配置校验。
 - 环境变量是进程级全局状态，依赖环境变量的测试必须通过共享 `Mutex` 串行执行，并在结束后恢复原值。
 - 集成测试使用临时 SQLite 文件数据库，每个测试独立装配 `Container`，互不共享状态。
-- 覆盖率检测命令：`cargo llvm-cov --summary-only`，要求行覆盖率 ≥ 80%。
+- 覆盖率检测命令：`cargo llvm-cov --features docs --summary-only`，要求行覆盖率 ≥ 80%（全局口径，不按文件考核；
+  与 CI 的测试口径一致）。`src/main.rs`（二进制入口）与 `src/infrastructure/services/redis_store.rs`
+  （需外部 Redis）不计入该目标，原因见 `docs/TESTING.md` 的「覆盖率检测」。
 
 ### 10.2 jsonwebtoken 加密后端
 
