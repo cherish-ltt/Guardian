@@ -1,0 +1,120 @@
+# .pre-commit-config.yaml
+# 优先使用 prek run --all-files 命令扫描 or 通过 git 自动触发
+repos:
+  # ============================================================
+  # 1. 通用文件检查（pre-commit-hooks v6.0.0）
+  # 官方仓库：https://github.com/pre-commit/pre-commit-hooks
+  # 注意：v6.0.0 要求 Python >= 3.9，并移除了
+  #       check-byte-order-marker 和 fix-encoding-pragma 两个钩子
+  # ============================================================
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      # 移除行尾多余的空格
+      # 不限定文件类型，覆盖所有主流语言的代码文件（含 .rs / .py / .js / .ts / .go / .java / .c / .cpp 等）
+      # 如仅需处理特定文件，可自行添加 files 或 types 过滤
+      - id: trailing-whitespace
+        name: 移除行尾多余空格
+
+      # 检查代码中是否有未解决的合并冲突标记（<<<<<<< / ======= / >>>>>>>）
+      # 不限定文件类型，覆盖所有主流语言的代码文件
+      - id: check-merge-conflict
+        name: 检查合并冲突标记
+
+      # 检查添加的文件是否过大（默认限制 10240KB，即 10MB）
+      # 仅作用于图片文件，防止大图误提交
+      - id: check-added-large-files
+        name: 检查添加文件是否过大
+        args: ['--maxkb=10240']
+        files: '\.(jpeg|jpg|png)$'
+
+      # 检查 TOML 语法是否正确（如 Cargo.toml、rust-toolchain.toml 等）
+      - id: check-toml
+        name: 检查 TOML 语法
+
+      # 检查 YAML 语法是否正确（如 CI 配置、docker-compose 等）
+      - id: check-yaml
+        name: 检查 YAML 语法
+
+      # 检查 JSON 语法是否正确（如 package.json、tsconfig.json 等）
+      - id: check-json
+        name: 检查 JSON 语法
+
+      # 检测私钥文件（SSH / PGP / RSA 等）是否被误提交
+      # 防止敏感私钥泄漏到仓库
+      - id: detect-private-key
+        name: 检测私钥文件
+
+  # ============================================================
+  # 2. 密钥泄露检测（Betterleaks，使用本机已安装版本）
+  # 官方仓库：https://github.com/betterleaks/betterleaks
+  # 通过 brew install betterleaks 或 brew install betterleaks/tap/betterleaks 安装
+  # 版本：v1.8.1（2026-08-18 发布）
+  # 说明：
+  #   - Gitleaks 已进入仅安全补丁维护阶段，Betterleaks 为其官方继任者
+  #   - 由 Gitleaks 原作者 Zach Rice 及原班人马维护
+  #   - 完全兼容原有的 .gitleaks.toml 配置和 .gitleaksignore 文件
+  #   - 检测 800+ 种密钥类型，支持 Expr 过滤、密钥有效性验证等高级功能
+  #   - 改用 local + system，直接调用本机 PATH 中的 betterleaks，
+  #     避免 prek 下载 Go 工具链并重新编译安装
+  # ============================================================
+  - repo: local
+    hooks:
+      - id: betterleaks
+        name: 检测密钥泄露
+        entry: betterleaks git --pre-commit --staged --verbose
+        language: system
+        pass_filenames: false
+
+  # ============================================================
+  # 3. ast-grep 结构化规则检查
+  # 官方仓库：https://github.com/joshuadavidthomas/ast-grep-rules
+  # 最新版本：v0.5.0（2026-07-25 发布）
+  # 说明：使用 AST 进行结构化代码搜索与检查，支持自定义 YAML 规则
+  # ============================================================
+  - repo: https://github.com/joshuadavidthomas/ast-grep-rules
+    rev: v0.5.0
+    hooks:
+      - id: all  # 运行该仓库中定义的全部 ast-grep 规则
+
+  # ============================================================
+  # 4. Rust 本地钩子：fmt / check / clippy / test
+  # 使用 local 方式直接调用本机 cargo，避免依赖外部仓库
+  # 优势：版本可控、无需等待第三方仓库更新、支持自定义参数
+  # 注意：pass_filenames: false 避免 pre-commit 将文件名传给 cargo
+  # ============================================================
+  - repo: local
+    hooks:
+      # rustfmt 格式化检查：--check 表示只检查不修改
+      - id: fmt
+        name: rustfmt 格式检查
+        entry: cargo fmt --all -- --check
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      # cargo check：编译检查，不生成最终二进制
+      - id: cargo-check
+        name: cargo check 编译检查
+        entry: cargo check --all-targets --all-features
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      # clippy 静态分析：-D warnings 表示将警告视为错误
+      - id: clippy
+        name: clippy 静态分析
+        entry: cargo clippy --all-targets --all-features -- -D warnings
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      # cargo test：运行测试，默认在 pre-commit 阶段执行
+      # 如果测试较慢，可取消注释下一行将其移到 pre-push 阶段
+      - id: test
+        name: cargo test 测试
+        entry: cargo test --all-targets --all-features
+        language: system
+        types: [rust]
+        pass_filenames: false
+        # stages: [pre-push]  # 如需移至推送前执行，取消注释此行

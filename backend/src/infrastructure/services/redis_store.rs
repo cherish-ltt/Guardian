@@ -1,0 +1,92 @@
+use async_trait::async_trait;
+use redis::AsyncCommands;
+use redis::aio::ConnectionManager;
+
+use crate::{
+    error::AppError,
+    infrastructure::{
+        config::RedisConfig,
+        services::auth_store::{AuthStore, CAPTCHA_TTL_SECONDS, captcha_key, token_key},
+    },
+};
+
+/// 基于 Redis 的实现：验证码与登录会话写在 `redis://` 里，
+/// 服务重启后仍能撤销旧令牌，多实例部署共用同一份会话。
+#[derive(Clone)]
+pub struct RedisAuthStore {
+    connection: ConnectionManager,
+}
+
+impl RedisAuthStore {
+    pub async fn connect(config: &RedisConfig) -> Result<Self, AppError> {
+        let client = redis::Client::open(config.connection_url().map_err(AppError::from)?)
+            .map_err(|error| AppError::Config(format!("invalid redis url: {error}")))?;
+        let connection = client
+            .get_connection_manager()
+            .await
+            .map_err(|error| AppError::Config(format!("redis connection failed: {error}")))?;
+
+        Ok(Self { connection })
+    }
+
+    async fn connection(&self) -> ConnectionManager {
+        self.connection.clone()
+    }
+}
+
+#[async_trait]
+impl AuthStore for RedisAuthStore {
+    async fn save_captcha(&self, uuid: &str, code: &str) -> Result<(), AppError> {
+        let mut connection = self.connection().await;
+        connection
+            .set_ex::<_, _, ()>(captcha_key(uuid), code, CAPTCHA_TTL_SECONDS)
+            .await
+            .map_err(|error| AppError::internal(format!("redis set captcha failed: {error}")))
+    }
+
+    async fn take_captcha(&self, uuid: &str) -> Result<Option<String>, AppError> {
+        let key = captcha_key(uuid);
+        let mut connection = self.connection().await;
+        let stored: Option<String> = connection
+            .get(&key)
+            .await
+            .map_err(|error| AppError::internal(format!("redis get captcha failed: {error}")))?;
+
+        if stored.is_some() {
+            connection.del::<_, ()>(&key).await.map_err(|error| {
+                AppError::internal(format!("redis del captcha failed: {error}"))
+            })?;
+        }
+
+        Ok(stored)
+    }
+
+    async fn save_token(
+        &self,
+        token: &str,
+        username: &str,
+        ttl_seconds: u64,
+    ) -> Result<(), AppError> {
+        let mut connection = self.connection().await;
+        connection
+            .set_ex::<_, _, ()>(token_key(token), username, ttl_seconds)
+            .await
+            .map_err(|error| AppError::internal(format!("redis set token failed: {error}")))
+    }
+
+    async fn token_owner(&self, token: &str) -> Result<Option<String>, AppError> {
+        let mut connection = self.connection().await;
+        connection
+            .get(token_key(token))
+            .await
+            .map_err(|error| AppError::internal(format!("redis get token failed: {error}")))
+    }
+
+    async fn revoke_token(&self, token: &str) -> Result<(), AppError> {
+        let mut connection = self.connection().await;
+        connection
+            .del::<_, ()>(token_key(token))
+            .await
+            .map_err(|error| AppError::internal(format!("redis del token failed: {error}")))
+    }
+}

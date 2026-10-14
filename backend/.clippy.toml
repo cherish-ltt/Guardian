@@ -1,0 +1,12 @@
+# ── Clippy Configuration ──
+# 本文件只配置「lint 的阈值 / 开关」；阈值只有在对应 lint 被启用时才会生效，
+# 已启用的 lint 列在 Cargo.toml 的 [lints.clippy]（作用于本包全部 target）。
+
+# clippy::cognitive_complexity 的阈值（已启用）
+cognitive-complexity-threshold = 15
+# clippy::too_many_arguments 的阈值（complexity 组，clippy 默认即启用）
+too-many-arguments-threshold = 5
+# clippy::unwrap_used 在测试代码中放行（已启用）
+allow-unwrap-in-tests = true
+
+msrv = "1.99.0"
