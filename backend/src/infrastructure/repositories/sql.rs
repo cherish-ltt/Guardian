@@ -98,19 +98,7 @@ pub fn int_or_zero(row: &QueryResult, column: &str) -> i64 {
     int(row, column).unwrap_or(0)
 }
 
-pub fn float(row: &QueryResult, column: &str) -> f64 {
-    row.try_get::<Option<f64>>("", column)
-        .ok()
-        .flatten()
-        .unwrap_or(0.0)
-}
-
 /// 空的字符串列统一读成 `None`，避免前端收到 `""` 与 `null` 两种空值。
 pub fn text_or_none(row: &QueryResult, column: &str) -> Option<String> {
     text(row, column).filter(|value| !value.is_empty())
-}
-
-/// 可空整数列的文本形式（用于 `1`/`0` 标记）。
-pub fn flag(row: &QueryResult, column: &str) -> bool {
-    int_or_zero(row, column) == 1
 }

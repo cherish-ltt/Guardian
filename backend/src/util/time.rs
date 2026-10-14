@@ -12,11 +12,6 @@ pub fn now() -> String {
     format_datetime(Local::now().naive_local())
 }
 
-/// 数据库当天日期（本地时区），与 MySQL `CURDATE()` 的用法一致。
-pub fn today() -> NaiveDate {
-    Local::now().date_naive()
-}
-
 /// 当前时间的「当天秒数」，泳道用它定位当前时刻。
 pub fn seconds_since_midnight() -> i64 {
     let time = Local::now().time();

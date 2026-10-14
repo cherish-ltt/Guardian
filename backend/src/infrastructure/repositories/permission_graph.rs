@@ -4,7 +4,7 @@ use sea_orm::{ConnectionTrait, Value};
 use crate::{
     domain::models::{
         identity::DataScope,
-        system_admin::{GraphMenu, GraphUser, UserRoleLink},
+        system_admin::{GraphUser, UserRoleLink},
     },
     error::AppError,
     infrastructure::repositories::sql::{int_or_zero, query_all, text, text_or_none},
@@ -24,11 +24,6 @@ pub trait PermissionGraphRepository: Send + Sync {
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct SeaOrmPermissionGraphRepository;
-
-/// 菜单节点在关系图里只带展示所需字段。
-pub const GRAPH_MENU_SELECT: &str = "SELECT m.id, m.parent_id, m.menu_name, m.menu_type, m.icon, \
-     m.path, m.permission, m.sort, m.visible, m.status FROM sys_menu m \
-     ORDER BY m.parent_id, m.sort, m.id";
 
 #[async_trait]
 impl PermissionGraphRepository for SeaOrmPermissionGraphRepository {
@@ -90,21 +85,5 @@ impl PermissionGraphRepository for SeaOrmPermissionGraphRepository {
                 role_id: int_or_zero(row, "role_id"),
             })
             .collect())
-    }
-}
-
-/// 关系图里的菜单节点。
-pub fn map_graph_menu(row: &sea_orm::QueryResult) -> GraphMenu {
-    GraphMenu {
-        id: int_or_zero(row, "id"),
-        parent_id: int_or_zero(row, "parent_id"),
-        name: text(row, "menu_name").unwrap_or_default(),
-        type_: text(row, "menu_type").unwrap_or_default(),
-        icon: text_or_none(row, "icon"),
-        path: text_or_none(row, "path"),
-        permission: text_or_none(row, "permission"),
-        sort: int_or_zero(row, "sort"),
-        visible: int_or_zero(row, "visible"),
-        status: int_or_zero(row, "status"),
     }
 }
