@@ -126,3 +126,10 @@ uuid = { version = "=1.28.0", features = ["v7"] }
 # HTTP 服务与中间件测试工具
 tower = { version = "=0.5.3", features = ["util"] }
 
+# 编译优化配置
+# release 产物以体积为优先：`lto` 做跨 crate 内联、`codegen-units = 1` 让优化器看到全部代码，
+# 两者都不改变业务语义（代价是 release 构建变慢，CI 只跑 debug 构建与 `cargo check --release`，不受影响）。
+# 未加 `strip = "symbols"`：保留符号表以便生产 panic 能打出可读栈帧。
+[profile.release]
+lto = true
+codegen-units = 1
