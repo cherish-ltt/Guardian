@@ -80,6 +80,9 @@ fn form_urlencoded_pairs(raw: &str) -> Vec<(String, String)> {
 }
 
 /// `application/x-www-form-urlencoded` 解码：`+` 表示空格，`%XX` 表示字节。
+///
+/// 逐字节处理，不用 `str` 区间取十六进制文本：`%` 后面可能是多字节字符的首字节，
+/// 按字符切片会落在字符边界之内。
 fn decode(value: &str) -> String {
     let bytes = value.as_bytes();
     let mut output = Vec::with_capacity(bytes.len());
@@ -91,12 +94,12 @@ fn decode(value: &str) -> String {
                 index += 1;
             },
             b'%' if index + 2 < bytes.len() => {
-                match u8::from_str_radix(&value[index + 1..index + 3], 16) {
-                    Ok(byte) => {
-                        output.push(byte);
+                match (hex_digit(bytes[index + 1]), hex_digit(bytes[index + 2])) {
+                    (Some(high), Some(low)) => {
+                        output.push(high * 16 + low);
                         index += 3;
                     },
-                    Err(_) => {
+                    _ => {
                         output.push(bytes[index]);
                         index += 1;
                     },
@@ -110,6 +113,15 @@ fn decode(value: &str) -> String {
     }
 
     String::from_utf8_lossy(&output).to_string()
+}
+
+fn hex_digit(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
 }
 
 #[cfg(test)]
@@ -152,6 +164,8 @@ mod tests {
             ("keyword=100%25off", "100%off"),
             ("keyword=%zz", "%zz"),
             ("keyword=trailing%", "trailing%"),
+            ("keyword=%2", "%2"),
+            ("keyword=%", "%"),
         ];
 
         for (raw, expected) in cases {
@@ -159,6 +173,33 @@ mod tests {
 
             assert_eq!(query.text("keyword").as_deref(), Some(expected), "{raw}");
         }
+    }
+
+    /// `%` 后面跟多字节字符时不能按字符切片取两位十六进制。
+    #[test]
+    fn percent_followed_by_multibyte_text_is_kept_verbatim() {
+        let cases = [
+            ("keyword=%中", "%中"),
+            ("keyword=%é", "%é"),
+            ("keyword=%🙂", "%🙂"),
+            ("keyword=中%中", "中%中"),
+            ("keyword=%E7%94%A8%E6%88%B7中", "用户中"),
+            ("keyword=%中%20é", "%中 é"),
+        ];
+
+        for (raw, expected) in cases {
+            let query = QueryString::parse(Some(raw));
+
+            assert_eq!(query.text("keyword").as_deref(), Some(expected), "{raw}");
+        }
+    }
+
+    /// 转义出来的字节序列即使不是合法 UTF-8 也只能替换，不能 panic。
+    #[test]
+    fn escapes_producing_invalid_utf8_are_replaced() {
+        let query = QueryString::parse(Some("keyword=%C3%28"));
+
+        assert_eq!(query.text("keyword").as_deref(), Some("\u{fffd}("));
     }
 
     #[test]

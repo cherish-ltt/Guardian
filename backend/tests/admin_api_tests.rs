@@ -1745,3 +1745,41 @@ async fn role_list_without_matches_returns_an_empty_page() {
     assert_eq!(body["data"]["total"], 0);
     assert_eq!(body["data"]["rows"], json!([]));
 }
+
+/// 查询串里 `%` 后面直接跟多字节字符时曾按字符切片而 panic，现在按字节解码后照常给出业务响应。
+#[tokio::test]
+async fn raw_multibyte_query_values_are_decoded_without_panicking() {
+    let app = setup_app().await;
+    let token = admin_token(&app).await;
+
+    // 非法转义保留原字符：筛选参数把解码结果当整数校验，按既有文案被拒绝，而不是让请求崩掉。
+    let (status, body) = send(
+        app.clone(),
+        get_with_bearer("/api/v1/system/users?status=%中", &token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["message"], "参数 status 必须是整数");
+
+    // 分页参数非法时回落默认值（与 int() 对筛选参数的处理不同），仍正常返回。
+    let (status, body) = send(
+        app.clone(),
+        get_with_bearer("/api/v1/system/users?pageNum=%中", &token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["data"]["pageNum"], 1);
+
+    // 合法转义与字面多字节混排（含 emoji）都能解码，其余参数照常工作。
+    let (status, body) = send(
+        app.clone(),
+        get_with_bearer(
+            "/api/v1/system/users?keyword=%E7%94%A8%E6%88%B7%中%F0%9F%99%82",
+            &token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["code"], 200);
+    assert_eq!(body["data"]["total"], 0);
+}
