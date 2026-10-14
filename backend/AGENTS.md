@@ -27,34 +27,34 @@
 
 ## 2. Rust CI 标准（GitHub Actions）
 
-确保 `.github/workflows/rust-ci.yml` 存在，内容如下：
+CI 位于**仓库根目录**的 `.github/workflows/backend.yml`（GitHub 只识别根目录下的
+`.github/workflows/`，放在 `backend/` 里不会被执行），通过 `defaults.run.working-directory: backend`
+在 crate 目录内执行下列命令：
 
 ```yaml
-name: Rust CI
+name: Backend CI
 
 on:
   push:
     branches: [ "main", "master" ]
     paths:
-      - "**.rs"
-      - "**.proto"
-      - "**/Cargo.toml"
-      - "**/Cargo.lock"
-      - ".rustfmt.toml"
-      - ".clippy.toml"
-      - "rust-toolchain.toml"
-      - ".github/workflows/rust-ci.yml"
+      - "backend/**.rs"
+      - "backend/**.proto"
+      - "backend/Cargo.toml"
+      - "backend/Cargo.lock"
+      - "backend/.rustfmt.toml"
+      - "backend/.clippy.toml"
+      - ".github/workflows/backend.yml"
   pull_request:
     branches: [ "main", "master" ]
     paths:
-      - "**.rs"
-      - "**.proto"
-      - "**/Cargo.toml"
-      - "**/Cargo.lock"
-      - ".rustfmt.toml"
-      - ".clippy.toml"
-      - "rust-toolchain.toml"
-      - ".github/workflows/rust-ci.yml"
+      - "backend/**.rs"
+      - "backend/**.proto"
+      - "backend/Cargo.toml"
+      - "backend/Cargo.lock"
+      - "backend/.rustfmt.toml"
+      - "backend/.clippy.toml"
+      - ".github/workflows/backend.yml"
 
 env:
   CARGO_TERM_COLOR: always
@@ -62,6 +62,10 @@ env:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: backend
 
 jobs:
   check:
@@ -82,6 +86,8 @@ jobs:
 
       - name: Cache Cargo dependencies
         uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
 
       - name: Check formatting
         run: cargo fmt --all -- --check
@@ -97,12 +103,10 @@ jobs:
 
       - name: Run tests
         run: cargo test --features docs --verbose
-
 ```
 
 ---
 
-## 3. Cargo.toml 配置
 
 - 必须包含完整的包元数据（满足可发布到 [crates.io](https://crates.io) 的要求），例如：
   - `name`、`version`、`edition`、`authors`、`description`、`license`、`repository` 等。

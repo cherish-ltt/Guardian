@@ -1,28 +1,26 @@
-name: Rust CI
+name: Backend CI
 
 on:
   push:
     branches: [ "main", "master" ]
     paths:
-      - "**.rs"
-      - "**.proto"
-      - "**/Cargo.toml"
-      - "**/Cargo.lock"
-      - ".rustfmt.toml"
-      - ".clippy.toml"
-      - "rust-toolchain.toml"
-      - ".github/workflows/rust-ci.yml"
+      - "backend/**.rs"
+      - "backend/**.proto"
+      - "backend/Cargo.toml"
+      - "backend/Cargo.lock"
+      - "backend/.rustfmt.toml"
+      - "backend/.clippy.toml"
+      - ".github/workflows/backend.yml"
   pull_request:
     branches: [ "main", "master" ]
     paths:
-      - "**.rs"
-      - "**.proto"
-      - "**/Cargo.toml"
-      - "**/Cargo.lock"
-      - ".rustfmt.toml"
-      - ".clippy.toml"
-      - "rust-toolchain.toml"
-      - ".github/workflows/rust-ci.yml"
+      - "backend/**.rs"
+      - "backend/**.proto"
+      - "backend/Cargo.toml"
+      - "backend/Cargo.lock"
+      - "backend/.rustfmt.toml"
+      - "backend/.clippy.toml"
+      - ".github/workflows/backend.yml"
 
 env:
   CARGO_TERM_COLOR: always
@@ -30,6 +28,10 @@ env:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: backend
 
 jobs:
   check:
@@ -50,6 +52,8 @@ jobs:
 
       - name: Cache Cargo dependencies
         uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
 
       - name: Check formatting
         run: cargo fmt --all -- --check

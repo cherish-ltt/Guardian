@@ -81,40 +81,41 @@ repos:
   # 4. Rust 本地钩子：fmt / check / clippy / test
   # 使用 local 方式直接调用本机 cargo，避免依赖外部仓库
   # 优势：版本可控、无需等待第三方仓库更新、支持自定义参数
-  # 注意：pass_filenames: false 避免 pre-commit 将文件名传给 cargo
+  # 注意：--manifest-path 与 pass_filenames: false 保证钩子在仓库根
+  #       执行时也只作用于 backend/ 这个 crate
   # ============================================================
   - repo: local
     hooks:
       # rustfmt 格式化检查：--check 表示只检查不修改
       - id: fmt
         name: rustfmt 格式检查
-        entry: cargo fmt --all -- --check
+        entry: cargo fmt --manifest-path backend/Cargo.toml --all -- --check
         language: system
-        types: [rust]
+        files: '^backend/.*\.rs$'
         pass_filenames: false
 
       # cargo check：编译检查，不生成最终二进制
       - id: cargo-check
         name: cargo check 编译检查
-        entry: cargo check --all-targets --all-features
+        entry: cargo check --manifest-path backend/Cargo.toml --all-targets --all-features
         language: system
-        types: [rust]
+        files: '^backend/.*\.rs$'
         pass_filenames: false
 
       # clippy 静态分析：-D warnings 表示将警告视为错误
       - id: clippy
         name: clippy 静态分析
-        entry: cargo clippy --all-targets --all-features -- -D warnings
+        entry: cargo clippy --manifest-path backend/Cargo.toml --all-targets --all-features -- -D warnings
         language: system
-        types: [rust]
+        files: '^backend/.*\.rs$'
         pass_filenames: false
 
       # cargo test：运行测试，默认在 pre-commit 阶段执行
       # 如果测试较慢，可取消注释下一行将其移到 pre-push 阶段
       - id: test
         name: cargo test 测试
-        entry: cargo test --all-targets --all-features
+        entry: cargo test --manifest-path backend/Cargo.toml --all-targets --all-features
         language: system
-        types: [rust]
+        files: '^backend/.*\.rs$'
         pass_filenames: false
         # stages: [pre-push]  # 如需移至推送前执行，取消注释此行

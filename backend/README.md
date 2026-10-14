@@ -188,7 +188,8 @@ cargo run
 提交代码前请先阅读 [AGENTS.md](AGENTS.md)，它是本项目的开发规范，包含 Git 提交规范、Rust CI 标准、
 依赖与版本锁定要求、DDD + 洋葱架构约束、生产数据清理约定。
 
-仓库使用 `prek`（Rust 编写的 Git hook 管理器）管理提交前检查，配置见 `.pre-commit-config.yaml`：
+仓库使用 `prek`（Rust 编写的 Git hook 管理器）管理提交前检查，配置在仓库根目录的 `.pre-commit-config.yaml`
+（Rust 钩子通过 `--manifest-path backend/Cargo.toml` 作用于本 crate）：
 
 ```bash
 prek init   # 安装钩子，之后每次 git commit 自动运行格式、lint 与测试检查
