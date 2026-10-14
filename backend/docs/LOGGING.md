@@ -29,8 +29,9 @@ INFO 级别记录 method / uri / status，需要排查风暴时可查访问日�
 `cargo run` 启动时会把本次**实际生效**的配置以手绘 ASCII 列表框形式打印出来（`src/logging.rs` 的
 `log_startup_config`），并且同样写入日志文件，便于事后回溯进程启动那一刻用的参数：
 
-- 框内分为「application / server / database / jwt / logging / middleware」六组（分组名与键均为英文），
-  字段直接取自 `AppConfig`，渲染为 `key=value` 形式；
+- 框内分为「application / server / database / jwt / redis / logging / middleware」七组（分组名与键均为英文），
+  字段直接取自 `AppConfig`，渲染为 `key=value` 形式；`application` 组的 `version` 是例外，
+  取自 `Cargo.toml` 的 `version`（`env!("CARGO_PKG_VERSION")`），发版改 `Cargo.toml` 即自动生效；
 - `DATABASE_URL` 中的口令被替换为 `***`（`user:password@host` 与 `?password=` 两种写法都支持，
   口令里含 `@` 或 `:` 也不会漏出），`JWT_SECRET` 只输出字符数（如 `secret=***(56 chars)`），
   密钥不会被写进日志；

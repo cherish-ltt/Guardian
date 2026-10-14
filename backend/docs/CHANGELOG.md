@@ -31,6 +31,8 @@
   记录请求体（敏感字段脱敏）、操作人、耗时与错误文案。
 - 接口契约测试：`tests/admin_api_tests.rs`、`tests/monitor_api_tests.rs`、`tests/generator_api_tests.rs`
   与公共装置 `tests/support/mod.rs`。
+- 启动配置日志（`src/logging.rs` 的 `log_startup_config`）在 `app_name` / `app_env` 之后增加 `version` 行，
+  取值 `env!("CARGO_PKG_VERSION")`（编译期取自 `Cargo.toml` 的 `version`），发版改 `Cargo.toml` 即自动生效。
 
 ### 变更
 
