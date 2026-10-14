@@ -11,21 +11,8 @@ keywords = ["axum", "swagger", "seaorm", "jwt", "admin"]
 categories = ["web-programming", "development-tools"]
 
 [features]
-# 默认构建只包含脚手架实际用到的依赖；预置库作为可选 bundle 按需开启：
-#   cargo build --features preset,http-client
-# `preset` 与 `http-client` 不在 default 里，避免所有使用者默认编译一批未被引用的库。
+# 默认构建只包含脚手架实际用到的依赖；未引用的库不预置，需要时按 `=` 锁定版本后新增声明。
 default = []
-preset = [
-  "dep:rayon",
-  "dep:validator",
-  "dep:regex",
-  "dep:base64",
-  "dep:once_cell",
-  "dep:rand",
-  "dep:derive_more",
-  "dep:itertools",
-]
-http-client = ["dep:reqwest"]
 # 仅开发/文档构建启用 Swagger：utoipa 与 swagger-ui 不进入默认与 release 编译
 #（docs_enabled 也跟随该 feature，见 services/system.rs）。
 docs = ["dep:utoipa", "dep:utoipa-swagger-ui"]
@@ -37,7 +24,16 @@ async-trait = "=0.1.92"
 thiserror = "=2.0.21"
 
 # Web 框架与 HTTP 中间件
-axum = "=0.8.9"
+# axum 默认 feature 含 form / matched-path / original-uri / tower-log，本项目均未使用，
+# 因此关掉默认集后按实际用到的能力逐项列出：
+#   http1+tokio → axum::serve；json → Json（提取器与响应）；query → Query；tracing → 内部 span。
+axum = { version = "=0.8.9", default-features = false, features = [
+  "http1",
+  "json",
+  "query",
+  "tokio",
+  "tracing",
+] }
 tower = { version = "=0.5.3", features = ["buffer", "limit", "load-shed"] }
 tower-http = { version = "=0.7.1", features = [
   "compression-gzip",
@@ -50,9 +46,16 @@ tower-http = { version = "=0.7.1", features = [
 ] }
 
 # 异步运行时与性能
-tokio = { version = "=1.53.2", features = ["full"] }
+# 不用 "full"：按实际调用面逐项开启（macros 覆盖 main/test/select!，time 覆盖 timeout/sleep，
+# net 覆盖 TcpListener，signal 覆盖 ctrl_c/SIGTERM，rt-multi-thread 覆盖多线程运行时）。
+tokio = { version = "=1.53.3", features = [
+  "macros",
+  "net",
+  "rt-multi-thread",
+  "signal",
+  "time",
+] }
 mimalloc = "=0.1.52"
-rayon = { version = "=1.12.0", optional = true }
 
 # 响应体积与正文改写
 http-body-util = "=0.1.5"
@@ -68,22 +71,22 @@ zip = { version = "=9.0.3", default-features = false, features = [
   "deflate-flate2-zlib-rs",
 ] }
 
-# 配置、时间与基础工具
-chrono = { version = "=0.4.45", features = ["serde"] }
+# 配置与时间
+chrono = "=0.4.45"
 dotenv = "=0.15"
-once_cell = { version = "=1.21.4", optional = true }
-rand = { version = "=0.10.3", optional = true }
-regex = { version = "=1.13.1", optional = true }
 
-# 数据序列化与参数校验
-base64 = { version = "=0.23.1", optional = true }
-sea-orm = { version = "=2.0.4", features = [
-  "sqlx-sqlite",
-  "runtime-tokio-rustls",
+# 数据序列化与持久化
+# sea-orm 关掉默认集：默认打开的 with-json / with-chrono / with-uuid / with-time /
+# with-rust_decimal / stream 都没被用到（实体列只有 i64 与 String，也没有流式查询）。
+# runtime-tokio 而非 runtime-tokio-rustls：只支持 SQLite，TLS 后端是纯开销。
+sea-orm = { version = "=2.0.4", default-features = false, features = [
   "macros",
+  "runtime-tokio",
+  "sqlite-use-returning-for-3_35",
+  "sqlx-sqlite",
 ] }
 
-# SQL 迁移（与 sea-orm 共用同一 sqlx 版本，避免重复编译；TLS 后端由 sea-orm 侧并集提供）
+# SQL 迁移（与 sea-orm 共用同一 sqlx 版本，避免重复编译；migrate! 宏需要 macros）
 sqlx = { version = "=0.9.0", default-features = false, features = [
   "runtime-tokio",
   "sqlite",
@@ -91,8 +94,7 @@ sqlx = { version = "=0.9.0", default-features = false, features = [
   "macros",
 ] }
 serde = { version = "=1.0.229", features = ["derive"] }
-serde_json = "=1.0.151"
-validator = { version = "=0.21.0", features = ["derive"], optional = true }
+serde_json = "=1.0.154"
 
 # 鉴权与密码学
 argon2 = "=0.6.0"
@@ -116,18 +118,11 @@ utoipa-swagger-ui = { version = "=10.0.1", features = [
   "vendored",
 ], optional = true }
 
-# 常用外部调用与标识工具
-reqwest = { version = "=0.13.5", default-features = false, features = [
-  "json",
-  "rustls",
-], optional = true }
-uuid = { version = "=1.27.0", features = ["v7"] }
-
-# ExtendTool
-derive_more = { version = "=2.1.1", optional = true }
-itertools = { version = "=0.15.0", optional = true }
+# 标识工具
+uuid = { version = "=1.28.0", features = ["v7"] }
 
 # 开发依赖
 [dev-dependencies]
 # HTTP 服务与中间件测试工具
 tower = { version = "=0.5.3", features = ["util"] }
+
