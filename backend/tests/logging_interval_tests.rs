@@ -122,5 +122,10 @@ fn logs_are_flushed_on_fixed_interval() {
         logs.contains("batch_max_events=100") && logs.contains("batch_flush_interval_secs=1"),
         "启动配置日志应输出批量参数:\n{logs}"
     );
+    // 版本号取自 Cargo.toml，断言用编译期同一来源比对，不硬编码字面量。
+    assert!(
+        logs.contains(&format!("version={}", env!("CARGO_PKG_VERSION"))),
+        "启动配置日志应输出版本号:\n{logs}"
+    );
     drop(guard);
 }

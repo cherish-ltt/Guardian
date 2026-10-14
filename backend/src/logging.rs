@@ -124,6 +124,7 @@ pub fn log_startup_config(config: &AppConfig) {
         vec![
             format!("app_name={}", config.app_name),
             format!("app_env={}", config.app_env),
+            format!("version={}", env!("CARGO_PKG_VERSION")),
         ],
     );
     push_section(
