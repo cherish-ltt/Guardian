@@ -37,9 +37,15 @@
 - 项目定名为 Guardian：crate 更名 `guardian-backend`（版本 `0.1.0`），前端包更名 `guardian-frontend`，
   默认数据库文件为 `guardian.db`，日志与响应中的服务名、JWT 签发者与受众同步调整，
   前端 `localStorage` 键前缀由 `scaffold.` 改为 `guardian.`。
-- 演示账号口令统一为 `admin123456`（种子账号与新增用户的初始口令），并在 README 中列出
-  生产环境的数据清理清单；`sys.user.initPassword` 仍保留上游的内置值。
+- 演示账号口令改为从 `.env` 的 `SEED_ADMIN_PASSWORD` 读取（默认 `admin123456`），同时用作新增用户
+  未传口令时的默认值，不再写死在迁移文件与种子 SQL 中；并在 README 中列出生产环境的数据清理清单，
+  `sys.user.initPassword` 仍保留上游的内置值。
+- 演示数据改为 Guardian 命名：组织为 `Guardian 科技集团` 及其下属研发 / 产品 / 职能中心与 8 个部门，
+  演示账号为 `admin`（陈立诚）、`linjh`（林嘉豪）、`heyj`（何雅静），部门负责人姓名一并替换；
+  前端品牌文案与版权改为 Guardian。
 - 后台接口统一使用 `/api/v1` 前缀（与骨架既有约定一致），前端 `http.ts` 默认前缀随之调整。
+- 前端：页面与登录页展示的版本号由 `vite.config.ts` 的 define 注入，取自 `package.json` 的 version，
+  不再手写常量。
 - `AppError` 增加 `Business`（400，文案原样透出）、`Forbidden`（403）、`SessionExpired`（401）；
   5xx 统一文案为「系统内部错误」。
 - 仓储层分页参数由 `offset` / `limit` 两个标量改为领域对象 `Page`，同时满足 clippy 的

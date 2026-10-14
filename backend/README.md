@@ -124,7 +124,12 @@ cargo run
 
 ### 3. 默认账号
 
-首次启动播种的演示管理员为 `admin` / `admin123456`（口令哈希在播种时用 argon2 现场计算）。
+演示账号的明文口令来自 `.env` 的 `SEED_ADMIN_PASSWORD`（模板默认 `admin123456`）：
+
+- 首次启动播种 `admin`、`linjh`、`heyj` 三个演示账号时用它计算 argon2 哈希；
+- 新增用户未显式传口令时也用它作为默认口令。
+
+该变量不写进迁移文件与种子 SQL，生产环境替换为强口令即可，口令改后再删除演示账号。
 种子数据清单与生产环境的清理项见下一节。
 
 ## 生产环境注意事项
@@ -137,10 +142,11 @@ cargo run
 | --- | --- | --- |
 | `.env` | `JWT_SECRET=change-me-...` | 换成足够长的随机串；`APP_ENV=production` |
 | `.env` | `DATABASE_URL` 指向本地 `guardian.db` | 指向部署目录下的库文件，或删除该文件后重新初始化 |
+| `.env` | `SEED_ADMIN_PASSWORD` | 换成强口令；`admin` 账号首次登录后立即改密 |
 | `sys_config` | `sys.user.initPassword`（内置演示值 `Yy@123456`） | 改成强口令，或删除该行让新增用户必须显式传口令 |
-| `sys_user` | 演示账号 `chensy`、`wumin` | 删除（连同 `sys_user_role` / `sys_user_post` 关联） |
-| `sys_user` | `admin` 的口令 | 首次登录后立即修改（播种口令是公开的） |
-| `sys_dept` / `sys_post` | 演示组织（云原科技集团等 11 个部门）与 9 个岗位 | 替换为真实组织与岗位 |
+| `sys_user` | 演示账号 `linjh`、`heyj` | 删除（连同 `sys_user_role` / `sys_user_post` 关联） |
+| `sys_user` | `admin` 的口令 | 播种口令是 `.env` 里的公开默认值，首次登录后立即修改 |
+| `sys_dept` / `sys_post` | 演示组织（Guardian 科技集团等 11 个部门、11 位负责人）与 9 个岗位 | 替换为真实组织与岗位 |
 | `transfer_accounts` / `transfer_records` / `transfer_audits` | 演示账户 `acc_alice`、`acc_bob`（各 100000 分）与流水 | 清空或按业务替换；`migrations/0001` 是事务示例 |
 | `sys_oper_log` / `sys_login_log` | 本地联调产生的日志 | 上线前清空 |
 | Redis | `captcha:*`、`auth:token:*` | 切换环境时清空，避免旧会话残留 |
