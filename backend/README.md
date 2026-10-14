@@ -124,12 +124,23 @@ cargo run
 
 ### 3. 默认账号
 
-演示账号的明文口令来自 `.env` 的 `SEED_ADMIN_PASSWORD`（模板默认 `admin123456`）：
+播种的账号与口令都来自 `.env`，默认值对应三个演示账号（`admin` / `admin123456`）：
 
-- 首次启动播种 `admin`、`linjh`、`heyj` 三个演示账号时用它计算 argon2 哈希；
-- 新增用户未显式传口令时也用它作为默认口令。
+| 变量 | 作用 |
+| --- | --- |
+| `SEED_ADMIN_PASSWORD` | 播种账号的初始口令，同时作为新增用户未传口令时的默认口令 |
+| `SEED_USERS` | 账号清单，格式「用户名:昵称:邮箱:部门ID」，逗号分隔，按顺序取用户 ID `1..=N`；不设置时用内置的三个演示账号 |
 
-该变量不写进迁移文件与种子 SQL，生产环境替换为强口令即可，口令改后再删除演示账号。
+`SEED_USERS` 的第一个账号被授予超级管理员角色（拥有全部菜单），其余按顺序分配演示角色；
+超过三个的账号不分配角色与岗位。两个变量都不写进迁移文件与种子 SQL：
+
+```bash
+# 只播种一个自己的管理员账号
+SEED_ADMIN_PASSWORD=<强口令>
+SEED_USERS=ops_admin:运维管理员:ops@example.com:2
+```
+
+字段数不对、用户名 / 昵称 / 邮箱为空或部门 ID 不是整数时启动即失败，不会带着半个账号清单跑起来。
 种子数据清单与生产环境的清理项见下一节。
 
 ## 生产环境注意事项
@@ -142,9 +153,10 @@ cargo run
 | --- | --- | --- |
 | `.env` | `JWT_SECRET=change-me-...` | 换成足够长的随机串；`APP_ENV=production` |
 | `.env` | `DATABASE_URL` 指向本地 `guardian.db` | 指向部署目录下的库文件，或删除该文件后重新初始化 |
-| `.env` | `SEED_ADMIN_PASSWORD` | 换成强口令；`admin` 账号首次登录后立即改密 |
+| `.env` | `SEED_ADMIN_PASSWORD` | 换成强口令；首个账号登录后立即改密 |
+| `.env` | `SEED_USERS`（不设置会播种三个演示账号） | 换成真实管理员账号，或只留一个账号并在首次登录后改密 |
 | `sys_config` | `sys.user.initPassword`（内置演示值 `Yy@123456`） | 改成强口令，或删除该行让新增用户必须显式传口令 |
-| `sys_user` | 演示账号 `linjh`、`heyj` | 删除（连同 `sys_user_role` / `sys_user_post` 关联） |
+| `sys_user` | 内置演示账号 `linjh`、`heyj`（用 `SEED_USERS` 播种自己的账号时不会产生） | 删除（连同 `sys_user_role` / `sys_user_post` 关联） |
 | `sys_user` | `admin` 的口令 | 播种口令是 `.env` 里的公开默认值，首次登录后立即修改 |
 | `sys_dept` / `sys_post` | 演示组织（Guardian 科技集团等 11 个部门、11 位负责人）与 9 个岗位 | 替换为真实组织与岗位 |
 | `transfer_accounts` / `transfer_records` / `transfer_audits` | 演示账户 `acc_alice`、`acc_bob`（各 100000 分）与流水 | 清空或按业务替换；`migrations/0001` 是事务示例 |

@@ -67,7 +67,8 @@ npm run dev                    # http://localhost:5173，/api/v1 代理到后端
 ```
 
 首次启动会自动执行迁移并幂等播种演示数据（组织、岗位、角色、菜单、字典、参数与三个演示账号），
-演示账号口令取自 `.env` 的 `SEED_ADMIN_PASSWORD`（模板默认 `admin` / `admin123456`）。
+演示账号与口令取自 `.env`：`SEED_USERS` 决定播种哪些账号，`SEED_ADMIN_PASSWORD` 是它们的初始口令
+（模板默认 `admin` / `admin123456`）。
 
 > 生产环境部署前必须替换示例密钥、默认口令并清理演示数据，清单见
 > [backend/README.md](backend/README.md#生产环境注意事项) 与 [backend/AGENTS.md](backend/AGENTS.md)。

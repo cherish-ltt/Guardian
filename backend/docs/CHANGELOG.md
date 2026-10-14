@@ -37,8 +37,10 @@
 - 项目定名为 Guardian：crate 更名 `guardian-backend`（版本 `0.1.0`），前端包更名 `guardian-frontend`，
   默认数据库文件为 `guardian.db`，日志与响应中的服务名、JWT 签发者与受众同步调整，
   前端 `localStorage` 键前缀由 `scaffold.` 改为 `guardian.`。
-- 演示账号口令改为从 `.env` 的 `SEED_ADMIN_PASSWORD` 读取（默认 `admin123456`），同时用作新增用户
-  未传口令时的默认值，不再写死在迁移文件与种子 SQL 中；并在 README 中列出生产环境的数据清理清单，
+- 演示账号改为从 `.env` 读取：`SEED_USERS`（`用户名:昵称:邮箱:部门ID`，逗号分隔）决定播种哪些账号，
+  `SEED_ADMIN_PASSWORD`（默认 `admin123456`）是它们的初始口令、也是新增用户未传口令时的默认值；
+  两者都不再写死在迁移文件与种子 SQL 中，解析失败启动即拒。角色与岗位按账号顺序分配，
+  超过三个的账号不分配。README 与 AGENTS.md 同步列出生产环境的数据清理清单，
   `sys.user.initPassword` 仍保留上游的内置值。
 - 演示数据改为 Guardian 命名：组织为 `Guardian 科技集团` 及其下属研发 / 产品 / 职能中心与 8 个部门，
   演示账号为 `admin`（陈立诚）、`linjh`（林嘉豪）、`heyj`（何雅静），部门负责人姓名一并替换；

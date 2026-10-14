@@ -136,8 +136,9 @@ src/middleware/audit.rs                       写操作留痕
 - 种子数据在 `src/infrastructure/databases/seed.rs`：11 个部门、9 个岗位、6 个角色、
   3 个用户及其角色 / 岗位关联、38 条菜单、3 类字典与 7 条字典项、3 条参数配置；
   全部 `INSERT OR IGNORE`，可重复启动。**不含**任何 `sys_oper_log` / `sys_login_log` 示例行（与 Spring 一致）。
-- 种子口令的明文来自 `.env` 的 `SEED_ADMIN_PASSWORD`（默认 `admin123456`），播种时用 argon2 现场哈希，
-  没有照抄参考实现里的 BCrypt 字面量；新增用户未传口令时也用同一个值。
+- 种子账号与口令都来自 `.env`：`SEED_USERS`（`用户名:昵称:邮箱:部门ID`，逗号分隔）决定播种哪些账号，
+  `SEED_ADMIN_PASSWORD`（默认 `admin123456`）是它们的初始口令，也是新增用户未传口令时的默认值；
+  播种时用 argon2 现场哈希，没有照抄参考实现里的 BCrypt 字面量。
 
 ## 会话与验证码存储
 

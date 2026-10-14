@@ -440,16 +440,17 @@ msrv = "1.99.0"
 | 处理方式 | 数据 | 说明 |
 | --- | --- | --- |
 | 必须替换 | `.env` 的 `JWT_SECRET`、`APP_ENV=production`、`DATABASE_URL` 指向部署路径 | 启动时会主动拒绝示例密钥 |
-| 必须替换 | `.env` 的 `SEED_ADMIN_PASSWORD`（播种演示账号与新增用户的默认口令） | 换成强口令；该值不落迁移文件与种子 SQL |
+| 必须替换 | `.env` 的 `SEED_ADMIN_PASSWORD`（播种账号与新增用户的默认口令） | 换成强口令；该值不落迁移文件与种子 SQL |
+| 必须替换 | `.env` 的 `SEED_USERS`（不设置会播种三个演示账号） | 换成真实账号清单；格式「用户名:昵称:邮箱:部门ID」，解析失败启动即拒 |
 | 必须替换 | `sys_config` 的 `sys.user.initPassword`（内置演示值） | 改成强口令或删除该行，强制新增用户显式传口令 |
 | 必须替换 | `sys_user` 中 `admin` 的口令 | 播种口令公开可知，首次登录后立即修改 |
-| 应清理 | `sys_user` 的 `linjh`、`heyj` 及 `sys_user_role` / `sys_user_post` 关联 | 演示账号 |
+| 应清理 | `sys_user` 的 `linjh`、`heyj` 及 `sys_user_role` / `sys_user_post` 关联 | 内置演示账号，用 `SEED_USERS` 覆盖后不会产生 |
 | 应清理 | `sys_dept` 的演示组织（含负责人姓名）、`sys_post` 的演示岗位 | 替换为真实组织与岗位 |
 | 应清理 | `transfer_accounts` / `transfer_records` / `transfer_audits`（`acc_alice`、`acc_bob`） | 事务示例数据，生产应按业务替换或清空 |
 | 应清理 | `sys_oper_log` / `sys_login_log` 的本地联调记录、Redis 的 `captcha:*` 与 `auth:token:*`、`log/` | 环境切换时清空 |
 | 建议保留 | `sys_menu` 的目录 / 菜单 / 按钮记录 | 前端动态路由与权限码的来源，清空会导致页面不可用 |
 | 建议保留 | `sys_role` 的内置 `super_admin` 角色及其菜单授权 | `AdminUser` 提取器对该角色直接放行 |
-| 建议保留 | `sys_user` 的 `admin` 账号（改口令后保留） | 否则没有任何账号能登录后台 |
+| 建议保留 | `sys_user` 的首个账号（默认 `admin`，改口令后保留） | 唯一被授予超级管理员的账号，否则没有任何账号能登录后台 |
 | 按需替换 | `sys_dict_type` / `sys_dict_data` | 业务下拉数据 |
 
 - 演示接口（`examples`、`transactions` 与 `dev-login` / `dev-transfer`）在真实项目中应替换或删除；
