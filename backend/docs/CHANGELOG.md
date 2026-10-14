@@ -39,6 +39,14 @@
 
 ### 修复
 
+- **查询串解码在 `%` 后接多字节字符时 panic**：`QueryString::parse` 的 `decode` 用
+  `&value[index + 1..index + 3]` 做 `str` 区间切片取两位十六进制文本，`%` 后面若是多字节
+  字符（请求行里出现字面非 ASCII 字节，如 `?keyword=%中`），`index + 3` 会落在该字符的
+  字节区间内部，切片直接 panic。`decode` 服务于全部 `RawQuery` 端点，且 `oneshot` 之外
+  的真实服务进程会因 handler panic 中断该请求，因此任意后台列表与导出接口都能被一条
+  构造的查询串打崩。现改为逐字节解析：用 `hex_digit` 对后两个字节逐个判定十六进制，
+  合法才消费 3 个字节，否则保留字面 `%`；输出端仍走 `from_utf8_lossy`，
+  非法字节序列替换而不是崩溃。
 - **播种账号共用同一份口令哈希**：`seed_users` 原先在循环外只哈希一次，多个账号会写入
   逐字相同的 PHC 字符串（含相同盐）。现改为每个账号各自哈希，盐彼此独立；
   当前所有播种账号本就共用 `SEED_ADMIN_PASSWORD`，不存在越权，但改为按账号独立加盐后，
@@ -69,6 +77,11 @@
 
 - 移除上游的旧品牌文档资产（`docs/assets/logo.png`、`docs/assets/flow-1.png` 与 `docs/live-panel/` 动效面板），
   README 改用文本描述架构与流程。
+- 移除三处无调用点的死角代码（不影响行为）：`repositories/sql.rs` 的 `float` 与 `flag`、
+  `util/time.rs` 的 `today`、`repositories/permission_graph.rs` 的 `GRAPH_MENU_SELECT`
+  与 `map_graph_menu`。其中 `GRAPH_MENU_SELECT` 是 `repositories/menu.rs` 里 `MENU_SELECT`
+  的陈旧副本（少了 `m.component`、多了 `ORDER BY`），`map_graph_menu` 也已被
+  `services/admin/graph.rs` 从领域模型 `MenuFlatRow` 直接构造 `GraphMenu` 取代。
 
 ### 测试
 
@@ -96,7 +109,7 @@
   `api/dto/admin.rs` 的非法 `%` 转义保留原字符、`services/dashboard.rs` 的未知统计键兜底，
   单元测试由 99 个增加到 105 个。
 - **覆盖率**：`cargo llvm-cov --features docs --summary-only` 实测行覆盖率由 93.73% 提升到
-  **97.02%**（region 90.63% → 95.10%，函数 90.33% → 93.38%），满足 `AGENTS.md` 第 10.1 节
+  **97.40%**（region 90.63% → 95.55%，函数 90.33% → 93.71%），满足 `AGENTS.md` 第 10.1 节
   ≥80% 的要求；`docs/TESTING.md` 记录命令、口径，以及未纳入目标的 `src/main.rs`（二进制入口）
   与 `src/infrastructure/services/redis_store.rs`（需外部 Redis）及原因。
 

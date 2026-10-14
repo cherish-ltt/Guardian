@@ -66,7 +66,7 @@ cargo llvm-cov --features docs --summary-only
 
 `AGENTS.md` 第 10.1 节要求**行覆盖率 ≥ 80%**：全局口径，不按文件考核；
 命令与 CI 的测试口径保持一致（同样带 `--features docs`，否则 `docs` 门控的代码不在统计范围内）。
-当前实测：**行 97.02% / 函数 93.38% / region 95.10%**（244 个用例，`cargo-llvm-cov 0.9.1`）。
+当前实测：**行 97.40% / 函数 93.71% / region 95.55%**（247 个用例，`cargo-llvm-cov 0.9.1`）。
 这只是当时的快照，改动后需重新测量，不要把数字当常量。
 
 下面两处不计入覆盖率目标，也无需为它们写测试：
@@ -76,17 +76,14 @@ cargo llvm-cov --features docs --summary-only
 | `src/main.rs` | 二进制入口：进程启动、信号监听与优雅退出，单测进程覆盖不到（要覆盖必须拉起真实进程与端口）。 |
 | `src/infrastructure/services/redis_store.rs` | 生产用的 `RedisAuthStore` 需要外部 Redis 实例；集成测试统一用 `MemoryAuthStore`，不让测试依赖外部服务。 |
 
-除这两处外，剩余未覆盖行只有三类，都不值得为覆盖率補断言：
+除这两处外，剩余未覆盖行只有两类，都不值得为覆盖率補断言：
 
 - **防御性兜底**：如各仓储的 `.ok_or_else(|| AppError::internal(...))`（数据库时钟无返回值）、
-  `offset` 整数溢出的 `checked_*` 守卫、`seed_user_assignments` 的 `assigned == 0`。
+  `offset` 整数溢出的 `checked_*` 守卫、`seed_user_assignments` 的 `assigned == 0`、
+  `Deref` 实现等没有实际触发路径的分支。
 - **需要故障注入的错误分支**：写盘失败回退缓冲（`logging.rs`）、响应体收集失败
   （`middleware/trace.rs`）、留痕写入失败（`middleware/audit.rs`）、事务回滚失败
   （`services/support.rs`）—— 它们的存在本身就是“不让未预期失败掩盖真因”。
-- **已无调用点的死代码**：`repositories/sql.rs` 的 `float` / `flag`、
-  `repositories/permission_graph.rs` 的 `GRAPH_MENU_SELECT` / `map_graph_menu`、
-  `util/time.rs` 的 `today`。按 `AGENTS.md` 第 9 节「不得私自改动结构」保留不动，
-  测试也不为它们写占位断言。
 
 ### 后台管理与监控接口测试
 
