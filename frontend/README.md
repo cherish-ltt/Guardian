@@ -23,7 +23,8 @@ npm run build
 
 前端请求的默认前缀是 `/api/v1`（`src/api/http.ts`），可用 `VITE_API_BASE_URL` 覆盖。
 
-默认管理员为 `admin` / `admin123456`，验证码必须使用当前页面显示的字符。非管理员菜单来自角色授权；
+默认管理员为 `admin` / `admin123456`（口令由后端 `.env` 的 `SEED_ADMIN_PASSWORD` 播种），
+验证码必须使用当前页面显示的字符。非管理员菜单来自角色授权；
 无菜单账号显示明确的权限分配提示。
 
 ## 目录
