@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import Icon from '@/components/Icon.vue'
 import IconButton from '@/components/ui/IconButton.vue'
 import Avatar from '@/components/ui/Avatar.vue'
+import GithubLink from '@/components/GithubLink.vue'
 import { currentUser } from '@/composables/auth'
 import { overlayEnter, overlayLeave } from '@/composables/motion'
 
@@ -83,6 +84,7 @@ onBeforeUnmount(() => closeMenu())
       <span class="cmd-text">搜索菜单</span>
       <span class="kbd">{{ isMac ? '⌘' : 'Ctrl' }} K</span>
     </button>
+    <GithubLink />
     <IconButton name="contrast" label="外观设置" @click="emit('appearance')" />
     <button
       ref="chip"

@@ -7,6 +7,8 @@ export const APP = Object.freeze({
   subtitle: 'Admin Console',
   version: APP_VERSION,
   copyright: `© ${new Date().getFullYear()} Guardian`,
+  /* 顶栏的 GitHub 入口；置空字符串即整体不渲染，生产部署摘链接只改这一行 */
+  repo: 'https://github.com/cherish-ltt/Guardian',
 })
 
 /* ── 导航 ─────────────────────────────────────────────────── */
