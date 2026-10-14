@@ -1,14 +1,18 @@
 <script setup lang="ts">
 import { reactive, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import FormDialog from '@/components/business/FormDialog.vue'
 import Field from '@/components/ui/Field.vue'
 import TextInput from '@/components/ui/TextInput.vue'
 import { authApi } from '@/api'
+import { logout } from '@/composables/auth'
 import { pushToast, toastError } from '@/composables/toast'
 import { required, validate } from '@/utils/validate'
 
 const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
+
+const router = useRouter()
 
 const form = reactive({ oldPassword: '', newPassword: '', confirmPassword: '' })
 const errors = ref<Partial<Record<keyof typeof form, string>>>({})
@@ -30,8 +34,11 @@ async function submit() {
   saving.value = true
   try {
     await authApi.changePassword({ oldPassword: form.oldPassword, newPassword: form.newPassword })
-    pushToast('密码已修改，下次登录请使用新密码', 'ok')
+    /* 改密同时撤销了本账号的全部会话（含当前这个），必须先清掉本地会话再回登录页 */
+    pushToast('密码已修改，请重新登录', 'ok')
     emit('close')
+    await logout()
+    await router.replace({ name: 'login' })
   } catch (error) {
     toastError(error, '密码修改失败')
   } finally {
