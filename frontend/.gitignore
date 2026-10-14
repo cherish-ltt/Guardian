@@ -2,3 +2,6 @@ node_modules
 dist
 .npm-cache
 .DS_Store
+
+# 本地私有环境变量（Vite 约定：.env.local 与 .env.*.local 不提交）
+.env*.local
