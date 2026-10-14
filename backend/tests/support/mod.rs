@@ -66,6 +66,7 @@ pub async fn setup_app() -> Router {
         },
         seed: SeedConfig {
             admin_password: DEMO_PASSWORD.to_string(),
+            ..SeedConfig::default()
         },
         logging: LoggingConfig {
             filter: "info".to_string(),

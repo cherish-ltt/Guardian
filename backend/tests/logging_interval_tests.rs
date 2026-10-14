@@ -43,6 +43,7 @@ fn test_config(out_dir: &str) -> AppConfig {
         },
         seed: SeedConfig {
             admin_password: "admin123456".to_string(),
+            ..SeedConfig::default()
         },
         logging: LoggingConfig {
             filter: "info".to_string(),

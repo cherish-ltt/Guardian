@@ -61,6 +61,7 @@ async fn setup_app_with_cors_origins(cors_allowed_origins: Vec<String>) -> Route
         },
         seed: SeedConfig {
             admin_password: "admin123456".to_string(),
+            ..SeedConfig::default()
         },
         logging: LoggingConfig {
             filter: "info".to_string(),

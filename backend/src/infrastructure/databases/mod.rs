@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use sea_orm::{ConnectOptions, Database, DatabaseConnection};
 use tokio::time::{Duration as TokioDuration, timeout};
 
-use crate::infrastructure::config::DatabaseConfig;
+use crate::infrastructure::config::{DatabaseConfig, SeedConfig};
 
 pub mod schema;
 pub mod seed;
@@ -39,7 +39,7 @@ pub async fn ping_database(database: &DatabaseConnection, timeout_secs: u64) -> 
 pub async fn run_migrations(
     database: &DatabaseConnection,
     url: &str,
-    seed_admin_password: &str,
+    seed: &SeedConfig,
 ) -> Result<()> {
     // 表结构由 sqlx migrate 管理（见 migrations/ 目录），迁移记录写入 _sqlx_migrations 表。
     let pool = sqlx::sqlite::SqlitePoolOptions::new()
@@ -58,7 +58,7 @@ pub async fn run_migrations(
     // - 种子数据用 NOT EXISTS 保持幂等。
     schema::create_transfer_indexes(database).await?;
     schema::seed_transfer_accounts(database).await?;
-    seed::seed_admin_data(database, seed_admin_password).await?;
+    seed::seed_admin_data(database, seed).await?;
 
     Ok(())
 }

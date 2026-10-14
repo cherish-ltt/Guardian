@@ -36,6 +36,7 @@ fn test_config(out_dir: &str, utc_offset_hour: i8, utc_offset_minute: i8) -> App
         },
         seed: SeedConfig {
             admin_password: "admin123456".to_string(),
+            ..SeedConfig::default()
         },
         logging: LoggingConfig {
             filter: "info".to_string(),

@@ -532,3 +532,75 @@ fn non_sqlite_database_url_is_rejected() {
         );
     }
 }
+
+/// 未设置 `SEED_USERS` 时播种三个内置演示账号，口令取模板默认值。
+#[test]
+fn seed_defaults_to_demo_accounts() {
+    with_env(
+        &[
+            ("JWT_SECRET", Some(CUSTOM_SECRET)),
+            ("SEED_ADMIN_PASSWORD", None),
+            ("SEED_USERS", None),
+        ],
+        || {
+            let config = AppConfig::from_env().expect("默认配置应可加载");
+
+            assert_eq!(config.seed.admin_password, "admin123456");
+            assert_eq!(config.seed.users.len(), 3);
+            assert_eq!(config.seed.users[0].username, "admin");
+            assert_eq!(config.seed.users[2].email, "heyj@example.com");
+        },
+    );
+}
+
+/// `SEED_USERS` 覆盖内置演示账号；条目两侧的空白与空条目直接忽略。
+#[test]
+fn seed_users_override_demo_accounts() {
+    with_env(
+        &[
+            ("JWT_SECRET", Some(CUSTOM_SECRET)),
+            ("SEED_ADMIN_PASSWORD", Some("custom-password")),
+            (
+                "SEED_USERS",
+                Some(" ops_admin : 运维管理员 :ops@example.com:2 , "),
+            ),
+        ],
+        || {
+            let config = AppConfig::from_env().expect("自定义播种账号应可加载");
+
+            assert_eq!(config.seed.admin_password, "custom-password");
+            assert_eq!(config.seed.users.len(), 1);
+            assert_eq!(config.seed.users[0].username, "ops_admin");
+            assert_eq!(config.seed.users[0].nickname, "运维管理员");
+            assert_eq!(config.seed.users[0].dept_id, 2);
+        },
+    );
+}
+
+/// `SEED_USERS` 格式错误时启动即拒，避免带着半个账号清单跑起来。
+#[test]
+fn invalid_seed_users_is_rejected() {
+    for (value, expected) in [
+        (
+            "admin:陈立诚:chenlc@example.com",
+            "expected username:nickname:email:deptId",
+        ),
+        ("admin:陈立诚:chenlc@example.com:abc", "deptId"),
+        ("admin::chenlc@example.com:5", "must not be empty"),
+        ("   ", "at least one account"),
+    ] {
+        with_env(
+            &[
+                ("JWT_SECRET", Some(CUSTOM_SECRET)),
+                ("SEED_USERS", Some(value)),
+            ],
+            || {
+                let error = AppConfig::from_env().expect_err("非法 SEED_USERS 应被拒绝");
+                assert!(
+                    error.to_string().contains(expected),
+                    "`{value}` 的报错信息不符合预期: {error}"
+                );
+            },
+        );
+    }
+}

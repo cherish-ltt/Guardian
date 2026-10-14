@@ -63,7 +63,7 @@ impl Container {
     ) -> Result<Self> {
         let config = Arc::new(config);
         let database = connect_database(&config.database).await?;
-        run_migrations(&database, &config.database.url, &config.seed.admin_password).await?;
+        run_migrations(&database, &config.database.url, &config.seed).await?;
         let jwt_service = Arc::new(JwtService::new(config.jwt.clone())?);
 
         let auth_service: Arc<dyn AuthUseCase> = Arc::new(AuthService::new(jwt_service.clone()));

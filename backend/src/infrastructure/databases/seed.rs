@@ -1,19 +1,17 @@
 //! 后台管理的种子数据，按 Spring 版 `V2__seed_data.sql` 逐行对齐。
 //!
 //! 全部语句都用 `INSERT OR IGNORE`，重复启动不会重复插入，也不需要先查后写。
-//! 用户口令用 argon2 现场生成（Spring 版种子里的 BCrypt 字面量无法在本项目复用），
-//! 明文口令来自 `.env` 的 `SEED_ADMIN_PASSWORD`，不写进迁移文件与种子 SQL。
+//! 账号与口令来自 `.env`（见 `SeedConfig`）：明文口令不写进迁移文件与种子 SQL，
+//! 用户口令用 argon2 现场生成（Spring 版种子里的 BCrypt 字面量无法在本项目复用）。
 
 use anyhow::{Context, Result};
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, Value};
 
+use crate::infrastructure::config::{SeedConfig, SeedUser};
 use crate::util::password;
 
-/// 种子里的用户 ID，用来判断是否已经播种过。
-const SEED_USER_IDS: [i64; 3] = [1, 2, 3];
-
-/// 播种演示数据；`admin_password` 是三个演示账号共用的明文口令。
-pub async fn seed_admin_data(database: &DatabaseConnection, admin_password: &str) -> Result<()> {
+/// 播种演示数据；账号与口令由 `SeedConfig` 提供。
+pub async fn seed_admin_data(database: &DatabaseConnection, seed: &SeedConfig) -> Result<()> {
     for (name, statement) in STATEMENTS {
         database
             .execute_unprepared(statement)
@@ -21,50 +19,88 @@ pub async fn seed_admin_data(database: &DatabaseConnection, admin_password: &str
             .with_context(|| format!("failed to seed {name}"))?;
     }
 
-    seed_users(database, admin_password).await?;
+    seed_users(database, &seed.users, &seed.admin_password).await?;
+    seed_user_assignments(database, seed.users.len()).await?;
 
     Ok(())
 }
 
-/// 三个演示账号还没有写入时才计算口令哈希：argon2 是本项目里最贵的一次启动开销。
-async fn seed_users(database: &DatabaseConnection, admin_password: &str) -> Result<()> {
-    if seeded_user_count(database).await? >= SEED_USER_IDS.len() as i64 {
+/// 播种账号；已经种过（库里已有 ID `1..=N` 的账号）时不再计算口令哈希。
+async fn seed_users(
+    database: &DatabaseConnection,
+    users: &[SeedUser],
+    admin_password: &str,
+) -> Result<()> {
+    if seeded_user_count(database, users.len() as i64).await? >= users.len() as i64 {
         return Ok(());
     }
 
     let hashed = password::hash_password(admin_password)
         .map_err(|error| anyhow::anyhow!("failed to hash seed password: {error}"))?;
-    let statement = Statement::from_sql_and_values(
-        DbBackend::Sqlite,
-        USER_INSERT,
-        SEED_USERS
-            .iter()
-            .enumerate()
-            .flat_map(|(index, (username, nickname, email, dept_id))| {
-                [
-                    Value::from(index as i64 + 1),
-                    Value::from(*username),
-                    Value::from(hashed.clone()),
-                    Value::from(*nickname),
-                    Value::from(*email),
-                    Value::from(*dept_id),
-                ]
-            })
-            .collect::<Vec<Value>>(),
-    );
+
+    let mut sql = String::from(USER_INSERT_PREFIX);
+    let mut values = Vec::with_capacity(users.len() * 6);
+    for (index, user) in users.iter().enumerate() {
+        if index > 0 {
+            sql.push_str(", ");
+        }
+        sql.push_str(USER_INSERT_ROW);
+        values.extend([
+            Value::from(index as i64 + 1),
+            Value::from(user.username.as_str()),
+            Value::from(hashed.clone()),
+            Value::from(user.nickname.as_str()),
+            Value::from(user.email.as_str()),
+            Value::from(user.dept_id),
+        ]);
+    }
+
     database
-        .execute_raw(statement)
+        .execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            sql,
+            values,
+        ))
         .await
         .context("failed to seed sys_user")?;
 
     Ok(())
 }
 
-async fn seeded_user_count(database: &DatabaseConnection) -> Result<i64> {
+/// 按账号顺序分配演示角色与岗位。
+///
+/// 第一个账号是超级管理员（拥有全部菜单），其余账号是演示角色。
+/// 账号数超过内置映射时，多出的账号不分配，登录后没有菜单。
+async fn seed_user_assignments(database: &DatabaseConnection, user_count: usize) -> Result<()> {
+    let assigned = user_count.min(USER_ROLE_IDS.len());
+    if assigned == 0 {
+        return Ok(());
+    }
+
+    for (table, column, ids) in [
+        ("sys_user_role", "role_id", USER_ROLE_IDS),
+        ("sys_user_post", "post_id", USER_POST_IDS),
+    ] {
+        let pairs = (0..assigned)
+            .map(|index| format!("({}, {})", index + 1, ids[index]))
+            .collect::<Vec<String>>()
+            .join(", ");
+        let statement = format!("INSERT OR IGNORE INTO {table} (user_id, {column}) VALUES {pairs}");
+
+        database
+            .execute_unprepared(&statement)
+            .await
+            .with_context(|| format!("failed to seed {table}"))?;
+    }
+
+    Ok(())
+}
+
+async fn seeded_user_count(database: &DatabaseConnection, last_id: i64) -> Result<i64> {
     let statement = Statement::from_sql_and_values(
         DbBackend::Sqlite,
-        "SELECT COUNT(*) AS value FROM sys_user WHERE id IN (1, 2, 3)",
-        Vec::<Value>::new(),
+        "SELECT COUNT(*) AS value FROM sys_user WHERE id <= ?",
+        vec![Value::from(last_id)],
     );
     let row = database
         .query_one_raw(statement)
@@ -76,21 +112,18 @@ async fn seeded_user_count(database: &DatabaseConnection) -> Result<i64> {
         .context("failed to read seeded user count")
 }
 
-const USER_INSERT: &str = "INSERT OR IGNORE INTO sys_user \
+const USER_INSERT_PREFIX: &str = "INSERT OR IGNORE INTO sys_user \
      (id, username, password, nickname, phone, email, dept_id, status, create_by, update_by) \
-     VALUES (?, ?, ?, ?, '', ?, ?, 1, 'system', 'system'), \
-     (?, ?, ?, ?, '', ?, ?, 1, 'system', 'system'), \
-     (?, ?, ?, ?, '', ?, ?, 1, 'system', 'system')";
+     VALUES ";
 
-/// `(登录账号, 昵称, 邮箱, 部门 ID)`，ID 按顺序取 1..=3。
-const SEED_USERS: [(&str, &str, &str, i64); 3] = [
-    ("admin", "陈立诚", "chenlc@example.com", 5),
-    ("linjh", "林嘉豪", "linjh@example.com", 5),
-    ("heyj", "何雅静", "heyj@example.com", 6),
-];
+const USER_INSERT_ROW: &str = "(?, ?, ?, ?, '', ?, ?, 1, 'system', 'system')";
 
-/// 语句顺序与 Spring 版一致：先组织与账号，再菜单授权，最后字典与参数。
-const STATEMENTS: [(&str, &str); 10] = [
+/// 演示角色与岗位按账号顺序分配，对应 `sys_role` 的超级管理员 / 系统管理员 / 业务管理员。
+const USER_ROLE_IDS: [i64; 3] = [1, 2, 3];
+const USER_POST_IDS: [i64; 3] = [3, 5, 6];
+
+/// 语句顺序与 Spring 版一致：先组织，再菜单授权，最后字典与参数。
+const STATEMENTS: [(&str, &str); 8] = [
     (
         "sys_dept",
         "-- 本地开发示例数据；组织与用户仅供演示，电话留空，邮箱使用 example.com。
@@ -132,14 +165,6 @@ const STATEMENTS: [(&str, &str); 10] = [
              (4, '研发工程师', 'developer', 'SELF', 4, 1, 0, '使用代码生成与开发模块', 'system', 'system'),
              (5, '审计专员', 'auditor', 'CUSTOM', 5, 1, 0, '查看操作日志与登录日志', 'system', 'system'),
              (6, '只读访客', 'guest', 'SELF', 6, 0, 0, '仅可查看授权报表', 'system', 'system');",
-    ),
-    (
-        "sys_user_role",
-        "INSERT OR IGNORE INTO sys_user_role (user_id, role_id) VALUES (1, 1), (2, 2), (3, 3);",
-    ),
-    (
-        "sys_user_post",
-        "INSERT OR IGNORE INTO sys_user_post (user_id, post_id) VALUES (1, 3), (2, 5), (3, 6);",
     ),
     ("sys_menu", MENU_INSERT),
     (
@@ -225,7 +250,25 @@ const MENU_INSERT: &str = "INSERT OR IGNORE INTO sys_menu (id, parent_id, menu_n
 mod tests {
     use sea_orm::{ConnectionTrait, Database, DatabaseConnection};
 
-    use super::{MENU_INSERT, SEED_USERS, STATEMENTS};
+    use super::{MENU_INSERT, STATEMENTS};
+    use crate::infrastructure::config::{SeedConfig, SeedUser};
+
+    /// 测试用播种配置：口令固定，账号由用例自己指定。
+    fn seed_config(users: Vec<SeedUser>) -> SeedConfig {
+        SeedConfig {
+            admin_password: "seed-test-password".to_string(),
+            users,
+        }
+    }
+
+    fn demo_user(username: &str, nickname: &str) -> SeedUser {
+        SeedUser {
+            username: username.to_string(),
+            nickname: nickname.to_string(),
+            email: format!("{username}@example.com"),
+            dept_id: 5,
+        }
+    }
 
     async fn setup_database() -> (DatabaseConnection, String) {
         let url = format!(
@@ -256,11 +299,14 @@ mod tests {
     #[tokio::test]
     async fn admin_seed_is_idempotent_and_keeps_demo_accounts() {
         let (database, url) = setup_database().await;
-        let password = "seed-test-password";
-        crate::infrastructure::databases::run_migrations(&database, &url, password)
+        let seed = SeedConfig {
+            admin_password: "seed-test-password".to_string(),
+            ..SeedConfig::default()
+        };
+        crate::infrastructure::databases::run_migrations(&database, &url, &seed)
             .await
             .expect("执行迁移与播种");
-        crate::infrastructure::databases::run_migrations(&database, &url, password)
+        crate::infrastructure::databases::run_migrations(&database, &url, &seed)
             .await
             .expect("重复执行迁移与播种");
 
@@ -287,7 +333,66 @@ mod tests {
             .expect("查询种子管理员")
             .expect("种子管理员存在");
         let hashed: String = row.try_get("", "password").expect("读取口令");
-        assert!(crate::util::password::verify_password(password, &hashed).expect("校验口令"));
+        assert!(
+            crate::util::password::verify_password("seed-test-password", &hashed)
+                .expect("校验口令")
+        );
+    }
+
+    /// `SEED_USERS` 决定播种哪些账号，角色与岗位按顺序分配。
+    #[tokio::test]
+    async fn seed_follows_configured_accounts() {
+        let (database, url) = setup_database().await;
+        let seed = seed_config(vec![
+            demo_user("only_admin", "单人管理员"),
+            demo_user("helper", "协助账号"),
+        ]);
+        crate::infrastructure::databases::run_migrations(&database, &url, &seed)
+            .await
+            .expect("执行迁移与播种");
+
+        let users = database
+            .query_all_raw(sea_orm::Statement::from_string(
+                sea_orm::DbBackend::Sqlite,
+                "SELECT id, username, nickname, email FROM sys_user ORDER BY id".to_string(),
+            ))
+            .await
+            .expect("查询播种账号");
+        assert_eq!(users.len(), 2);
+        assert_eq!(
+            users[0]
+                .try_get::<String>("", "username")
+                .expect("读取账号"),
+            "only_admin"
+        );
+        assert_eq!(
+            users[1]
+                .try_get::<String>("", "nickname")
+                .expect("读取昵称"),
+            "协助账号"
+        );
+        assert_eq!(
+            users[1].try_get::<String>("", "email").expect("读取邮箱"),
+            "helper@example.com"
+        );
+        assert_eq!(count(&database, "sys_user_role").await, 2);
+        assert_eq!(count(&database, "sys_user_post").await, 2);
+
+        // 超过内置映射（3 个）的账号不分配角色与岗位。
+        let many = seed_config(vec![
+            demo_user("u1", "账号一"),
+            demo_user("u2", "账号二"),
+            demo_user("u3", "账号三"),
+            demo_user("u4", "账号四"),
+        ]);
+        let (database, url) = setup_database().await;
+        crate::infrastructure::databases::run_migrations(&database, &url, &many)
+            .await
+            .expect("执行迁移与播种");
+
+        assert_eq!(count(&database, "sys_user").await, 4);
+        assert_eq!(count(&database, "sys_user_role").await, 3);
+        assert_eq!(count(&database, "sys_user_post").await, 3);
     }
 
     #[test]
@@ -302,9 +407,10 @@ mod tests {
     }
 
     #[test]
-    fn seed_keeps_spring_demo_accounts() {
-        assert_eq!(SEED_USERS.len(), 3);
-        assert_eq!(SEED_USERS[0].0, "admin");
-        assert_eq!(SEED_USERS[0].3, 5);
+    fn default_seed_config_keeps_demo_accounts() {
+        let seed = SeedConfig::default();
+        assert_eq!(seed.users.len(), 3);
+        assert_eq!(seed.users[0].username, "admin");
+        assert_eq!(seed.users[0].dept_id, 5);
     }
 }

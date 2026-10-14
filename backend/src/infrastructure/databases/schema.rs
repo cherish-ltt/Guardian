@@ -99,9 +99,15 @@ mod tests {
 
     use super::super::run_migrations;
     use crate::entities::{transfer_account, transfer_audit, transfer_record};
+    use crate::infrastructure::config::SeedConfig;
 
-    /// 测试里的演示账号口令；生产取自 `.env` 的 `SEED_ADMIN_PASSWORD`。
-    const TEST_SEED_PASSWORD: &str = "seed-test-password";
+    /// 测试里的播种配置：口令固定，账号用内置演示账号；生产取自 `.env`。
+    fn test_seed() -> SeedConfig {
+        SeedConfig {
+            admin_password: "seed-test-password".to_string(),
+            ..SeedConfig::default()
+        }
+    }
 
     async fn setup_database() -> (DatabaseConnection, String) {
         let url = format!(
@@ -119,7 +125,7 @@ mod tests {
 
     /// 执行 sqlx 迁移 + 索引 + 播种，可重复执行。
     async fn bootstrap(database: &DatabaseConnection, url: &str) {
-        run_migrations(database, url, TEST_SEED_PASSWORD)
+        run_migrations(database, url, &test_seed())
             .await
             .expect("执行迁移成功");
     }
@@ -192,10 +198,10 @@ mod tests {
             .expect("写入历史流水");
 
         // 真实启动流程：sqlx 迁移建表（老库同名表自动跳过）→ 补列建索引 → 播种；重复执行应幂等。
-        run_migrations(&database, &url, TEST_SEED_PASSWORD)
+        run_migrations(&database, &url, &test_seed())
             .await
             .expect("执行迁移成功");
-        run_migrations(&database, &url, TEST_SEED_PASSWORD)
+        run_migrations(&database, &url, &test_seed())
             .await
             .expect("重复执行迁移成功");
 

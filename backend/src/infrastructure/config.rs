@@ -76,11 +76,90 @@ impl RedisConfig {
     }
 }
 
-/// 演示数据与账号默认口令：来自 `.env`，不写进迁移文件与种子 SQL。
+/// 演示账号与口令：来自 `.env`，不写进迁移文件与种子 SQL。
 #[derive(Debug, Clone)]
 pub struct SeedConfig {
-    /// 演示账号（含 `admin`）的初始口令，同时作为新增用户未传口令时的默认值。
+    /// 演示账号的初始口令，同时作为新增用户未传口令时的默认值。
     pub admin_password: String,
+    /// 播种的账号，按顺序取 ID `1..=N`。
+    pub users: Vec<SeedUser>,
+}
+
+impl Default for SeedConfig {
+    fn default() -> Self {
+        Self {
+            admin_password: DEFAULT_ADMIN_PASSWORD.to_string(),
+            users: default_seed_users(),
+        }
+    }
+}
+
+/// 一个播种账号，对应 `SEED_USERS` 里的一项。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SeedUser {
+    pub username: String,
+    pub nickname: String,
+    pub email: String,
+    pub dept_id: i64,
+}
+
+const DEFAULT_ADMIN_PASSWORD: &str = "admin123456";
+
+/// 内置演示账号：`SEED_USERS` 未设置时使用。
+fn default_seed_users() -> Vec<SeedUser> {
+    [
+        ("admin", "陈立诚", "chenlc@example.com", 5),
+        ("linjh", "林嘉豪", "linjh@example.com", 5),
+        ("heyj", "何雅静", "heyj@example.com", 6),
+    ]
+    .into_iter()
+    .map(|(username, nickname, email, dept_id)| SeedUser {
+        username: username.to_string(),
+        nickname: nickname.to_string(),
+        email: email.to_string(),
+        dept_id,
+    })
+    .collect()
+}
+
+/// 解析 `SEED_USERS`：`用户名:昵称:邮箱:部门ID`，多个账号用逗号分隔。
+///
+/// 邮箱里不允许出现冒号，所以按 `:` 切分是安全的；字段数不对或部门 ID 不是整数时拒绝启动。
+fn parse_seed_users(raw: &str) -> Result<Vec<SeedUser>> {
+    let mut users = Vec::new();
+    for entry in raw
+        .split(',')
+        .map(str::trim)
+        .filter(|entry| !entry.is_empty())
+    {
+        let fields: Vec<&str> = entry.split(':').map(str::trim).collect();
+        let [username, nickname, email, dept_id] = fields[..] else {
+            return Err(anyhow!(
+                "invalid SEED_USERS entry `{entry}`: expected username:nickname:email:deptId"
+            ));
+        };
+        if username.is_empty() || nickname.is_empty() || email.is_empty() {
+            return Err(anyhow!(
+                "invalid SEED_USERS entry `{entry}`: username, nickname and email must not be empty"
+            ));
+        }
+        let dept_id = dept_id
+            .parse::<i64>()
+            .map_err(|error| anyhow!("invalid SEED_USERS entry `{entry}`: deptId {error}"))?;
+
+        users.push(SeedUser {
+            username: username.to_string(),
+            nickname: nickname.to_string(),
+            email: email.to_string(),
+            dept_id,
+        });
+    }
+
+    if users.is_empty() {
+        return Err(anyhow!("SEED_USERS must contain at least one account"));
+    }
+
+    Ok(users)
 }
 
 #[derive(Debug, Clone)]
@@ -210,7 +289,11 @@ impl AppConfig {
         }
 
         let seed = SeedConfig {
-            admin_password: get_env_or("SEED_ADMIN_PASSWORD", "admin123456"),
+            admin_password: get_env_or("SEED_ADMIN_PASSWORD", DEFAULT_ADMIN_PASSWORD),
+            users: match env::var("SEED_USERS") {
+                Ok(raw) => parse_seed_users(&raw)?,
+                Err(_) => default_seed_users(),
+            },
         };
         if seed.admin_password.trim().is_empty() {
             return Err(anyhow!("SEED_ADMIN_PASSWORD must not be empty"));
