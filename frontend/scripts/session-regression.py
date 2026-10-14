@@ -157,7 +157,7 @@ async def main(base_url):
             await page.unroute("**/api/v1/health")
             await page.unroute("**/api/v1/auth/logout")
             await sign_out(page)
-            await sign_in(page, "chensy", password, "/no-access")
+            await sign_in(page, "linjh", password, "/no-access")
             await expect(page.get_by_text("暂未分配可用菜单", exact=True)).to_be_visible()
             await page.reload()
             await expect(page.get_by_text("暂未分配可用菜单", exact=True)).to_be_visible()

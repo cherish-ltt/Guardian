@@ -19,11 +19,11 @@ test('auth session persists token to selected storage and exposes current auth s
   const session = memoryStorage()
   const authSession = createAuthSession({ localStorage: local, sessionStorage: session })
 
-  authSession.save({ token: 'token-1', expiresIn: 7200 }, { username: 'admin', nickname: '周明远' }, true)
+  authSession.save({ token: 'token-1', expiresIn: 7200 }, { username: 'admin', nickname: '陈立诚' }, true)
 
   assert.equal(authSession.token(), 'token-1')
   assert.equal(authSession.isAuthenticated(), true)
-  assert.equal(JSON.parse(local.getItem('guardian.user') ?? '{}').nickname, '周明远')
+  assert.equal(JSON.parse(local.getItem('guardian.user') ?? '{}').nickname, '陈立诚')
   assert.equal(session.getItem('guardian.token'), null)
 })
 
@@ -31,7 +31,7 @@ test('auth session clears both persistent and session storages on logout', () =>
   const local = memoryStorage()
   const session = memoryStorage()
   const authSession = createAuthSession({ localStorage: local, sessionStorage: session })
-  authSession.save({ token: 'token-2', expiresIn: 7200 }, { username: 'admin', nickname: '周明远' }, false)
+  authSession.save({ token: 'token-2', expiresIn: 7200 }, { username: 'admin', nickname: '陈立诚' }, false)
 
   authSession.clear()
 

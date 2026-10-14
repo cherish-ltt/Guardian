@@ -10,7 +10,7 @@ test('auth api maps login, current user, routes and logout endpoints', async () 
     const data = url.toString().endsWith('/login')
       ? { token: 'jwt-token', expiresIn: 7200 }
       : url.toString().endsWith('/me')
-        ? { username: 'admin', nickname: '周明远', roles: ['super_admin'], permissions: ['system:user:list'] }
+        ? { username: 'admin', nickname: '陈立诚', roles: ['super_admin'], permissions: ['system:user:list'] }
         : url.toString().endsWith('/routes')
           ? { routes: [{ name: '工作台', path: '/dashboard' }] }
           : null

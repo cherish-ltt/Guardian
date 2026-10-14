@@ -13,10 +13,10 @@ test('http client sends bearer token and unwraps unified response data', async (
   }
   const client = createHttpClient({ baseUrl: 'http://api.test/api/v1', tokenProvider: () => 'token-1', fetcher })
 
-  const data = await client.get<{ id: number }>('/system/users', { pageNum: 1, keyword: '周明远' })
+  const data = await client.get<{ id: number }>('/system/users', { pageNum: 1, keyword: '陈立诚' })
 
   assert.deepEqual(data, { id: 1 })
-  assert.equal(calls[0].url, 'http://api.test/api/v1/system/users?pageNum=1&keyword=%E5%91%A8%E6%98%8E%E8%BF%9C')
+  assert.equal(calls[0].url, 'http://api.test/api/v1/system/users?pageNum=1&keyword=%E9%99%88%E7%AB%8B%E8%AF%9A')
   assert.equal((calls[0].init.headers as Record<string, string>).Authorization, 'Bearer token-1')
 })
 

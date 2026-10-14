@@ -2,11 +2,11 @@
    品牌与全局配置：换品牌只改这里。
    ============================================================ */
 export const APP = Object.freeze({
-  name: '通用后台管理系统',
-  shortName: '管理后台',
+  name: 'Guardian 后台管理系统',
+  shortName: 'Guardian',
   subtitle: 'Admin Console',
-  version: 'v1.0.0',
-  copyright: `© ${new Date().getFullYear()} 通用后台管理系统`,
+  version: APP_VERSION,
+  copyright: `© ${new Date().getFullYear()} Guardian`,
 })
 
 /* ── 导航 ─────────────────────────────────────────────────── */

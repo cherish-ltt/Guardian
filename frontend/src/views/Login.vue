@@ -213,7 +213,7 @@ onBeforeUnmount(() => {
 
       <div class="canvas-main">
         <div class="canvas-copy">
-          <span class="eyebrow hero-line">通用后台底座 · {{ APP.version }}</span>
+          <span class="eyebrow hero-line">Guardian 后台底座 · {{ APP.version }}</span>
           <h1 class="login-title">
             <span class="hero-line">统一的后台底座，</span>
             <span class="hero-line">专注业务本身。</span>
