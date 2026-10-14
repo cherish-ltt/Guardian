@@ -15,8 +15,10 @@
 - 后端接口契约以后台管理模块文档 [backend/docs/ADMIN.md](backend/docs/ADMIN.md) 为准；
   与参考实现的差异必须记录在该文档的「与 Spring 版的差异」一节。
 - 仓库根目录的 CI 与 Git 钩子：
-  - `.github/workflows/backend.yml`：后端格式、Clippy、构建与测试（GitHub 只识别仓库根目录下的
-    `.github/workflows/`）。
+  - `.github/workflows/backend.yml`：后端格式、Clippy、构建与测试。
+  - `.github/workflows/frontend.yml`：前端依赖安装、单元测试与类型检查 / 构建。
+  - 两个工作流都必须放在仓库根目录（GitHub 只识别根下的 `.github/workflows/`），
+    用 `working-directory` 指向 `backend/` 与 `frontend/`。
   - `.pre-commit-config.yaml`：文件检查、密钥泄漏检测、ast-grep 规则与 Rust 钩子。
 - 生产部署前必须处理后端 README 的「生产环境注意事项」与 `backend/AGENTS.md` 第 10.11 节列出的
   演示数据与默认口令。

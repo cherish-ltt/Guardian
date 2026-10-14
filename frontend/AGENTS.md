@@ -39,6 +39,7 @@ npm run test:unit
 npm run build
 ```
 
+- CI 在仓库根的 `.github/workflows/frontend.yml`，与上面三条命令一致（Node 24 + npm 缓存）。
 - `npm run test:unit` 覆盖 `src/api/__tests__` 与 `src/utils/__tests__`（`node --test` 直跑 TS）。
 - 改接口路径或响应结构时同步更新 `src/api/__tests__` 的契约断言。
 - 需要真实浏览器验证时用 `scripts/session-regression.py`（要求前后端已启动、
