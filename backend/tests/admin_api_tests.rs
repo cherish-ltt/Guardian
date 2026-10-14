@@ -1115,7 +1115,7 @@ async fn data_scope_limits_user_list_for_dept_scoped_role() {
 }
 
 #[tokio::test]
-async fn password_change_requires_old_password_and_keeps_login_working() {
+async fn password_change_requires_old_password_and_rotates_credentials() {
     let app = setup_app().await;
     let token = admin_token(&app).await;
 
@@ -1180,6 +1180,43 @@ async fn password_change_requires_old_password_and_keeps_login_working() {
     )
     .await;
     assert_eq!(status, StatusCode::OK);
+}
+
+/// 改密码后，该账号已签发的会话（含当前与其它设备）必须全部失效。
+#[tokio::test]
+async fn password_change_revokes_every_existing_session() {
+    let app = setup_app().await;
+    let first = admin_token(&app).await;
+    // JWT 的 iat / exp 是秒粒度，同一秒内重复登录会签发逐字相同的令牌，
+    // 先错开一秒，才能确定拿到两个不同会话。
+    tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+    let second = login(&app, "admin", DEMO_PASSWORD).await;
+    assert_ne!(first, second, "两个会话必须是不同令牌");
+    let other = login(&app, "linjh", DEMO_PASSWORD).await;
+
+    let (status, _) = send(
+        app.clone(),
+        put_json_with_bearer(
+            "/api/v1/auth/password",
+            &second,
+            json!({ "oldPassword": DEMO_PASSWORD, "newPassword": "Nn@123456" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    for (label, token) in [("改密前的会话", &first), ("改密用的会话", &second)] {
+        let (status, body) = send(app.clone(), get_with_bearer("/api/v1/auth/me", token)).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{label} 应失效");
+        assert_eq!(body["message"], "未认证或登录已过期");
+    }
+
+    // 只清该账号的会话，其他账号不受影响。
+    let (status, _) = send(app.clone(), get_with_bearer("/api/v1/auth/me", &other)).await;
+    assert_eq!(status, StatusCode::OK, "其他账号的会话不应被误撤");
+
+    let rotated = login(&app, "admin", "Nn@123456").await;
+    assert!(!rotated.is_empty());
 }
 
 #[tokio::test]

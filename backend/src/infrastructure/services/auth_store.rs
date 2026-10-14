@@ -12,6 +12,8 @@ use crate::error::AppError;
 pub const CAPTCHA_KEY_PREFIX: &str = "captcha:";
 /// 登录令牌在缓存里的键前缀，与 Spring 版 `TokenStore` 一致。
 pub const TOKEN_KEY_PREFIX: &str = "auth:token:";
+/// 账号持有令牌的索引前缀，用于按账号整体撤销会话。
+pub const USER_KEY_PREFIX: &str = "auth:user:";
 /// 验证码有效期（秒），与 Spring 版一致。
 pub const CAPTCHA_TTL_SECONDS: u64 = 300;
 
@@ -38,6 +40,9 @@ pub trait AuthStore: Send + Sync {
 
     /// 撤销令牌，退出登录后旧令牌立刻失效。
     async fn revoke_token(&self, token: &str) -> Result<(), AppError>;
+
+    /// 撤销该账号的全部会话，改密码后已签发的令牌全部立刻失效。
+    async fn revoke_user_tokens(&self, username: &str) -> Result<(), AppError>;
 }
 
 pub fn captcha_key(uuid: &str) -> String {
@@ -46,6 +51,10 @@ pub fn captcha_key(uuid: &str) -> String {
 
 pub fn token_key(token: &str) -> String {
     format!("{TOKEN_KEY_PREFIX}{token}")
+}
+
+pub fn user_key(username: &str) -> String {
+    format!("{USER_KEY_PREFIX}{username}")
 }
 
 /// 进程内实现：只在测试与本地无 Redis 场景使用，重启即失效。
@@ -132,11 +141,17 @@ impl AuthStore for MemoryAuthStore {
         self.remove(&token_key(token));
         Ok(())
     }
+
+    async fn revoke_user_tokens(&self, username: &str) -> Result<(), AppError> {
+        self.lock()
+            .retain(|key, (value, _)| !key.starts_with(TOKEN_KEY_PREFIX) || value != username);
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{AuthStore, MemoryAuthStore, captcha_key, token_key};
+    use super::{AuthStore, MemoryAuthStore, captcha_key, token_key, user_key};
 
     #[tokio::test]
     async fn captcha_can_only_be_read_once() {
@@ -169,9 +184,43 @@ mod tests {
         assert_eq!(store.token_owner("token-1").await.expect("再次查询"), None);
     }
 
+    #[tokio::test]
+    async fn revoking_user_tokens_drops_only_that_account() {
+        let store = MemoryAuthStore::new();
+        for (token, owner) in [
+            ("token-a", "admin"),
+            ("token-b", "admin"),
+            ("token-c", "linjh"),
+        ] {
+            store.save_token(token, owner, 60).await.expect("写入令牌");
+        }
+        store
+            .save_captcha("uuid-1", "ABCD")
+            .await
+            .expect("写入验证码");
+
+        store
+            .revoke_user_tokens("admin")
+            .await
+            .expect("按账号撤销会话");
+
+        assert_eq!(store.token_owner("token-a").await.expect("查询令牌"), None);
+        assert_eq!(store.token_owner("token-b").await.expect("查询令牌"), None);
+        assert_eq!(
+            store.token_owner("token-c").await.expect("查询令牌"),
+            Some("linjh".to_string())
+        );
+        assert_eq!(
+            store.take_captcha("uuid-1").await.expect("读取验证码"),
+            Some("ABCD".to_string()),
+            "撤销会话不得连带清掉验证码"
+        );
+    }
+
     #[test]
     fn key_prefixes_match_spring_layout() {
         assert_eq!(captcha_key("u"), "captcha:u");
         assert_eq!(token_key("t"), "auth:token:t");
+        assert_eq!(user_key("admin"), "auth:user:admin");
     }
 }

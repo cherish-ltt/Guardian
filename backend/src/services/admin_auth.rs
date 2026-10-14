@@ -228,6 +228,9 @@ impl AdminAuthUseCase for AdminAuthService {
             return Err(AppError::business("密码修改失败"));
         }
 
+        // 改密码后旧凭证必须失效：撤销该账号已签发的全部会话。
+        self.auth_store.revoke_user_tokens(&user.username).await?;
+
         Ok(())
     }
 

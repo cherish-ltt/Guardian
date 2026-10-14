@@ -6,7 +6,7 @@ use crate::{
     error::AppError,
     infrastructure::{
         config::RedisConfig,
-        services::auth_store::{AuthStore, CAPTCHA_TTL_SECONDS, captcha_key, token_key},
+        services::auth_store::{AuthStore, CAPTCHA_TTL_SECONDS, captcha_key, token_key, user_key},
     },
 };
 
@@ -71,7 +71,18 @@ impl AuthStore for RedisAuthStore {
         connection
             .set_ex::<_, _, ()>(token_key(token), username, ttl_seconds)
             .await
-            .map_err(|error| AppError::internal(format!("redis set token failed: {error}")))
+            .map_err(|error| AppError::internal(format!("redis set token failed: {error}")))?;
+        // 同一个账号的令牌记入索引，改密码时按索引整批撤销。
+        connection
+            .sadd::<_, _, ()>(user_key(username), token)
+            .await
+            .map_err(|error| AppError::internal(format!("redis index token failed: {error}")))?;
+        connection
+            .expire::<_, ()>(user_key(username), ttl_seconds as i64)
+            .await
+            .map_err(|error| {
+                AppError::internal(format!("redis expire token index failed: {error}"))
+            })
     }
 
     async fn token_owner(&self, token: &str) -> Result<Option<String>, AppError> {
@@ -84,9 +95,43 @@ impl AuthStore for RedisAuthStore {
 
     async fn revoke_token(&self, token: &str) -> Result<(), AppError> {
         let mut connection = self.connection().await;
+        let owner: Option<String> = connection
+            .get(token_key(token))
+            .await
+            .map_err(|error| AppError::internal(format!("redis get token failed: {error}")))?;
         connection
             .del::<_, ()>(token_key(token))
             .await
-            .map_err(|error| AppError::internal(format!("redis del token failed: {error}")))
+            .map_err(|error| AppError::internal(format!("redis del token failed: {error}")))?;
+
+        let Some(owner) = owner else {
+            return Ok(());
+        };
+        connection
+            .srem::<_, _, ()>(user_key(&owner), token)
+            .await
+            .map_err(|error| AppError::internal(format!("redis unindex token failed: {error}")))
+    }
+
+    async fn revoke_user_tokens(&self, username: &str) -> Result<(), AppError> {
+        let mut connection = self.connection().await;
+        let tokens: Vec<String> =
+            connection
+                .smembers(user_key(username))
+                .await
+                .map_err(|error| {
+                    AppError::internal(format!("redis get token index failed: {error}"))
+                })?;
+
+        for token in tokens {
+            connection
+                .del::<_, ()>(token_key(&token))
+                .await
+                .map_err(|error| AppError::internal(format!("redis del token failed: {error}")))?;
+        }
+        connection
+            .del::<_, ()>(user_key(username))
+            .await
+            .map_err(|error| AppError::internal(format!("redis del token index failed: {error}")))
     }
 }
