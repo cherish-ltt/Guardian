@@ -15,6 +15,7 @@ Guardian 前端的开发规范。取自上游 `scaffold-master` 的 `scaffold-vu
 | `src/components/layout` | 外壳、侧栏、顶栏、命令搜索与弹窗 |
 | `src/views` | 页面，一个菜单对应一个页面 |
 | `src/data` | 品牌常量与导航分组 |
+| `src/components/GithubLink.vue` | 顶栏的 GitHub 仓库入口，地址取自 `APP.repo` |
 
 ## 硬性约定
 
@@ -28,6 +29,8 @@ Guardian 前端的开发规范。取自上游 `scaffold-master` 的 `scaffold-vu
   异步回调只能更新发起时仍有效的会话版本。
 - **品牌与版本**：名称、简称、版权集中在 `src/data/index.ts`；版本号由 `vite.config.ts` 的
   `define` 从 `package.json` 的 `version` 注入（`APP_VERSION`），不得在页面手写版本字面量。
+- **仓库入口只有一个**：`src/components/GithubLink.vue`，地址读 `APP.repo`，置空即不渲染；
+  不得在页面里再散写仓库地址。
 - **本地存储键统一以 `guardian.` 开头**（令牌、外观、视图偏好、引导状态等）。
 - 样式沿用 `src/styles` 的六层结构与既有令牌，不新增平行体系。
 

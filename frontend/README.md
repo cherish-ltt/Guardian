@@ -23,6 +23,11 @@ npm run build
 
 前端请求的默认前缀是 `/api/v1`（`src/api/http.ts`），可用 `VITE_API_BASE_URL` 覆盖。
 
+顶栏右侧有一个指向本仓库的 GitHub 图标入口，地址取自 `src/data/index.ts` 的 `APP.repo`。
+生产部署若不希望外露该链接，把 `APP.repo` 置为空字符串即可整体不渲染（无需改动模板）；
+彻底移除则是删掉 `src/components/GithubLink.vue` 与 `src/components/layout/Topbar.vue` 里的一行
+`<GithubLink />`。
+
 默认管理员为 `admin` / `admin123456`（账号与口令由后端 `.env` 的 `SEED_USERS` / `SEED_ADMIN_PASSWORD` 播种），
 验证码必须使用当前页面显示的字符。非管理员菜单来自角色授权；
 无菜单账号显示明确的权限分配提示。
@@ -37,6 +42,7 @@ npm run build
 | `src/components/ui` | 按钮、输入、下拉、表格、弹窗、抽屉、提示等基础控件 |
 | `src/components/business` | ListPage、SearchForm、FormDialog、PermissionButton 及字典、部门、用户选择 |
 | `src/components/layout` | 外壳、侧栏、顶栏、命令搜索、外观与密码弹窗 |
+| `src/components/GithubLink.vue` | 顶栏的 GitHub 仓库入口（独立组件，可按需摘除） |
 | `src/composables` | 列表、字典 / 部门缓存、外观、动效、焦点与确认框 |
 | `src/styles` | 令牌、基础、材质、控件、外壳、页面六层样式 |
 | `src/views` | 登录、工作台、10 个管理页、无权限与未匹配页面 |
