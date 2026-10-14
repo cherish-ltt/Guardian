@@ -281,3 +281,34 @@ fn cors_preflight(origin: &str) -> Request<Body> {
         .body(Body::empty())
         .expect("构造请求")
 }
+
+/// 白名单含 `*` 时放行全部来源；白名单为空时不下发任何跨域放行头。
+#[tokio::test]
+async fn cors_layer_handles_wildcard_and_empty_whitelist() {
+    let mut wildcard = base_config();
+    wildcard.cors_allowed_origins = vec!["*".to_string()];
+    let app = ping_app(&wildcard);
+
+    let allowed = send(app.clone(), cors_preflight("https://anything.example")).await;
+    assert_eq!(
+        allowed
+            .headers()
+            .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
+            .and_then(|value| value.to_str().ok()),
+        Some("*"),
+        "通配白名单放行全部来源"
+    );
+
+    let mut empty = base_config();
+    empty.cors_allowed_origins = Vec::new();
+    let app = ping_app(&empty);
+
+    let rejected = send(app, cors_preflight("https://example.com")).await;
+    assert!(
+        rejected
+            .headers()
+            .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
+            .is_none(),
+        "白名单为空时不下发 CORS 头"
+    );
+}

@@ -165,7 +165,8 @@ pub fn delete_with_bearer(uri: &str, token: &str) -> Request<Body> {
     request("DELETE", uri, None, Some(token))
 }
 
-fn request(method: &str, uri: &str, body: Option<Value>, token: Option<&str>) -> Request<Body> {
+/// 任意方法 + 任意令牌的请求构造，端点契约矩阵按表格驱动时使用。
+pub fn request(method: &str, uri: &str, body: Option<Value>, token: Option<&str>) -> Request<Body> {
     let mut builder = Request::builder().method(method).uri(uri);
     if let Some(token) = token {
         builder = builder.header(header::AUTHORIZATION, format!("Bearer {token}"));

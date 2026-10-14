@@ -1248,3 +1248,500 @@ async fn login_log_records_success_and_failure() {
     assert_eq!(rows[0]["msg"], "登录成功");
     assert_eq!(rows[0]["browser"], Value::Null);
 }
+
+/// 三个此前没有用例的导出端点：表头、附件名与过滤参数都要与 Spring 版对齐。
+#[tokio::test]
+async fn report_exports_return_spring_csv_with_attachment_name() {
+    let app = setup_app().await;
+    let token = admin_token(&app).await;
+
+    let cases = [
+        (
+            "/api/v1/system/depts/export?keyword=研发&status=1",
+            "depts.csv",
+            "部门名称,负责人,联系电话,邮箱,排序,状态\n",
+            "研发中心",
+        ),
+        (
+            "/api/v1/system/dict/types/export?keyword=sys_&status=1",
+            "dict-types.csv",
+            "字典名称,字典类型,状态,创建时间,备注\n",
+            "sys_normal_disable",
+        ),
+        (
+            "/api/v1/system/roles/export?keyword=管理员&status=1",
+            "roles.csv",
+            "角色名称,权限字符,数据权限,状态,创建时间,备注\n",
+            "super_admin",
+        ),
+    ];
+
+    for (path, file_name, header, expected_row) in cases {
+        let (status, headers, bytes) =
+            support::send_raw(app.clone(), get_with_bearer(path, &token)).await;
+
+        assert_eq!(status, StatusCode::OK, "{path}");
+        assert_eq!(
+            headers
+                .get("content-type")
+                .and_then(|value| value.to_str().ok()),
+            Some("text/csv; charset=UTF-8"),
+            "{path}"
+        );
+        assert_eq!(
+            headers
+                .get("content-disposition")
+                .and_then(|value| value.to_str().ok()),
+            Some(format!("attachment; filename=\"{file_name}\"").as_str()),
+            "{path}"
+        );
+        let csv = String::from_utf8(bytes).expect("CSV 为合法 UTF-8");
+        assert!(csv.starts_with(header), "{path} 表头不符: {csv}");
+        assert!(
+            csv.contains(expected_row),
+            "{path} 缺少 {expected_row}: {csv}"
+        );
+    }
+}
+
+/// 字典类型编辑：部分字段更新，目标不存在时报业务错而不是静默成功。
+#[tokio::test]
+async fn dict_type_update_applies_partial_changes_and_reports_missing_target() {
+    let app = setup_app().await;
+    let token = admin_token(&app).await;
+
+    let (_, created) = send(
+        app.clone(),
+        post_json_with_bearer(
+            "/api/v1/system/dict/types",
+            &token,
+            json!({ "dictName": "订单状态", "dictType": "order_status", "remark": "旧备注" }),
+        ),
+    )
+    .await;
+    let type_id = created["data"]["id"].as_i64().expect("字典类型 ID");
+
+    // 只改字典名：dict_type 由 COALESCE 保留，过滤条件仍然命中。
+    let (status, body) = send(
+        app.clone(),
+        put_json_with_bearer(
+            &format!("/api/v1/system/dict/types/{type_id}"),
+            &token,
+            json!({ "dictName": "订单状态改" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["message"], "操作成功");
+
+    let (_, page) = send(
+        app.clone(),
+        get_with_bearer("/api/v1/system/dict/types?keyword=order_status", &token),
+    )
+    .await;
+    assert_eq!(page["data"]["total"], 1);
+    assert_eq!(page["data"]["rows"][0]["dictName"], "订单状态改");
+
+    let (status, body) = send(
+        app.clone(),
+        put_json_with_bearer(
+            "/api/v1/system/dict/types/999999",
+            &token,
+            json!({ "dictName": "不存在" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["message"], "字典类型不存在");
+}
+
+/// 列表接口的 keyword / status 过滤确实下推到 SQL，而不是取回全量后在内存里筛。
+#[tokio::test]
+async fn list_filters_narrow_the_result_set() {
+    let app = setup_app().await;
+    let token = admin_token(&app).await;
+
+    let total_of = |body: &Value| body["data"]["total"].as_i64().unwrap_or_default();
+
+    // 用户：keyword 命中昵称（linjh → 林嘉豪），status 过滤启用状态。
+    let (status, body) = send(
+        app.clone(),
+        get_with_bearer("/api/v1/system/users?keyword=林嘉豪&status=1", &token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(total_of(&body), 1);
+    assert_eq!(body["data"]["rows"][0]["username"], "linjh");
+
+    let (_, body) = send(
+        app.clone(),
+        get_with_bearer("/api/v1/system/users?status=0", &token),
+    )
+    .await;
+    assert_eq!(total_of(&body), 0, "演示账号全部启用");
+
+    // 岗位：keyword 命中岗位名，status 过滤。
+    let (_, body) = send(
+        app.clone(),
+        get_with_bearer("/api/v1/system/posts?keyword=研发&status=1", &token),
+    )
+    .await;
+    assert_eq!(total_of(&body), 1);
+    assert_eq!(body["data"]["rows"][0]["postCode"], "dev");
+
+    let (_, body) = send(
+        app.clone(),
+        get_with_bearer("/api/v1/system/posts?status=0", &token),
+    )
+    .await;
+    assert_eq!(total_of(&body), 1, "演示数据里只有「财务专员」是停用岗位");
+    assert_eq!(body["data"]["rows"][0]["postCode"], "finance");
+
+    // 角色：keyword 命中角色名，status 过滤。
+    let (_, body) = send(
+        app.clone(),
+        get_with_bearer("/api/v1/system/roles?keyword=系统管理员&status=1", &token),
+    )
+    .await;
+    assert_eq!(total_of(&body), 1);
+    assert_eq!(body["data"]["rows"][0]["code"], "sys_admin");
+
+    let (_, body) = send(
+        app.clone(),
+        get_with_bearer("/api/v1/system/roles?status=0", &token),
+    )
+    .await;
+    assert_eq!(total_of(&body), 1, "演示数据里只有「只读访客」是停用角色");
+    assert_eq!(body["data"]["rows"][0]["code"], "guest");
+
+    // 字典类型：keyword 命中类型编码，status 过滤。
+    let (_, body) = send(
+        app.clone(),
+        get_with_bearer(
+            "/api/v1/system/dict/types?keyword=sys_normal&status=1",
+            &token,
+        ),
+    )
+    .await;
+    assert_eq!(total_of(&body), 1);
+    assert_eq!(body["data"]["rows"][0]["dictType"], "sys_normal_disable");
+
+    let (_, body) = send(
+        app.clone(),
+        get_with_bearer("/api/v1/system/dict/types?status=0", &token),
+    )
+    .await;
+    assert_eq!(total_of(&body), 0);
+
+    // 参数配置：只有 keyword 过滤。
+    let (_, body) = send(
+        app.clone(),
+        get_with_bearer("/api/v1/system/configs?keyword=初始密码", &token),
+    )
+    .await;
+    assert_eq!(total_of(&body), 1);
+    assert_eq!(body["data"]["rows"][0]["key"], "sys.user.initPassword");
+
+    // 部门树与菜单树：status 过滤后仍是树形结构。
+    let (_, tree) = send(
+        app.clone(),
+        get_with_bearer("/api/v1/system/depts/tree?status=1", &token),
+    )
+    .await;
+    assert_eq!(tree["data"].as_array().expect("部门树").len(), 1);
+
+    let (_, tree) = send(
+        app.clone(),
+        get_with_bearer("/api/v1/system/menus/tree?status=1", &token),
+    )
+    .await;
+    assert_eq!(tree["data"].as_array().expect("菜单树").len(), 4);
+
+    // 登录日志：status 区分成功与失败，keyword 命中账号。
+    let (_, logs) = send(
+        app.clone(),
+        get_with_bearer("/api/v1/monitor/login-logs?status=1&keyword=admin", &token),
+    )
+    .await;
+    assert_eq!(total_of(&logs), 1);
+    let (_, logs) = send(
+        app.clone(),
+        get_with_bearer("/api/v1/monitor/login-logs?status=0", &token),
+    )
+    .await;
+    assert_eq!(total_of(&logs), 0);
+}
+
+/// 非超管的动态路由走按角色授权查询，只返回被授予的菜单；超管走另一条分支。
+#[tokio::test]
+async fn non_super_admin_routes_only_expose_granted_menus() {
+    let app = setup_app().await;
+    let token = admin_token(&app).await;
+
+    // linjh 的角色（系统管理员）只授「系统管理 → 用户管理」。
+    let (status, _) = send(
+        app.clone(),
+        put_json_with_bearer(
+            "/api/v1/system/roles/2",
+            &token,
+            json!({ "menuIds": [100, 101] }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let linjh = login(&app, "linjh", DEMO_PASSWORD).await;
+    let (status, routes) = send(app.clone(), get_with_bearer("/api/v1/auth/routes", &linjh)).await;
+    assert_eq!(status, StatusCode::OK);
+    let roots = routes["data"]["routes"].as_array().expect("路由数组");
+    assert_eq!(roots.len(), 1, "只授权了系统管理这一个目录");
+    assert_eq!(roots[0]["name"], "系统管理");
+    let children = roots[0]["children"].as_array().expect("子菜单");
+    assert_eq!(children.len(), 1);
+    assert_eq!(children[0]["name"], "用户管理");
+    assert_eq!(children[0]["path"], "/system/user");
+
+    // 超管：不受角色授权限制，拿到全部顶层目录。
+    let (_, admin_routes) = send(app.clone(), get_with_bearer("/api/v1/auth/routes", &token)).await;
+    assert_eq!(
+        admin_routes["data"]["routes"]
+            .as_array()
+            .expect("路由数组")
+            .len(),
+        4
+    );
+}
+
+/// 停用账号：已签发的会话立刻失效，重新登录被拒并留下失败日志。
+#[tokio::test]
+async fn disabling_an_account_invalidates_its_existing_session() {
+    let app = setup_app().await;
+    let token = admin_token(&app).await;
+
+    let linjh = login(&app, "linjh", DEMO_PASSWORD).await;
+    let (status, _) = send(app.clone(), get_with_bearer("/api/v1/auth/me", &linjh)).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, _) = send(
+        app.clone(),
+        put_json_with_bearer(
+            "/api/v1/system/users/2/status",
+            &token,
+            json!({ "status": 0 }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // JWT 本身仍然有效，是账号快照判定为停用。
+    let (status, body) = send(app.clone(), get_with_bearer("/api/v1/auth/me", &linjh)).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(body["message"], "未认证或登录已过期");
+
+    let (_, captcha) = send(app.clone(), get("/api/v1/auth/captcha")).await;
+    let (status, body) = send(
+        app.clone(),
+        post_json(
+            "/api/v1/auth/login",
+            json!({
+                "username": "linjh",
+                "password": DEMO_PASSWORD,
+                "captcha": captcha["data"]["code"],
+                "captchaUuid": captcha["data"]["uuid"],
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["message"], "账号已停用");
+
+    let (_, logs) = send(
+        app.clone(),
+        get_with_bearer("/api/v1/monitor/login-logs?keyword=linjh", &token),
+    )
+    .await;
+    assert_eq!(logs["data"]["rows"][0]["msg"], "账号已停用");
+    assert_eq!(logs["data"]["rows"][0]["status"], 0);
+}
+
+/// 验证码缺失或未命中缓存一律 400，且不写登录日志（避免被刷成失败记录）。
+#[tokio::test]
+async fn login_requires_a_matching_captcha() {
+    let app = setup_app().await;
+
+    let cases = [
+        json!({ "username": "admin", "password": DEMO_PASSWORD }),
+        json!({ "username": "admin", "password": DEMO_PASSWORD, "captcha": "AB12" }),
+        json!({ "username": "admin", "password": DEMO_PASSWORD, "captchaUuid": "unknown" }),
+    ];
+
+    for body in cases {
+        let (status, response) = send(app.clone(), post_json("/api/v1/auth/login", body)).await;
+
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(response["message"], "验证码错误或已过期");
+    }
+
+    let token = admin_token(&app).await;
+    let (_, logs) = send(
+        app.clone(),
+        get_with_bearer("/api/v1/monitor/login-logs?pageNum=1&pageSize=10", &token),
+    )
+    .await;
+    assert_eq!(logs["data"]["total"], 1, "只有成功登录留下了记录");
+}
+
+/// 顶层部门的 `ancestors` 为空串，挂在它下面的部门只追加自己的父级。
+#[tokio::test]
+async fn dept_at_root_level_keeps_an_empty_ancestor_chain() {
+    let app = setup_app().await;
+    let token = admin_token(&app).await;
+
+    let (status, root) = send(
+        app.clone(),
+        post_json_with_bearer(
+            "/api/v1/system/depts",
+            &token,
+            json!({ "parentId": 0, "name": "新事业群" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let root_id = root["data"]["id"].as_i64().expect("部门 ID");
+
+    let (status, child) = send(
+        app.clone(),
+        post_json_with_bearer(
+            "/api/v1/system/depts",
+            &token,
+            json!({ "parentId": root_id, "name": "事业群一组" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let child_id = child["data"]["id"].as_i64().expect("部门 ID");
+
+    let (_, tree) = send(
+        app.clone(),
+        get_with_bearer("/api/v1/system/depts/tree", &token),
+    )
+    .await;
+    let roots = tree["data"].as_array().expect("部门树");
+    assert_eq!(roots.len(), 2, "集团本部之外多了一个顶层部门");
+    let created = roots
+        .iter()
+        .find(|node| node["id"] == root_id)
+        .expect("新建的顶层部门");
+    let children = created["children"].as_array().expect("子部门");
+    assert_eq!(children.len(), 1);
+    assert_eq!(children[0]["id"], child_id);
+}
+
+/// 写操作指向不存在的目标时给出明确业务文案，而不是静默成功。
+#[tokio::test]
+async fn writes_to_missing_targets_report_business_errors() {
+    let app = setup_app().await;
+    let token = admin_token(&app).await;
+
+    let (status, body) = send(
+        app.clone(),
+        put_json_with_bearer(
+            "/api/v1/system/users/999999",
+            &token,
+            json!({ "nickname": "查无此人" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["message"], "用户不存在或已删除");
+
+    let (status, body) = send(
+        app.clone(),
+        delete_with_bearer("/api/v1/system/roles/999999", &token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["message"], "角色不存在、已删除或为内置角色");
+
+    let (status, body) = send(
+        app.clone(),
+        delete_with_bearer("/api/v1/system/dict/types/999999", &token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["message"], "字典类型不存在");
+}
+
+/// 可选字段缺省时回落到稳定默认值，避免前端漏传导致写入 NULL。
+#[tokio::test]
+async fn omitted_write_fields_fall_back_to_documented_defaults() {
+    let app = setup_app().await;
+    let token = admin_token(&app).await;
+
+    let (status, _) = send(
+        app.clone(),
+        post_json_with_bearer(
+            "/api/v1/system/roles",
+            &token,
+            json!({ "name": "默认范围角色", "code": "default_scope" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, roles) = send(
+        app.clone(),
+        get_with_bearer("/api/v1/system/roles?keyword=默认范围角色", &token),
+    )
+    .await;
+    assert_eq!(roles["data"]["rows"][0]["dataScope"], "仅本人数据权限");
+
+    let (status, _) = send(
+        app.clone(),
+        post_json_with_bearer(
+            "/api/v1/system/menus",
+            &token,
+            json!({ "parentId": 0, "name": "默认类型菜单" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, tree) = send(
+        app.clone(),
+        get_with_bearer("/api/v1/system/menus/tree?keyword=默认类型菜单", &token),
+    )
+    .await;
+    assert_eq!(tree["data"][0]["type"], "menu");
+
+    let (status, _) = send(
+        app.clone(),
+        post_json_with_bearer(
+            "/api/v1/system/configs",
+            &token,
+            json!({ "name": "默认类型参数", "key": "probe.noType", "value": "1" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, configs) = send(
+        app.clone(),
+        get_with_bearer("/api/v1/system/configs?keyword=probe.noType", &token),
+    )
+    .await;
+    assert_eq!(configs["data"]["rows"][0]["type"], "N");
+}
+
+/// 没有命中任何角色时不查授权菜单，返回空分页而不是报错。
+#[tokio::test]
+async fn role_list_without_matches_returns_an_empty_page() {
+    let app = setup_app().await;
+    let token = admin_token(&app).await;
+
+    let (status, body) = send(
+        app.clone(),
+        get_with_bearer("/api/v1/system/roles?keyword=不存在的角色", &token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["data"]["total"], 0);
+    assert_eq!(body["data"]["rows"], json!([]));
+}

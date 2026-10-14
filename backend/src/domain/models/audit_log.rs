@@ -80,3 +80,48 @@ impl OperationLogEntry {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::OperationLogEntry;
+
+    #[test]
+    fn truncate_keeps_short_text_and_caps_long_text() {
+        let short = "订单创建失败".to_string();
+        assert_eq!(
+            OperationLogEntry::truncate(Some(short.clone())),
+            Some(short.clone())
+        );
+
+        let long = "错".repeat(OperationLogEntry::MAX_TEXT_LENGTH + 5);
+        let truncated = OperationLogEntry::truncate(Some(long)).expect("有值时返回 Some");
+        assert_eq!(
+            truncated.chars().count(),
+            OperationLogEntry::MAX_TEXT_LENGTH,
+            "超长文本截断到上限"
+        );
+        assert!(
+            truncated.chars().all(|value| value == '错'),
+            "不混入其他字符"
+        );
+
+        assert_eq!(OperationLogEntry::truncate(None), None);
+    }
+
+    /// 截断按字符计数：多字节字符数以字符为准，不能按字节切。
+    #[test]
+    fn truncate_counts_characters_not_bytes() {
+        let long = "中文".repeat(OperationLogEntry::MAX_TEXT_LENGTH);
+        let truncated = OperationLogEntry::truncate(Some(long)).expect("有值时返回 Some");
+
+        assert_eq!(
+            truncated.chars().count(),
+            OperationLogEntry::MAX_TEXT_LENGTH
+        );
+        assert!(
+            truncated
+                .chars()
+                .all(|value| value == '中' || value == '文')
+        );
+    }
+}

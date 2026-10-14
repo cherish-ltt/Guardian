@@ -55,7 +55,7 @@ pub fn result_text(value: Option<i64>) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{result_text, status_text, to_csv};
+    use super::{number_cell, result_text, status_text, to_csv};
 
     #[test]
     fn plain_row_is_joined_with_commas() {
@@ -93,5 +93,13 @@ mod tests {
         assert_eq!(result_text(Some(1)).as_deref(), Some("成功"));
         assert_eq!(result_text(Some(0)).as_deref(), Some("失败"));
         assert_eq!(status_text(None), None);
+    }
+
+    /// 数值列保留原值（含 0 与负数），空值不写成 "0"。
+    #[test]
+    fn number_cell_renders_decimal_or_none() {
+        assert_eq!(number_cell(Some(0)).as_deref(), Some("0"));
+        assert_eq!(number_cell(Some(-12)).as_deref(), Some("-12"));
+        assert_eq!(number_cell(None), None);
     }
 }

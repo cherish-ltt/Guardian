@@ -1,7 +1,7 @@
 use std::env;
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
-use guardian_backend::infrastructure::config::{AppConfig, ServerConfig};
+use guardian_backend::infrastructure::config::{AppConfig, RedisConfig, ServerConfig};
 
 /// 环境变量是进程级全局状态，所有依赖环境变量的测试必须串行执行，避免相互污染。
 static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -603,4 +603,93 @@ fn invalid_seed_users_is_rejected() {
             },
         );
     }
+}
+
+/// Redis 连接串：无口令时原样使用，有口令时把口令放进 userinfo。
+#[test]
+fn redis_connection_url_embeds_password_only_when_configured() {
+    let plain = RedisConfig {
+        url: "redis://127.0.0.1:6379".to_string(),
+        password: None,
+    };
+    assert_eq!(
+        plain.connection_url().expect("无口令无需改写"),
+        "redis://127.0.0.1:6379"
+    );
+
+    let secured = RedisConfig {
+        url: "redis://cache.internal:6380".to_string(),
+        password: Some("s3cret".to_string()),
+    };
+    assert_eq!(
+        secured.connection_url().expect("有口令时改写连接串"),
+        "redis://:s3cret@cache.internal:6380"
+    );
+
+    let tls = RedisConfig {
+        url: "rediss://cache.internal:6380".to_string(),
+        password: Some("s3cret".to_string()),
+    };
+    assert_eq!(
+        tls.connection_url().expect("rediss 同样支持"),
+        "rediss://:s3cret@cache.internal:6380"
+    );
+}
+
+/// 没有 scheme 的 REDIS_URL 插不进口令，必须报错而不是拼出坏连接串。
+#[test]
+fn redis_connection_url_rejects_urls_without_scheme() {
+    let config = RedisConfig {
+        url: "127.0.0.1:6379".to_string(),
+        password: Some("s3cret".to_string()),
+    };
+    let error = config.connection_url().expect_err("缺少 scheme 应报错");
+
+    assert!(error.to_string().contains("invalid REDIS_URL"), "{error}");
+}
+
+/// 只接受 `redis` / `rediss`：其他 scheme 启动即拒。
+#[test]
+fn non_redis_scheme_is_rejected() {
+    for url in [
+        "http://127.0.0.1:6379",
+        "redis-sentinel://127.0.0.1:6379",
+        "127.0.0.1:6379",
+    ] {
+        with_env(
+            &[
+                ("JWT_SECRET", Some(CUSTOM_SECRET)),
+                ("REDIS_URL", Some(url)),
+            ],
+            || {
+                let error = AppConfig::from_env().expect_err("非 redis scheme 应被拒绝");
+
+                assert!(
+                    error.to_string().contains("unsupported REDIS_URL"),
+                    "{url} 的报错信息不符合预期: {error}"
+                );
+            },
+        );
+    }
+}
+
+/// 播种口令是演示账号与新增用户的默认口令，空白即拒启动。
+#[test]
+fn blank_seed_admin_password_is_rejected() {
+    with_env(
+        &[
+            ("JWT_SECRET", Some(CUSTOM_SECRET)),
+            ("SEED_ADMIN_PASSWORD", Some("   ")),
+        ],
+        || {
+            let error = AppConfig::from_env().expect_err("空白播种口令应被拒绝");
+
+            assert!(
+                error
+                    .to_string()
+                    .contains("SEED_ADMIN_PASSWORD must not be empty"),
+                "{error}"
+            );
+        },
+    );
 }

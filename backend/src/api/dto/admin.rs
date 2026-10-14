@@ -145,6 +145,22 @@ mod tests {
         assert_eq!(query.text("keyword").as_deref(), Some("用户 管理"));
     }
 
+    /// `%` 后面不是合法十六进制、或压根不构成转义序列时保留原字符，而不是吞掉参数值。
+    #[test]
+    fn malformed_percent_escapes_are_kept_verbatim() {
+        let cases = [
+            ("keyword=100%25off", "100%off"),
+            ("keyword=%zz", "%zz"),
+            ("keyword=trailing%", "trailing%"),
+        ];
+
+        for (raw, expected) in cases {
+            let query = QueryString::parse(Some(raw));
+
+            assert_eq!(query.text("keyword").as_deref(), Some(expected), "{raw}");
+        }
+    }
+
     #[test]
     fn invalid_integer_is_rejected_instead_of_ignored() {
         let query = QueryString::parse(Some("status=abc"));

@@ -6,8 +6,8 @@ use axum::http::StatusCode;
 use serde_json::{Value, json};
 
 use support::{
-    admin_token, delete_with_bearer, get, get_with_bearer, login, post_json_with_bearer, send,
-    send_raw, setup_app,
+    admin_token, delete_with_bearer, get, get_with_bearer, login, post_json, post_json_with_bearer,
+    send, send_raw, setup_app,
 };
 
 fn with_forwarded_for(
@@ -454,4 +454,231 @@ async fn health_probe_is_public_and_reports_up() {
     // 既有探针保持不变。
     let (status, _) = send(app.clone(), get("/api/v1/system/health")).await;
     assert_eq!(status, StatusCode::OK);
+}
+
+/// 操作日志导出：有记录时逐列输出，列顺序与 Spring 版一致。
+#[tokio::test]
+async fn oper_log_export_contains_recorded_rows() {
+    let app = setup_app().await;
+    let token = admin_token(&app).await;
+
+    let (status, _) = send(
+        app.clone(),
+        post_json_with_bearer(
+            "/api/v1/system/posts",
+            &token,
+            json!({ "postCode": "export_probe", "postName": "导出探针", "sort": 20 }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, headers, bytes) = send_raw(
+        app.clone(),
+        get_with_bearer("/api/v1/monitor/oper-logs/export", &token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        headers
+            .get("content-type")
+            .and_then(|value| value.to_str().ok()),
+        Some("text/csv; charset=UTF-8")
+    );
+
+    let csv = String::from_utf8(bytes).expect("CSV 为合法 UTF-8");
+    assert_eq!(
+        csv.lines().next().expect("表头"),
+        "模块,类型,请求方式,请求地址,请求参数,操作人,部门,IP,地点,耗时,结果,操作时间,异常信息"
+    );
+
+    let row = csv
+        .lines()
+        .find(|line| line.contains("export_probe"))
+        .expect("导出内容包含刚写入的岗位");
+    assert!(
+        row.starts_with("岗位管理,新增,POST,/system/posts,"),
+        "前四列是模块 / 动作 / 方法 / 相对路径（已 nest 掉 /api/v1）: {row}"
+    );
+    assert!(
+        row.contains(r#""{""postCode"#),
+        "请求参数按 CSV 规则转义后原样落盘: {row}"
+    );
+    assert!(
+        row.contains(",admin,,,,"),
+        "操作人列已记录，部门 / IP / 地点在无转发头时留空: {row}"
+    );
+    assert!(row.contains(",成功,"), "结果列为成功: {row}");
+}
+
+/// 登录失败阈值取自参数配置；达到阈值的账号出现在热力图告警里。
+#[tokio::test]
+async fn login_heatmap_uses_configured_threshold_and_reports_anomalies() {
+    let app = setup_app().await;
+    let token = admin_token(&app).await;
+
+    let (status, _) = send(
+        app.clone(),
+        post_json_with_bearer(
+            "/api/v1/system/configs",
+            &token,
+            json!({
+                "name": "登录失败告警阈值",
+                "key": "sys.login.alertThreshold",
+                "value": "3",
+                "type": "N",
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // 每次失败登录都要带一个刚签发的验证码，否则会提前因验证码错误返回。
+    for _ in 0..5 {
+        let (_, captcha) = send(app.clone(), get("/api/v1/auth/captcha")).await;
+        let (status, body) = send(
+            app.clone(),
+            post_json(
+                "/api/v1/auth/login",
+                json!({
+                    "username": "admin",
+                    "password": "wrong-password",
+                    "captcha": captcha["data"]["code"],
+                    "captchaUuid": captcha["data"]["uuid"],
+                }),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(body["message"], "账号或密码错误");
+    }
+
+    let (status, heatmap) = send(
+        app.clone(),
+        get_with_bearer("/api/v1/monitor/login-logs/heatmap", &token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        heatmap["data"]["threshold"], 3,
+        "阈值取自 sys.login.alertThreshold 而不是代码默认值"
+    );
+
+    let anomalies = heatmap["data"]["anomalies"].as_array().expect("告警列表");
+    let by_user = anomalies
+        .iter()
+        .find(|row| row["kind"] == "user")
+        .expect("按账号聚合的失败登录告警");
+    assert_eq!(by_user["key"], "admin");
+    assert_eq!(by_user["failed"], 5);
+    assert_eq!(by_user["total"], 6, "5 次失败 + 1 次成功登录");
+}
+
+/// 时间线的 date 参数只接受 `yyyy-MM-dd`，其余一律 400。
+#[tokio::test]
+async fn oper_timeline_rejects_a_malformed_date() {
+    let app = setup_app().await;
+    let token = admin_token(&app).await;
+
+    for value in ["2026-13-40", "yesterday", "20260101"] {
+        let (status, body) = send(
+            app.clone(),
+            get_with_bearer(
+                &format!("/api/v1/monitor/oper-logs/timeline?date={value}"),
+                &token,
+            ),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{value}");
+        assert_eq!(body["message"], "date 格式应为 yyyy-MM-dd", "{value}");
+    }
+}
+
+/// 转发头里的客户端地址原样留痕，并按是否本机归入「本机 / 内网」。
+#[tokio::test]
+async fn forwarded_client_ip_is_recorded_with_its_location() {
+    let app = setup_app().await;
+    let token = admin_token(&app).await;
+
+    let mut request = post_json_with_bearer(
+        "/api/v1/system/posts",
+        &token,
+        json!({ "postCode": "ip_probe", "postName": "IP 探针" }),
+    );
+    request
+        .headers_mut()
+        .insert("x-forwarded-for", "10.10.10.10".parse().expect("头值"));
+    let (status, _) = send(app.clone(), request).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, logs) = send(
+        app.clone(),
+        get_with_bearer("/api/v1/monitor/oper-logs?keyword=ip_probe", &token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let row = &logs["data"]["rows"][0];
+    assert_eq!(row["ip"], "10.10.10.10");
+    assert_eq!(row["location"], "内网");
+
+    // 本机地址（默认装置不带转发头时由回环地址推断）记为「本机」。
+    let mut request = post_json_with_bearer(
+        "/api/v1/system/posts",
+        &token,
+        json!({ "postCode": "loopback_probe", "postName": "回环探针" }),
+    );
+    request
+        .headers_mut()
+        .insert("x-forwarded-for", "127.0.0.1".parse().expect("头值"));
+    let (status, _) = send(app.clone(), request).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (_, logs) = send(
+        app.clone(),
+        get_with_bearer("/api/v1/monitor/oper-logs?keyword=loopback_probe", &token),
+    )
+    .await;
+    assert_eq!(logs["data"]["rows"][0]["location"], "本机");
+}
+
+/// 工作台汇总统计的是已落库的操作量：写一次后当天与近 24 小时都能看到。
+#[tokio::test]
+async fn dashboard_summary_counts_persisted_operations() {
+    let app = setup_app().await;
+    let token = admin_token(&app).await;
+
+    let (status, _) = send(
+        app.clone(),
+        post_json_with_bearer(
+            "/api/v1/system/posts",
+            &token,
+            json!({ "postCode": "dash_probe", "postName": "工作台探针" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, summary) = send(
+        app.clone(),
+        get_with_bearer("/api/v1/dashboard/summary", &token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let data = &summary["data"];
+
+    let daily = data["dailyOps"].as_array().expect("近 7 天");
+    assert_eq!(daily.len(), 7);
+    assert_eq!(daily[6]["total"], 1, "今天有 1 次写操作");
+    assert_eq!(data["trendTotal"], 1, "近 24 小时操作量");
+    assert_eq!(data["successRate"], 100.0);
+
+    let api_card = data["stats"]
+        .as_array()
+        .expect("统计卡")
+        .iter()
+        .find(|stat| stat["key"] == "api")
+        .expect("24h 接口调用卡片");
+    assert_eq!(api_card["value"], 1);
+    assert_eq!(api_card["up"], true);
 }

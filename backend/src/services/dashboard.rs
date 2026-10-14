@@ -262,4 +262,12 @@ mod tests {
         assert_eq!(sub_text("api"), "最近 24 小时操作");
         assert_eq!(sub_text("unknown"), "");
     }
+
+    /// 未知统计键取空文案而不是 panic：新增卡片时忘配文案也不会把工作台带崩。
+    #[test]
+    fn unknown_stat_key_falls_back_to_empty_wording() {
+        assert_eq!(super::stat_label("unknown"), "");
+        assert_eq!(super::stat_icon("unknown"), "");
+        assert_eq!(super::stat_tone("unknown"), "");
+    }
 }

@@ -164,4 +164,33 @@ mod tests {
         assert_eq!(StatsRange::Last30Days.buckets(), 30);
         assert!(StatsRange::Last24Hours.hourly());
     }
+
+    /// 统计窗口起点：24h 按当前时刻回退，其余两档从当天零点算起。
+    #[test]
+    fn window_start_covers_every_range() {
+        let now = chrono::NaiveDate::from_ymd_opt(2026, 10, 14)
+            .expect("合法日期")
+            .and_hms_opt(15, 30, 0)
+            .expect("合法时间");
+        let midnight = |year, month, day| {
+            chrono::NaiveDate::from_ymd_opt(year, month, day)
+                .expect("合法日期")
+                .and_hms_opt(0, 0, 0)
+                .expect("合法时间")
+        };
+
+        assert_eq!(
+            StatsRange::Last24Hours.window_start(now),
+            now - chrono::Duration::hours(24),
+            "24h 档按当前时刻回退，而不是零点"
+        );
+        assert_eq!(
+            StatsRange::Last7Days.window_start(now),
+            midnight(2026, 10, 8)
+        );
+        assert_eq!(
+            StatsRange::Last30Days.window_start(now),
+            midnight(2026, 9, 15)
+        );
+    }
 }
