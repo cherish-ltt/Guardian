@@ -139,18 +139,23 @@ src/middleware/audit.rs                       写操作留痕
 - 种子账号与口令都来自 `.env`：`SEED_USERS`（`用户名:昵称:邮箱:部门ID`，逗号分隔）决定播种哪些账号，
   `SEED_ADMIN_PASSWORD`（默认 `admin123456`）是它们的初始口令，也是新增用户未传口令时的默认值；
   播种时用 argon2 现场哈希，没有照抄参考实现里的 BCrypt 字面量。
+  每个账号各自哈希：即使共用同一口令，也各带随机盐，不会把一份 PHC 字符串复制给多个账号。
 
 ## 会话与验证码存储
 
 `src/infrastructure/services/auth_store.rs` 定义 `AuthStore` 接口：
 
 - `MemoryAuthStore`：集成测试用，进程内存 + TTL。
-- `RedisAuthStore`：`CAPTCHA_KEY_PREFIX="captcha:"`、`TOKEN_KEY_PREFIX="auth:token:"`，TTL 300s；
+- `RedisAuthStore`：`CAPTCHA_KEY_PREFIX="captcha:"`、`TOKEN_KEY_PREFIX="auth:token:"`、`USER_KEY_PREFIX="auth:user:"`，TTL 300s；
   连接串与口令来自 `REDIS_URL` / `REDIS_PASSWORD`（`RedisConfig::connection_url()`）。
 
 登录后 JWT 与 Redis 会话令牌必须同时有效：登出即删除令牌，旧令牌立刻失效（返回
 「未认证或登录已过期」）。测试通过 `Container::bootstrap_with_auth_store(config, Container::memory_auth_store())`
 装配，不依赖外部 Redis。
+
+改密码会撤销该账号的全部会话（`AuthStore::revoke_user_tokens`）：Redis 侧按
+`auth:user:<username>` 集合索引该账号已签发的令牌，一次清空集合与对应 `auth:token:*` 键，
+其它账号的会话不受影响。因此改完密码后，当前会话与其它设备上的旧会话都需重新登录。
 
 ## 与 Spring 版的差异
 

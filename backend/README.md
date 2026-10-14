@@ -85,9 +85,10 @@ SQL 侧用 `strftime` / `julianday` / `substr` 等价 MySQL 的 `NOW()` / `CURDA
 
 ## 会话与验证码
 
-`AuthStore` 抽象有两个实现：`RedisAuthStore`（生产，键前缀 `captcha:` 与 `auth:token:`，TTL 300s）
+`AuthStore` 抽象有两个实现：`RedisAuthStore`（生产，键前缀 `captcha:`、`auth:token:` 与 `auth:user:`，TTL 300s）
 与 `MemoryAuthStore`（测试）。登录要求 JWT 与 Redis 会话令牌同时有效，登出即删除令牌、
-旧令牌立刻失效。Redis 连接在启动时建立（`connection-manager` 自动重连），不可用会直接启动失败。
+旧令牌立刻失效；改密码会撤销该账号的全部会话。Redis 连接在启动时建立
+（`connection-manager` 自动重连），不可用会直接启动失败。
 
 ## 快速开始
 
@@ -161,7 +162,7 @@ SEED_USERS=ops_admin:运维管理员:ops@example.com:2
 | `sys_dept` / `sys_post` | 演示组织（Guardian 科技集团等 11 个部门、11 位负责人）与 9 个岗位 | 替换为真实组织与岗位 |
 | `transfer_accounts` / `transfer_records` / `transfer_audits` | 演示账户 `acc_alice`、`acc_bob`（各 100000 分）与流水 | 清空或按业务替换；`migrations/0001` 是事务示例 |
 | `sys_oper_log` / `sys_login_log` | 本地联调产生的日志 | 上线前清空 |
-| Redis | `captcha:*`、`auth:token:*` | 切换环境时清空，避免旧会话残留 |
+| Redis | `captcha:*`、`auth:token:*`、`auth:user:*` | 切换环境时清空，避免旧会话残留 |
 | `log/` | 本地运行日志 | 不入库，部署时按需清理 |
 
 建议保留的默认数据（清掉会导致页面无法正常使用）：

@@ -33,6 +33,16 @@
   与公共装置 `tests/support/mod.rs`。
 - 启动配置日志（`src/logging.rs` 的 `log_startup_config`）在 `app_name` / `app_env` 之后增加 `version` 行，
   取值 `env!("CARGO_PKG_VERSION")`（编译期取自 `Cargo.toml` 的 `version`），发版改 `Cargo.toml` 即自动生效。
+- 改密码撤销该账号的全部会话（`AuthStore::revoke_user_tokens`）：Redis 侧新增
+  `auth:user:<username>` 集合索引已签发的令牌，一次清空索引与对应 `auth:token:*` 键，
+  其它账号的会话不受影响；前端在改密成功后同步清理本地会话并回登录页。
+
+### 修复
+
+- **播种账号共用同一份口令哈希**：`seed_users` 原先在循环外只哈希一次，多个账号会写入
+  逐字相同的 PHC 字符串（含相同盐）。现改为每个账号各自哈希，盐彼此独立；
+  当前所有播种账号本就共用 `SEED_ADMIN_PASSWORD`，不存在越权，但改为按账号独立加盐后，
+  以后给账号配不同口令也不会静默写错。
 
 ### 变更
 
