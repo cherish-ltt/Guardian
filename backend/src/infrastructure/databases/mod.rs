@@ -36,7 +36,11 @@ pub async fn ping_database(database: &DatabaseConnection, timeout_secs: u64) -> 
     Ok(())
 }
 
-pub async fn run_migrations(database: &DatabaseConnection, url: &str) -> Result<()> {
+pub async fn run_migrations(
+    database: &DatabaseConnection,
+    url: &str,
+    seed_admin_password: &str,
+) -> Result<()> {
     // 表结构由 sqlx migrate 管理（见 migrations/ 目录），迁移记录写入 _sqlx_migrations 表。
     let pool = sqlx::sqlite::SqlitePoolOptions::new()
         .connect(url)
@@ -54,7 +58,7 @@ pub async fn run_migrations(database: &DatabaseConnection, url: &str) -> Result<
     // - 种子数据用 NOT EXISTS 保持幂等。
     schema::create_transfer_indexes(database).await?;
     schema::seed_transfer_accounts(database).await?;
-    seed::seed_admin_data(database).await?;
+    seed::seed_admin_data(database, seed_admin_password).await?;
 
     Ok(())
 }

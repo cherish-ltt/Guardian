@@ -125,7 +125,7 @@ async fn accounts_without_permission_get_403() {
     let app = setup_app().await;
 
     // 种子里的 `sys_admin` 未分配任何菜单，因此没有任何权限码。
-    let token = login(&app, "chensy", DEMO_PASSWORD).await;
+    let token = login(&app, "linjh", DEMO_PASSWORD).await;
     let (status, body) = send(
         app.clone(),
         get_with_bearer("/api/v1/system/users?pageNum=1&pageSize=10", &token),
@@ -179,11 +179,11 @@ async fn users_page_supports_paging_filters_and_options() {
 
     let (_, filtered) = send(
         app.clone(),
-        get_with_bearer("/api/v1/system/users?keyword=wumin", &token),
+        get_with_bearer("/api/v1/system/users?keyword=heyj", &token),
     )
     .await;
     assert_eq!(filtered["data"]["total"], 1);
-    assert_eq!(filtered["data"]["rows"][0]["nickname"], "吴敏");
+    assert_eq!(filtered["data"]["rows"][0]["nickname"], "何雅静");
 
     let (_, by_dept) = send(
         app.clone(),
@@ -216,7 +216,7 @@ async fn users_page_supports_paging_filters_and_options() {
     );
     let depts = options["data"]["depts"].as_array().expect("部门树");
     assert_eq!(depts.len(), 1, "种子部门只有一个根节点");
-    assert_eq!(depts[0]["name"], "云原科技集团");
+    assert_eq!(depts[0]["name"], "Guardian 科技集团");
     assert_eq!(
         depts[0]["children"].as_array().expect("子部门").len(),
         3,
@@ -447,7 +447,7 @@ async fn user_export_returns_spring_csv() {
     assert!(
         csv.starts_with("登录账号,用户昵称,手机号,邮箱,部门,岗位,角色,状态,创建时间,最近登录\n")
     );
-    assert!(csv.contains("admin,周明远,,zhoumy@example.com,平台架构部,技术总监,超级管理员,正常"));
+    assert!(csv.contains("admin,陈立诚,,chenlc@example.com,平台架构部,技术总监,超级管理员,正常"));
 }
 
 #[tokio::test]
@@ -689,7 +689,7 @@ async fn dept_tree_and_crud_keep_ancestors_consistent() {
     assert_eq!(rd["name"], "研发中心");
     assert_eq!(
         rd["children"][0]["memberCount"], 2,
-        "平台架构部有 admin 与 chensy"
+        "平台架构部有 admin 与 linjh"
     );
 
     let (status, created) = send(
@@ -1048,7 +1048,7 @@ async fn data_scope_limits_user_list_for_dept_scoped_role() {
     .await;
     assert_eq!(status, StatusCode::OK);
 
-    let scoped = login(&app, "chensy", DEMO_PASSWORD).await;
+    let scoped = login(&app, "linjh", DEMO_PASSWORD).await;
     let (status, page) = send(
         app.clone(),
         get_with_bearer("/api/v1/system/users?pageNum=1&pageSize=20", &scoped),
@@ -1062,7 +1062,7 @@ async fn data_scope_limits_user_list_for_dept_scoped_role() {
         .iter()
         .map(|row| row["username"].as_str().unwrap_or_default().to_string())
         .collect::<Vec<_>>();
-    assert_eq!(usernames, vec!["admin".to_string(), "chensy".to_string()]);
+    assert_eq!(usernames, vec!["admin".to_string(), "linjh".to_string()]);
 
     // 导出同样遵守数据范围。
     let (_, _, bytes) = support::send_raw(
@@ -1072,8 +1072,8 @@ async fn data_scope_limits_user_list_for_dept_scoped_role() {
     .await;
     let csv = String::from_utf8(bytes).expect("CSV");
     assert!(csv.contains("admin"));
-    assert!(csv.contains("chensy"));
-    assert!(!csv.contains("wumin"), "部门外的账号不能出现在导出里");
+    assert!(csv.contains("linjh"));
+    assert!(!csv.contains("heyj"), "部门外的账号不能出现在导出里");
 
     // 只读权限不会带回可编辑选项与初始密码。
     let (_, options) = send(
@@ -1104,7 +1104,7 @@ async fn data_scope_limits_user_list_for_dept_scoped_role() {
     );
 
     // 缺少权限码的只读账号访问关系图仍然被拒。
-    let outsider = login(&app, "wumin", DEMO_PASSWORD).await;
+    let outsider = login(&app, "heyj", DEMO_PASSWORD).await;
     let (status, body) = send(
         app.clone(),
         get_with_bearer("/api/v1/system/permissions/graph", &outsider),

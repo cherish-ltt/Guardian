@@ -155,7 +155,7 @@ async fn importable_tables_mark_imported_rows_and_validate_requests() {
     assert_eq!(missing["data"]["total"], 0);
 
     // 没有 `tool:gen:list` 权限的账号被拒绝。
-    let outsider = login(&app, "chensy", DEMO_PASSWORD).await;
+    let outsider = login(&app, "linjh", DEMO_PASSWORD).await;
     let (status, body) = send(
         app.clone(),
         get_with_bearer("/api/v1/tool/generator/tables", &outsider),

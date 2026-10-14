@@ -2,19 +2,18 @@
 //!
 //! 全部语句都用 `INSERT OR IGNORE`，重复启动不会重复插入，也不需要先查后写。
 //! 用户口令用 argon2 现场生成（Spring 版种子里的 BCrypt 字面量无法在本项目复用），
-//! 三个演示账号共用 `admin123456`（生产环境请在首次登录后立即修改）。
+//! 明文口令来自 `.env` 的 `SEED_ADMIN_PASSWORD`，不写进迁移文件与种子 SQL。
 
 use anyhow::{Context, Result};
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, Value};
 
 use crate::util::password;
 
-/// 演示账号：三个种子用户共用同一口令。
-const SEED_PASSWORD: &str = "admin123456";
 /// 种子里的用户 ID，用来判断是否已经播种过。
 const SEED_USER_IDS: [i64; 3] = [1, 2, 3];
 
-pub async fn seed_admin_data(database: &DatabaseConnection) -> Result<()> {
+/// 播种演示数据；`admin_password` 是三个演示账号共用的明文口令。
+pub async fn seed_admin_data(database: &DatabaseConnection, admin_password: &str) -> Result<()> {
     for (name, statement) in STATEMENTS {
         database
             .execute_unprepared(statement)
@@ -22,18 +21,18 @@ pub async fn seed_admin_data(database: &DatabaseConnection) -> Result<()> {
             .with_context(|| format!("failed to seed {name}"))?;
     }
 
-    seed_users(database).await?;
+    seed_users(database, admin_password).await?;
 
     Ok(())
 }
 
 /// 三个演示账号还没有写入时才计算口令哈希：argon2 是本项目里最贵的一次启动开销。
-async fn seed_users(database: &DatabaseConnection) -> Result<()> {
+async fn seed_users(database: &DatabaseConnection, admin_password: &str) -> Result<()> {
     if seeded_user_count(database).await? >= SEED_USER_IDS.len() as i64 {
         return Ok(());
     }
 
-    let hashed = password::hash_password(SEED_PASSWORD)
+    let hashed = password::hash_password(admin_password)
         .map_err(|error| anyhow::anyhow!("failed to hash seed password: {error}"))?;
     let statement = Statement::from_sql_and_values(
         DbBackend::Sqlite,
@@ -85,9 +84,9 @@ const USER_INSERT: &str = "INSERT OR IGNORE INTO sys_user \
 
 /// `(登录账号, 昵称, 邮箱, 部门 ID)`，ID 按顺序取 1..=3。
 const SEED_USERS: [(&str, &str, &str, i64); 3] = [
-    ("admin", "周明远", "zhoumy@example.com", 5),
-    ("chensy", "陈思远", "chensy@example.com", 5),
-    ("wumin", "吴敏", "wumin@example.com", 6),
+    ("admin", "陈立诚", "chenlc@example.com", 5),
+    ("linjh", "林嘉豪", "linjh@example.com", 5),
+    ("heyj", "何雅静", "heyj@example.com", 6),
 ];
 
 /// 语句顺序与 Spring 版一致：先组织与账号，再菜单授权，最后字典与参数。
@@ -97,17 +96,17 @@ const STATEMENTS: [(&str, &str); 10] = [
         "-- 本地开发示例数据；组织与用户仅供演示，电话留空，邮箱使用 example.com。
          INSERT OR IGNORE INTO sys_dept (id, parent_id, ancestors, dept_name, leader, phone, email, sort, status, create_by, update_by)
          VALUES
-             (1, 0, '0', '云原科技集团', '周明远', '', 'hq@example.com', 1, 1, 'system', 'system'),
-             (2, 1, '0,1', '研发中心', '陈思远', '', 'rd@example.com', 1, 1, 'system', 'system'),
-             (3, 1, '0,1', '产品中心', '赵晴', '', 'pm@example.com', 2, 1, 'system', 'system'),
-             (4, 1, '0,1', '职能中心', '钱伟', '', 'hr@example.com', 3, 1, 'system', 'system'),
-             (5, 2, '0,1,2', '平台架构部', '李维', '', 'arch@example.com', 1, 1, 'system', 'system'),
-             (6, 2, '0,1,2', '应用开发部', '吴敏', '', 'app@example.com', 2, 1, 'system', 'system'),
-             (7, 2, '0,1,2', '测试质量部', '韩雪', '', 'qa@example.com', 3, 1, 'system', 'system'),
-             (8, 3, '0,1,3', '产品设计部', '孙浩', '', 'design@example.com', 1, 1, 'system', 'system'),
-             (9, 3, '0,1,3', '用户研究部', '马玲', '', 'ux@example.com', 2, 0, 'system', 'system'),
-             (10, 4, '0,1,4', '人力资源部', '冯婷', '', 'people@example.com', 1, 1, 'system', 'system'),
-             (11, 4, '0,1,4', '财务部', '蒋文', '', 'finance@example.com', 2, 1, 'system', 'system');",
+             (1, 0, '0', 'Guardian 科技集团', '陈立诚', '', 'hq@example.com', 1, 1, 'system', 'system'),
+             (2, 1, '0,1', '研发中心', '林嘉豪', '', 'rd@example.com', 1, 1, 'system', 'system'),
+             (3, 1, '0,1', '产品中心', '苏婉清', '', 'pm@example.com', 2, 1, 'system', 'system'),
+             (4, 1, '0,1', '职能中心', '郑文博', '', 'hr@example.com', 3, 1, 'system', 'system'),
+             (5, 2, '0,1,2', '平台架构部', '高远', '', 'arch@example.com', 1, 1, 'system', 'system'),
+             (6, 2, '0,1,2', '应用开发部', '何雅静', '', 'app@example.com', 2, 1, 'system', 'system'),
+             (7, 2, '0,1,2', '测试质量部', '罗启明', '', 'qa@example.com', 3, 1, 'system', 'system'),
+             (8, 3, '0,1,3', '产品设计部', '唐泽宇', '', 'design@example.com', 1, 1, 'system', 'system'),
+             (9, 3, '0,1,3', '用户研究部', '曾静宜', '', 'ux@example.com', 2, 0, 'system', 'system'),
+             (10, 4, '0,1,4', '人力资源部', '邓伟华', '', 'people@example.com', 1, 1, 'system', 'system'),
+             (11, 4, '0,1,4', '财务部', '沈书宁', '', 'finance@example.com', 2, 1, 'system', 'system');",
     ),
     (
         "sys_post",
@@ -257,10 +256,11 @@ mod tests {
     #[tokio::test]
     async fn admin_seed_is_idempotent_and_keeps_demo_accounts() {
         let (database, url) = setup_database().await;
-        crate::infrastructure::databases::run_migrations(&database, &url)
+        let password = "seed-test-password";
+        crate::infrastructure::databases::run_migrations(&database, &url, password)
             .await
             .expect("执行迁移与播种");
-        crate::infrastructure::databases::run_migrations(&database, &url)
+        crate::infrastructure::databases::run_migrations(&database, &url, password)
             .await
             .expect("重复执行迁移与播种");
 
@@ -287,7 +287,7 @@ mod tests {
             .expect("查询种子管理员")
             .expect("种子管理员存在");
         let hashed: String = row.try_get("", "password").expect("读取口令");
-        assert!(crate::util::password::verify_password("admin123456", &hashed).expect("校验口令"));
+        assert!(crate::util::password::verify_password(password, &hashed).expect("校验口令"));
     }
 
     #[test]

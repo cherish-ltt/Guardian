@@ -18,7 +18,7 @@ use guardian_backend::{
     create_app::create_app,
     infrastructure::config::{
         AppConfig, DatabaseConfig, JwtConfig, LoggingConfig, MiddlewareConfig, RedisConfig,
-        ServerConfig,
+        SeedConfig, ServerConfig,
     },
 };
 use http_body_util::BodyExt;
@@ -63,6 +63,9 @@ pub async fn setup_app() -> Router {
         redis: RedisConfig {
             url: "redis://127.0.0.1:6379".to_string(),
             password: None,
+        },
+        seed: SeedConfig {
+            admin_password: DEMO_PASSWORD.to_string(),
         },
         logging: LoggingConfig {
             filter: "info".to_string(),

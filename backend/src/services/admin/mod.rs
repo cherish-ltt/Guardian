@@ -23,11 +23,16 @@ mod users;
 /// 用 [`AdminService::in_transaction`] 包起来，失败时整体回滚。
 pub struct AdminService {
     database: DatabaseConnection,
+    /// 新增用户未传口令时的默认口令，来自 `.env` 的 `SEED_ADMIN_PASSWORD`。
+    default_password: String,
 }
 
 impl AdminService {
-    pub fn new(database: DatabaseConnection) -> Self {
-        Self { database }
+    pub fn new(database: DatabaseConnection, default_password: String) -> Self {
+        Self {
+            database,
+            default_password,
+        }
     }
 
     /// 在 IMMEDIATE 写事务里执行，细节见 [`super::support::in_immediate_transaction`]。

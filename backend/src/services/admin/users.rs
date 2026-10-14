@@ -23,8 +23,7 @@ use crate::{
     util::{csv, password},
 };
 
-/// 新增用户未传密码时的初始密码。
-const DEFAULT_USER_PASSWORD: &str = "admin123456";
+/// 新增用户未传密码时的默认口令由 `AdminService` 从配置注入，见 `SEED_ADMIN_PASSWORD`。
 /// 重置密码未传新密码时的默认值。
 const DEFAULT_RESET_PASSWORD: &str = "Yy@123456";
 /// 账号初始密码参数键；用户页只读取、不展示。
@@ -147,7 +146,7 @@ impl UserAdminUseCase for AdminService {
 
         let hashed = password::hash_password(&default_string(
             command.password.clone(),
-            DEFAULT_USER_PASSWORD,
+            &self.default_password,
         ))?;
         let command = UserWriteCommand {
             username: Some(username),

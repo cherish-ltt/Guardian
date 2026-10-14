@@ -6,7 +6,7 @@ use std::thread;
 use std::time::Duration;
 
 use guardian_backend::infrastructure::config::{
-    AppConfig, DatabaseConfig, JwtConfig, LoggingConfig, MiddlewareConfig, RedisConfig,
+    AppConfig, DatabaseConfig, JwtConfig, LoggingConfig, MiddlewareConfig, RedisConfig, SeedConfig,
     ServerConfig,
 };
 use guardian_backend::logging;
@@ -40,6 +40,9 @@ fn test_config(out_dir: &str) -> AppConfig {
         redis: RedisConfig {
             url: "redis://127.0.0.1:6379".to_string(),
             password: None,
+        },
+        seed: SeedConfig {
+            admin_password: "admin123456".to_string(),
         },
         logging: LoggingConfig {
             filter: "info".to_string(),

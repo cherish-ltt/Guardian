@@ -81,7 +81,7 @@ async fn write_operations_are_recorded_with_module_action_and_operator() {
     assert_eq!(logs["data"]["rows"][0]["errorMsg"], "岗位编码已存在");
 
     // 权限被拒的请求不进业务方法，因此不留痕（与 Spring 版切面一致）。
-    let outsider = login(&app, "chensy", support::DEMO_PASSWORD).await;
+    let outsider = login(&app, "linjh", support::DEMO_PASSWORD).await;
     let (status, _) = send(
         app.clone(),
         post_json_with_bearer(

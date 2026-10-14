@@ -8,7 +8,7 @@ use chrono::{Duration, Utc};
 use guardian_backend::container::Container;
 use guardian_backend::create_app::create_app;
 use guardian_backend::infrastructure::config::{
-    AppConfig, DatabaseConfig, JwtConfig, LoggingConfig, MiddlewareConfig, RedisConfig,
+    AppConfig, DatabaseConfig, JwtConfig, LoggingConfig, MiddlewareConfig, RedisConfig, SeedConfig,
     ServerConfig,
 };
 use http_body_util::BodyExt;
@@ -58,6 +58,9 @@ async fn setup_app_with_cors_origins(cors_allowed_origins: Vec<String>) -> Route
         redis: RedisConfig {
             url: "redis://127.0.0.1:6379".to_string(),
             password: None,
+        },
+        seed: SeedConfig {
+            admin_password: "admin123456".to_string(),
         },
         logging: LoggingConfig {
             filter: "info".to_string(),

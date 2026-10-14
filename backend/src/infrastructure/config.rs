@@ -12,6 +12,7 @@ pub struct AppConfig {
     pub database: DatabaseConfig,
     pub jwt: JwtConfig,
     pub redis: RedisConfig,
+    pub seed: SeedConfig,
     pub logging: LoggingConfig,
     pub middleware: MiddlewareConfig,
 }
@@ -73,6 +74,13 @@ impl RedisConfig {
 
         Ok(format!("{scheme}://:{password}@{rest}"))
     }
+}
+
+/// 演示数据与账号默认口令：来自 `.env`，不写进迁移文件与种子 SQL。
+#[derive(Debug, Clone)]
+pub struct SeedConfig {
+    /// 演示账号（含 `admin`）的初始口令，同时作为新增用户未传口令时的默认值。
+    pub admin_password: String,
 }
 
 #[derive(Debug, Clone)]
@@ -201,6 +209,13 @@ impl AppConfig {
             return Err(anyhow!("log batch parameters must be greater than 0"));
         }
 
+        let seed = SeedConfig {
+            admin_password: get_env_or("SEED_ADMIN_PASSWORD", "admin123456"),
+        };
+        if seed.admin_password.trim().is_empty() {
+            return Err(anyhow!("SEED_ADMIN_PASSWORD must not be empty"));
+        }
+
         let logging = LoggingConfig {
             filter: get_env_or("LOG_FILTER", "info,tower_http=info"),
             utc_offset_hour: parse_env_or("LOG_UTC_OFFSET_HOUR", 0_i8)?,
@@ -258,6 +273,7 @@ impl AppConfig {
             database,
             jwt,
             redis,
+            seed,
             logging,
             middleware,
         })
