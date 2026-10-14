@@ -26,6 +26,9 @@ pub async fn seed_admin_data(database: &DatabaseConnection, seed: &SeedConfig) -
 }
 
 /// 播种账号；已经种过（库里已有 ID `1..=N` 的账号）时不再计算口令哈希。
+///
+/// 每个账号单独哈希：即使共用同一个口令，也必须各自带随机盐，
+/// 不能把一份 PHC 字符串复制给多个账号。
 async fn seed_users(
     database: &DatabaseConnection,
     users: &[SeedUser],
@@ -35,12 +38,12 @@ async fn seed_users(
         return Ok(());
     }
 
-    let hashed = password::hash_password(admin_password)
-        .map_err(|error| anyhow::anyhow!("failed to hash seed password: {error}"))?;
-
     let mut sql = String::from(USER_INSERT_PREFIX);
     let mut values = Vec::with_capacity(users.len() * 6);
     for (index, user) in users.iter().enumerate() {
+        let hashed = password::hash_password(admin_password)
+            .map_err(|error| anyhow::anyhow!("failed to hash seed password: {error}"))?;
+
         if index > 0 {
             sql.push_str(", ");
         }
@@ -48,7 +51,7 @@ async fn seed_users(
         values.extend([
             Value::from(index as i64 + 1),
             Value::from(user.username.as_str()),
-            Value::from(hashed.clone()),
+            Value::from(hashed),
             Value::from(user.nickname.as_str()),
             Value::from(user.email.as_str()),
             Value::from(user.dept_id),
@@ -337,6 +340,43 @@ mod tests {
             crate::util::password::verify_password("seed-test-password", &hashed)
                 .expect("校验口令")
         );
+    }
+
+    /// 同一口令播种多个账号时，每个账号必须各自带随机盐。
+    #[tokio::test]
+    async fn seeded_accounts_use_distinct_salts() {
+        let (database, url) = setup_database().await;
+        let seed = SeedConfig {
+            admin_password: "seed-test-password".to_string(),
+            ..SeedConfig::default()
+        };
+        crate::infrastructure::databases::run_migrations(&database, &url, &seed)
+            .await
+            .expect("执行迁移与播种");
+
+        let rows = database
+            .query_all_raw(sea_orm::Statement::from_string(
+                sea_orm::DbBackend::Sqlite,
+                "SELECT password FROM sys_user ORDER BY id".to_string(),
+            ))
+            .await
+            .expect("查询播种账号");
+        assert_eq!(rows.len(), 3);
+
+        let mut salts = Vec::new();
+        for row in rows {
+            let hashed: String = row.try_get("", "password").expect("读取口令");
+            assert!(
+                crate::util::password::verify_password("seed-test-password", &hashed)
+                    .expect("校验口令")
+            );
+            // PHC 格式 `$argon2id$v=19$m=..,t=..,p=..$<salt>$<hash>`，索引 4 是盐。
+            let salt = hashed.split('$').nth(4).expect("PHC 格式含盐").to_string();
+            salts.push(salt);
+        }
+        salts.sort();
+        salts.dedup();
+        assert_eq!(salts.len(), 3, "每个账号的盐必须独立");
     }
 
     /// `SEED_USERS` 决定播种哪些账号，角色与岗位按顺序分配。
