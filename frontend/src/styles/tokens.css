@@ -1,0 +1,220 @@
+/* ============================================================
+   珍珠玻璃（Pearl Glass）设计令牌
+   全站颜色、圆角、阴影、字色的唯一来源。页面与组件只引用令牌，不手写取值。
+   规格说明见根目录 DESIGN.md。
+   ============================================================ */
+
+:root {
+  font-family: "SF Pro Display", "SF Pro Text", "PingFang SC", -apple-system, BlinkMacSystemFont, "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  font-synthesis: none;
+  color-scheme: light;
+
+  /* ── 字色：五档 ─────────────────────────────────────────────── */
+  --ink: #101418;          /* 正文 / 标题 */
+  --ink-muted: #596368;    /* 次级正文 */
+  --ink-soft: #7e888c;     /* 次级标签 */
+  --ink-faint: #99a2a5;    /* 元信息 */
+  --leaf-text: #58a021;    /* 承载文字的青柠 */
+
+  /* ── 语义色：蓝 = 选择 / 主操作，青柠 = 能力与状态，红 = 警示 ── */
+  --blue: #236de9;
+  --blue-hover: #1d61d5;
+  --blue-soft: rgba(35, 109, 233, .1);
+  --lime: #82dd2d;
+  --lime-soft: rgba(130, 221, 45, .14);
+  --red: #ff5a50;
+  --red-text: #e0443b;
+  --red-soft: rgba(255, 90, 80, .11);
+  --focus: rgba(35, 109, 233, .8);
+
+  /* ── 圆角：4px 一档的 5 级（例外：胶囊 999px） ─────────────── */
+  --r-xs: 8px;
+  --r-sm: 12px;
+  --r-md: 16px;
+  --r-lg: 20px;
+  --r-xl: 24px;
+
+  /* ── 描边 ────────────────────────────────────────────────────── */
+  --shade: 46, 58, 62;
+  --line: rgba(var(--shade), .085);
+  --line-strong: rgba(var(--shade), .11);
+  --glass-line: rgba(255, 255, 255, .88);
+  --glass-line-soft: rgba(255, 255, 255, .7);
+
+  /* ── 材质高度：接触阴影 + 环境阴影 ─────────────────────────── */
+  --e1: 0 1px 2px rgba(var(--shade), .05), 0 5px 14px rgba(var(--shade), .04);
+  --e2: 0 1px 3px rgba(var(--shade), .06), 0 12px 30px rgba(var(--shade), .055);
+  --e3: 0 2px 6px rgba(var(--shade), .07), 0 22px 50px rgba(var(--shade), .08);
+  --e-accent: 0 1px 2px rgba(20, 66, 148, .28), 0 8px 18px rgba(35, 109, 233, .24);
+  --e-accent-hover: 0 1px 2px rgba(20, 66, 148, .32), 0 12px 24px rgba(35, 109, 233, .3);
+  --e-danger: 0 1px 2px rgba(150, 40, 34, .26), 0 8px 18px rgba(255, 90, 80, .24);
+  --edge: inset 0 1px 0 rgba(255, 255, 255, .92);
+  --edge-strong: inset 0 1px 0 rgba(255, 255, 255, .98);
+
+  /* ── 场景面：舞台、外框、画布与四种玻璃配方的底色 ─────────── */
+  --stage: #dfe3e2;
+  --frame: #17191d;
+  --canvas: #f6f8f7;
+  --rail-bg: rgba(250, 251, 250, .92);
+  --pill-bg: linear-gradient(145deg, rgba(255, 255, 255, .93), rgba(246, 251, 249, .62));
+  --pill-inset: inset 0 -1px 0 rgba(105, 122, 128, .08);
+  --float-bg: rgba(246, 248, 247, .86);
+  --float-inset: inset 0 0 0 1px rgba(120, 132, 135, .13), inset 0 1px 0 rgba(255, 255, 255, .72);
+  --surface: linear-gradient(145deg, rgba(255, 255, 255, .97), rgba(249, 252, 251, .93));
+  --surface-solid: #fbfcfc;
+  --groove-bg: rgba(225, 231, 229, .5);
+  --groove-inset: inset 0 1px 0 rgba(255, 255, 255, .46);
+  --input-bg: rgba(255, 255, 255, .78);
+  --hover-bg: rgba(var(--shade), .045);
+  --press-bg: rgba(var(--shade), .075);
+  --overlay: rgba(16, 20, 24, .26);
+  --dark-surface: #131619;
+
+  /* ── 仪器化排版：等宽眉标与显示级数字 ─────────────────────────── */
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  --fs-display-xl: 56px;   /* 主卡读数 */
+  --fs-display-l: 40px;    /* 侧块读数 */
+  --fs-display-m: 28px;    /* 概览读数 */
+  --track-eyebrow: .14em;  /* 眉标字距 */
+
+  /* 斜线填充：表示区间、目标、当前柱（只承载「范围」语义） */
+  --hatch-ink: rgba(var(--shade), .16);
+  --hatch: repeating-linear-gradient(135deg, var(--hatch-ink) 0 1.5px, transparent 1.5px 6px);
+
+  /* 刻度、读数板（深色铭牌在浅 / 深两态都是深色面） */
+  --tick: rgba(var(--shade), .22);
+  --tick-strong: rgba(var(--shade), .5);
+  --plate-bg: rgba(21, 24, 26, .9);
+  --plate-line: rgba(255, 255, 255, .1);
+  --plate-ink: #f2f5f4;
+  --plate-soft: rgba(255, 255, 255, .56);
+
+  /* ── 分类色：只区分类别（看板列、图例），不承载状态含义 ──────── */
+  --cat-1-bg: #f6e7c4; --cat-1-ink: #7a5a16;   /* 沙 */
+  --cat-2-bg: #d7e7fb; --cat-2-ink: #275a96;   /* 天 */
+  --cat-3-bg: #e4dcf7; --cat-3-ink: #5b4597;   /* 丁香 */
+  --cat-4-bg: #f7dce1; --cat-4-ink: #94384c;   /* 玫瑰 */
+  --cat-5-bg: #d8f0dc; --cat-5-ink: #2d7140;   /* 薄荷 */
+
+  /* 环境光：画布上两团极淡的静态漫射光 */
+  --ambient-a: rgba(130, 221, 45, .07);
+  --ambient-b: rgba(35, 109, 233, .055);
+
+  /* ── 关系图（神经语汇）：连线、脉冲光环、节点底 ──────────────── */
+  --thread: rgba(var(--shade), .2);
+  --thread-active: rgba(35, 109, 233, .62);
+  --pulse-halo: rgba(35, 109, 233, .18);
+  --node-bg: rgba(255, 255, 255, .94);
+  /* 图谱 Canvas 用的 RGB 三元组：分类色的中明度版本 + 中性墨、主色、警示 */
+  --graph-1: 186, 140, 52;
+  --graph-2: 58, 122, 206;
+  --graph-3: 122, 96, 204;
+  --graph-4: 200, 90, 118;
+  --graph-5: 58, 150, 92;
+  --graph-ink: 46, 58, 62;
+  --graph-accent: 35, 109, 233;
+  --graph-lime: 110, 190, 36;
+  --graph-danger: 224, 68, 59;
+  --graph-paper: 255, 255, 255;
+
+  /* ── 缓动 ────────────────────────────────────────────────────── */
+  --ease-premium: cubic-bezier(.16, 1, .3, 1);
+
+  /* ── 布局尺寸 ────────────────────────────────────────────────── */
+  --rail-w: 232px;
+  --topbar-h: 64px;
+  --layer-overlay: 200;
+  --layer-toast: 400;
+  --control-h: 36px;
+  --control-h-sm: 30px;
+
+  /* ── 表格密度（由外观设置切换） ─────────────────────────────── */
+  --row-h: 48px;
+  --cell-px: 16px;
+}
+
+:root[data-density="comfy"]   { --row-h: 56px; --cell-px: 18px; }
+:root[data-density="compact"] { --row-h: 40px; --cell-px: 14px; }
+
+/* ── 深色外观：同一套语义，换成深色材质 ───────────────────────── */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --ink: #eef2f1;
+  --ink-muted: #b0babd;
+  --ink-soft: #8d979a;
+  --ink-faint: #6c7679;
+  --leaf-text: #9be35a;
+
+  --blue: #4c8dff;
+  --blue-hover: #3d7ff2;
+  --blue-soft: rgba(76, 141, 255, .16);
+  --lime-soft: rgba(130, 221, 45, .16);
+  --red-text: #ff7a71;
+  --red-soft: rgba(255, 90, 80, .16);
+  --focus: rgba(76, 141, 255, .85);
+
+  --shade: 0, 0, 0;
+  --line: rgba(255, 255, 255, .07);
+  --line-strong: rgba(255, 255, 255, .1);
+  --glass-line: rgba(255, 255, 255, .1);
+  --glass-line-soft: rgba(255, 255, 255, .07);
+
+  --e1: 0 1px 2px rgba(0, 0, 0, .3), 0 5px 14px rgba(0, 0, 0, .2);
+  --e2: 0 1px 3px rgba(0, 0, 0, .32), 0 12px 30px rgba(0, 0, 0, .28);
+  --e3: 0 2px 6px rgba(0, 0, 0, .36), 0 22px 50px rgba(0, 0, 0, .42);
+  --e-accent: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 18px rgba(76, 141, 255, .26);
+  --e-accent-hover: 0 1px 2px rgba(0, 0, 0, .4), 0 12px 24px rgba(76, 141, 255, .34);
+  --e-danger: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 18px rgba(255, 90, 80, .26);
+  --edge: inset 0 1px 0 rgba(255, 255, 255, .06);
+  --edge-strong: inset 0 1px 0 rgba(255, 255, 255, .09);
+
+  --stage: #090b0c;
+  --frame: #000;
+  --canvas: #121517;
+  --rail-bg: rgba(22, 26, 28, .94);
+  --pill-bg: linear-gradient(145deg, rgba(255, 255, 255, .11), rgba(255, 255, 255, .05));
+  --pill-inset: inset 0 -1px 0 rgba(0, 0, 0, .2);
+  --float-bg: rgba(30, 34, 37, .9);
+  --float-inset: inset 0 0 0 1px rgba(255, 255, 255, .04), inset 0 1px 0 rgba(255, 255, 255, .06);
+  --surface: linear-gradient(145deg, rgba(29, 33, 36, .98), rgba(25, 29, 31, .96));
+  --surface-solid: #1b1f21;
+  --groove-bg: rgba(0, 0, 0, .22);
+  --groove-inset: inset 0 1px 2px rgba(0, 0, 0, .28);
+  --input-bg: rgba(255, 255, 255, .04);
+  --hover-bg: rgba(255, 255, 255, .05);
+  --press-bg: rgba(255, 255, 255, .08);
+  --overlay: rgba(0, 0, 0, .5);
+
+  --hatch-ink: rgba(255, 255, 255, .12);
+  --tick: rgba(255, 255, 255, .16);
+  --tick-strong: rgba(255, 255, 255, .42);
+  --plate-bg: rgba(8, 10, 11, .78);
+
+  --cat-1-bg: rgba(232, 190, 96, .16);  --cat-1-ink: #ecc779;
+  --cat-2-bg: rgba(100, 160, 240, .16); --cat-2-ink: #92bdf5;
+  --cat-3-bg: rgba(160, 132, 236, .17); --cat-3-ink: #bfaaf4;
+  --cat-4-bg: rgba(236, 120, 140, .16); --cat-4-ink: #f2a3b1;
+  --cat-5-bg: rgba(110, 200, 130, .15); --cat-5-ink: #94dca6;
+
+  --ambient-a: rgba(130, 221, 45, .05);
+  --ambient-b: rgba(76, 141, 255, .07);
+
+  --thread: rgba(255, 255, 255, .16);
+  --thread-active: rgba(110, 160, 255, .72);
+  --pulse-halo: rgba(76, 141, 255, .28);
+  --node-bg: rgba(32, 37, 40, .94);
+  --graph-1: 236, 199, 121;
+  --graph-2: 146, 189, 245;
+  --graph-3: 191, 170, 244;
+  --graph-4: 242, 163, 177;
+  --graph-5: 148, 220, 166;
+  --graph-ink: 214, 222, 220;
+  --graph-accent: 76, 141, 255;
+  --graph-lime: 155, 227, 90;
+  --graph-danger: 255, 122, 113;
+  --graph-paper: 36, 41, 44;
+}
+
+/* 需要被连续补间的自定义属性必须注册，inherits: false 避免打脏后代 */
+@property --fill { syntax: "<percentage>"; inherits: false; initial-value: 0%; }

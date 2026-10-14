@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='7' fill='%23131619'/%3E%3Ccircle cx='12' cy='12' r='3.2' fill='%2382dd2d'/%3E%3C/svg%3E" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Guardian 后台管理系统</title>
+  <script>
+    // 在样式加载前写入外观，避免深色模式首屏闪白
+    try {
+      var saved = JSON.parse(localStorage.getItem('guardian.appearance') || '{}')
+      var theme = saved.theme === 'dark' || (saved.theme === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light'
+      document.documentElement.dataset.theme = theme
+      document.documentElement.dataset.density = saved.density || 'regular'
+    } catch (e) {}
+  </script>
+</head>
+<body>
+  <div id="app"></div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

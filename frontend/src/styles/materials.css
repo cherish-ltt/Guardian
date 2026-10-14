@@ -1,0 +1,82 @@
+/* ============================================================
+   材质：四种玻璃配方 + 槽 + 阅读面
+   差别只靠「背景不透明度 + 模糊 + 饱和度 + 白边强度」拉开，不换颜色。
+   ============================================================ */
+
+/* 1. 导航轨：几乎实色的浅面，只留一点通透 */
+.m-rail {
+  background: var(--rail-bg);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+}
+
+/* 2. 高亮玻璃块（导航选中、分段滑块、次级按钮）：白边最亮的一块 */
+.m-pill {
+  border: 1px solid var(--glass-line);
+  background: var(--pill-bg);
+  box-shadow: var(--e2), var(--edge-strong), var(--pill-inset);
+  backdrop-filter: blur(22px) saturate(1.18);
+  -webkit-backdrop-filter: blur(22px) saturate(1.18);
+}
+
+/* 3. 浮层（下拉、命令面板、气泡、提示）：模糊最重，压住底下的一切 */
+.m-float {
+  border: 1px solid var(--glass-line);
+  background: var(--float-bg);
+  box-shadow: var(--e3), var(--float-inset);
+  backdrop-filter: blur(28px) saturate(1.08);
+  -webkit-backdrop-filter: blur(28px) saturate(1.08);
+}
+
+/* 4. 阅读面（卡片、表格容器、弹窗）：浅色态关掉 backdrop-filter，接近实色 */
+.m-surface {
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  box-shadow: var(--edge), var(--e1);
+}
+
+/* 槽：被滑块滑过的底，几乎无模糊，只有一道内高光，显得凹下去 */
+.m-groove {
+  border: 1px solid var(--glass-line-soft);
+  background: var(--groove-bg);
+  box-shadow: var(--groove-inset);
+}
+
+/* 容器级指针光：材质而非可点承诺。坐标写在自身（叶子容器）上 */
+.m-glow {
+  --px: 50%;
+  --py: 50%;
+  position: relative;
+  isolation: isolate;
+}
+.m-glow > .glow-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(circle 120px at var(--px) var(--py), rgba(255, 255, 255, .9), rgba(130, 221, 45, .08) 42%, transparent 72%);
+  mix-blend-mode: screen;
+  transition: opacity .28s ease;
+}
+:root[data-theme="dark"] .m-glow > .glow-layer {
+  background: radial-gradient(circle 120px at var(--px) var(--py), rgba(255, 255, 255, .07), rgba(130, 221, 45, .05) 42%, transparent 72%);
+  mix-blend-mode: normal;
+}
+@media (hover: hover) {
+  .m-glow:hover > .glow-layer { opacity: .72; }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .m-rail, .m-pill, .m-float {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .m-float { background: var(--surface-solid); }
+  .m-rail { background: var(--surface-solid); }
+}
+
+@media (pointer: coarse), (prefers-reduced-motion: reduce) {
+  .m-glow > .glow-layer { display: none; }
+}
