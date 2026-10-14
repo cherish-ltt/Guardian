@@ -54,6 +54,28 @@
 
 ### 变更
 
+- **依赖瘦身与 feature 收紧**：去掉全部在 `src/`、`tests/` 里零调用点的依赖
+  （`preset` bundle 的 `rayon` / `validator` / `regex` / `base64` / `once_cell` / `rand` /
+  `derive_more` / `itertools`，与 `http-client` bundle 的 `reqwest`），并把「聚合 feature 全开」
+  改为按实际调用面逐项列出：
+  - `tokio`：`full` → `macros` / `net` / `rt-multi-thread` / `signal` / `time`；
+  - `axum`：`default-features = false`（丢掉 `form` / `matched-path` / `original-uri` / `tower-log`），
+    只留 `http1` / `json` / `query` / `tokio` / `tracing`；
+  - `sea-orm`：`default-features = false`（丢掉 `with-json` / `with-chrono` / `with-uuid` /
+    `with-time` / `with-rust_decimal` / `stream`），只留 `macros` / `runtime-tokio` /
+    `sqlx-sqlite` 与 `sqlite-use-returning-for-3_35`；`runtime-tokio-rustls` 改 `runtime-tokio`
+    （只支持 SQLite，TLS 后端是纯开销），顺带把 `rustls` / `ring` / `webpki-roots` 移出依赖图；
+  - `chrono`：去掉未被使用的 `serde` feature。
+
+  默认依赖图由 243 个 crate 降到 227 个（减 16 个）——其中 `rustls` / `ring` / `webpki-roots` /
+  `rustls-webpki` 与 `rust_decimal` / `ouroboros` / `arrayvec` 都是上面两处「默认集全开」带进来的。
+- **release 产物优化**：`[profile.release]` 新增 `lto = true` 与 `codegen-units = 1`，均不改变业务语义
+  （代价是 release 构建由约 1m 变为约 3.5m；CI 只跑 debug 构建与 `cargo check --release`，不受影响）。
+  未加 `strip`，保留符号表以便生产 panic 能打出可读栈帧。
+  两项合并后 release 二进制由 19.83 MB 降到 14.09 MB（−28.9%，已小于原先 `strip` 后的 14.92 MB）。
+
+  `AGENTS.md` 第 3 节、第 5 节、10.2 与新增的第 10.12 / 10.13 节，以及 `README.md`、
+  `docs/DEVELOPMENT.md`、`docs/TESTING.md` 同步说明。
 - 项目定名为 Guardian：crate 更名 `guardian-backend`（版本 `0.1.0`），前端包更名 `guardian-frontend`，
   默认数据库文件为 `guardian.db`，日志与响应中的服务名、JWT 签发者与受众同步调整，
   前端 `localStorage` 键前缀由 `scaffold.` 改为 `guardian.`。

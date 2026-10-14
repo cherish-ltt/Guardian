@@ -16,8 +16,7 @@ cargo test --features docs
 ```
 
 （CI 同款命令见仓库根的 `.github/workflows/backend.yml`；`default` feature 为空，
-`--all-features` 等价于启用 `preset`、`http-client`、`docs` 三个可选 feature，
-因此 `--all-features` 会比 CI 多编译一批预置库。）
+当前可选 feature 只剩 `docs`，因此 `--all-features` 与 `--features docs` 等价。）
 
 这样可以同时确认：
 

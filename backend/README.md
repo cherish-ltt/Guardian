@@ -33,16 +33,20 @@ docs/                  架构、中间件、日志、事务、响应、测试、
 | 关注点 | 选型 |
 | --- | --- |
 | Web 框架 | `axum`（`tower-http` 中间件、`tower::ServiceExt::oneshot` 测试） |
-| 异步运行时 | `tokio` |
-| ORM 与迁移 | `sea-orm` + `sqlx`（SQLite，`sqlx::migrate!` 执行 `migrations/`） |
+| 异步运行时 | `tokio`（`macros` / `net` / `rt-multi-thread` / `signal` / `time`，不用 `full`） |
+| ORM 与迁移 | `sea-orm` + `sqlx`（SQLite，`sqlx::migrate!` 执行 `migrations/`；只支持 SQLite，不启用 TLS） |
 | 鉴权 | `jsonwebtoken`（`aws_lc_rs` 后端）、`argon2` 口令哈希 |
 | 会话与验证码 | `redis`（connection-manager 自动重连） |
 | 接口文档 | `utoipa` + `swagger-ui`，由可选 feature `docs` 门控（不进 release） |
 | 序列化与日志 | `serde` / `serde_json`、`tracing` + `tracing-subscriber` |
-| 其它 | `uuid`（traceId 与主键）、`zip`（代码生成下载）、`csv`、`anyhow`、`thiserror` |
+| 其它 | `uuid`（traceId 与主键）、`zip`（代码生成下载）、`anyhow`、`thiserror` |
 
-依赖版本在 `Cargo.toml` 中以 `=` 精确锁定；`preset` / `http-client` 两个可选 feature 提供
-`rayon` / `reqwest` / `validator` 等预置库，默认构建不编译。
+依赖版本在 `Cargo.toml` 中以 `=` 精确锁定，feature 逐个按实际调用面列出：
+不保留任何未被引用的依赖，也不用 `full` 这类聚合 feature；可选 feature 当前只有 `docs`，
+新增依赖的顺序与约束见 [AGENTS.md](AGENTS.md) 第 3 节与第 10.12 节。
+
+发布构建（`cargo build --release`）在 `[profile.release]` 里开了 `lto` 与 `codegen-units = 1`，
+以体积为优先；代价是 release 构建变慢，日常开发用 debug 构建不受影响。
 
 ## 分层约束
 

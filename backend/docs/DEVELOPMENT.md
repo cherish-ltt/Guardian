@@ -37,23 +37,16 @@ let hashed = hash_password("S3cure-Password!")?;
 let ok = verify_password("S3cure-Password!", &hashed)?;
 ```
 
-## 预置备用依赖
+## 新增依赖
 
-为了让新项目开箱更快，`Cargo.toml` 里额外预置了几类常用依赖，并且加了中文分类注释：
+`Cargo.toml` 不预置「备用依赖」：依赖必须当次就有调用点，否则不写进清单
+（原先的 `preset` / `http-client` 两个 bundle 因零引用已整组删除）。需要新库时：
 
-- `argon2`：密码哈希（正式依赖，开箱即用）
-- `rayon`：CPU 密集型并行计算备用
-- `reqwest`：对外 HTTP 调用
-- `validator`：请求参数校验
-- `regex`、`base64`、`once_cell`、`rand`、`derive_more`、`itertools`：常用工具库
+1. 按分类放到对应的 `#` 注释组下，版本用 `=` 精确锁定（见 AGENTS.md 第 3 节）；
+2. 只开代码真正用到的 feature，不用 `full` 之类的聚合开关；依赖自带默认集时
+   先用 `default-features = false` 关掉再显式开启；
+3. 跑一遍完整检查：`cargo fmt --all -- --check`、`cargo clippy --all-targets --features docs -- -D warnings`、
+   `cargo check --release --features docs`、`cargo test --features docs`。
 
-这些库暂时不一定全部在业务里直接使用，因此**不在 `default` feature 里**，
-需要时手动开启：
-
-```bash
-cargo build --features preset        # rayon / validator / regex / base64 / once_cell / rand / derive_more / itertools
-cargo build --features http-client   # reqwest
-cargo build --features preset,http-client
-```
-
-`Cargo.toml` 中的版本仍然逐个锁定，开启后即可直接 `use`，无需再改依赖声明。
+依赖与 feature 的收紧规则（含 `axum` / `sea-orm` 关默认集、SQLite 不启用 TLS 等）
+见 [AGENTS.md](AGENTS.md) 第 10.12 节。

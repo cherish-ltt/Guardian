@@ -112,6 +112,11 @@ jobs:
   - `name`、`version`、`edition`、`authors`、`description`、`license`、`repository` 等。
 - 依赖项必须**归类**，使用 `#` 注释说明每组依赖的用途。
 - 每个依赖必须使用 `version = "x.y.z"` **锁定具体版本**（使用 `=` 号），不得使用范围限定符。
+- **禁止聚合 feature**：不得写 `features = ["full"]` 这类「一把梭」开关，必须逐项列出代码真正用到的
+  feature；依赖自带的默认 feature 集（`default = [...]`）同样要核对，用 `default-features = false`
+  关掉未使用的部分再显式开启。
+- **依赖与 feature 只保留被引用的部分**：`src/`、`tests/`、`benches/` 里查不到调用点的依赖必须删除，
+  不得以「预置备用」「以后可能用」为理由保留；删完必须跑一次 `cargo tree` 对比规模。
 - 使用 `edition = "2024"` 以及环境中的 Rust 版本，例如:`rust-version = "1.99.0"`
 
 示例结构：
@@ -133,7 +138,9 @@ repository = "https://github.com/your/repo"
 serde = { version = "=1.0.210", features = ["derive"] }
 
 # 异步并发
-tokio = { version = "=1.42.0", features = ["full"] }
+# 不写 "full"：逐项列出实际用到的 feature
+#（macros 覆盖 #[tokio::main] / #[tokio::test]，rt-multi-thread 覆盖多线程运行时）
+tokio = { version = "=1.42.0", features = ["macros", "rt-multi-thread"] }
 
 # 开发依赖
 [dev-dependencies]
@@ -145,6 +152,10 @@ criterion = { version = "=0.5.1" }
 opt-level = 1
 [profile.dev.package."*"]
 opt-level = 3
+# release 以体积为优先
+[profile.release]
+lto = true
+codegen-units = 1
 ```
 
 ---
@@ -198,8 +209,8 @@ msrv = "1.99.0"
   辅助函数里噪声过大）。改代码而不是调阈值。
 
 所有代码必须通过 `cargo clippy --all-targets --features docs -- -D warnings` 检查，无警告
-（与 CI 一致；`docs` feature 必须打开，否则文档代码不在检查范围内）。`--all-features` 会额外
-编译 `preset` / `http-client` 两个可选依赖 bundle，pre-commit 钩子用它做本地兜底。
+（与 CI 一致；`docs` feature 必须打开，否则文档代码不在检查范围内）。pre-commit 钩子用
+`--all-features --all-targets` 做本地兜底，当前可选 feature 只剩 `docs`。
 
 ---
 
@@ -361,7 +372,10 @@ msrv = "1.99.0"
 ### 10.2 jsonwebtoken 加密后端
 
 - `jsonwebtoken` 从 v11 起默认不启用任何加密后端，直接调用签发/校验会在运行时 panic。
-- `Cargo.toml` 中必须保持 `jsonwebtoken = { version = "=11", features = ["aws_lc_rs"] }`，与 rustls 使用的 `aws-lc-rs` 后端保持一致。
+- `Cargo.toml` 中必须保持 `jsonwebtoken = { version = "=11", features = ["aws_lc_rs"] }`。
+  SQLite 部署不经过 TLS，sqlx / sea-orm 侧不再启用 rustls（`runtime-tokio` 而非
+  `runtime-tokio-rustls`），因此 `aws-lc-rs` 只服务 JWT；换用其它后端前必须评估口令哈希与
+  JWT 验签的兼容性，不要在依赖评审里顺手改。
 - 升级 `jsonwebtoken` 时需确认其加密后端特性仍然被显式启用。
 
 ### 10.3 双许可协议
@@ -460,3 +474,39 @@ msrv = "1.99.0"
 - 演示接口（`examples`、`transactions` 与 `dev-login` / `dev-transfer`）在真实项目中应替换或删除；
   `dev-*` 只在 debug 构建注册，release 构建不含。
 - 新增种子数据必须幂等（`INSERT OR IGNORE` 或先查后写），并同步更新 `README.md` 的生产清理清单。
+
+### 10.12 依赖与 feature 收紧
+
+- **不使用聚合 feature**：`tokio` 曾用 `features = ["full"]`，现按调用面逐项列出
+  （`macros` / `net` / `rt-multi-thread` / `signal` / `time`）；新增能力时对着代码补 feature，
+  不要回退到 `full`。`axum`、`sea-orm` 未关默认 feature 集同样属于「隐式全开」，
+  用 `default-features = false` + 显式列表取代。
+- **`axum` 的默认集**：`form` / `matched-path` / `original-uri` / `tower-log` 均未被使用，
+  当前只开 `http1` / `json` / `query` / `tokio` / `tracing`。路由与提取器改动后若编译报
+  `no method/type found`，先核对是不是用到了新 feature 再补声明，不要直接恢复默认集。
+- **`sea-orm` 的默认集**：默认打开的 `with-json` / `with-chrono` / `with-uuid` / `with-time` /
+  `with-rust_decimal` / `stream` 都未被使用（实体列只有 `i64` 与 `String`，也没有流式查询）。
+  实体里新增这些类型的列时必须同步补对应 feature，否则编译失败。
+  `sqlite-use-returning-for-3_35` 影响生成的 INSERT 语句，必须保留。
+- **只支持 SQLite 就不启用 TLS**：数据库侧用 `runtime-tokio` 而非 `runtime-tokio-rustls`，
+  避免把 `rustls` / `ring` / `webpki-roots` 编进产物；要支持 MySQL / PostgreSQL 时必须一并
+  把 TLS 后端与迁移逻辑重新评估。
+- **不保留「预置备用依赖」**：原先 `preset`（`rayon` / `validator` / `regex` / `base64` /
+  `once_cell` / `rand` / `derive_more` / `itertools`）与 `http-client`（`reqwest`）两个 bundle
+  在 `src/`、`tests/` 里零调用点，已整组删除。新增依赖必须当次就有调用点，
+  并按第 3 节的规则锁定 `=` 版本、加分类注释。
+- **依赖变更后的验证口径**：至少跑 `cargo tree -e normal --prefix none | sort -u | wc -l`
+  对比前后 crate 数量，再跑第 2 节的完整 CI 四件套（fmt / clippy / check --release --features docs /
+  test --features docs）；删 feature 属于编译期约束变更，只靠 `cargo check` 不能证明行为不变。
+  涉及 `debug_assertions` 门控代码或 release profile 时，额外跑一次 `cargo test --release --features docs`。
+
+### 10.13 发布产物优化
+
+- `[profile.release]` 开 `lto = true` 与 `codegen-units = 1`：前者做跨 crate 内联，后者让优化器
+  看到全部代码，两者都不改变业务语义。代价是 release 构建变慢（本 crate 约 1m → 3.5m），
+  CI 只跑 debug 构建与 `cargo check --release`，不受影响。
+- **不加 `strip`**：保留符号表以便生产 panic 与性能采样能打出可读栈帧；要再降体积可自行加
+  `strip = "symbols"`（实测再减约 2.2 MB），但要接受栈帧只剩地址。
+- 需求是“快”而不是“小”时，改回去只需删这两行；不要在业务代码里为体积做特殊处理。
+- 修改 profile 后必须重跑 `cargo build --release` 并记录产物大小（`stat -c%s target/release/guardian-backend`）
+  与 `docs/CHANGELOG.md`。
