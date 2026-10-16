@@ -1,6 +1,7 @@
 use std::{
     env,
     net::{IpAddr, SocketAddr},
+    path::PathBuf,
     str::FromStr,
 };
 
@@ -20,6 +21,8 @@ pub struct AppConfig {
     pub seed: SeedConfig,
     pub logging: LoggingConfig,
     pub middleware: MiddlewareConfig,
+    /// 离线 IP 地名库（ip2region xdb）路径；留空则日志地点只区分本机 / 内网 / 外网。
+    pub ip_location_db_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone)]
@@ -360,6 +363,13 @@ impl AppConfig {
             ));
         }
 
+        let ip_location_db_path = {
+            let value = get_env_or("IP_LOCATION_DB_PATH", "");
+            let value = value.trim();
+
+            (!value.is_empty()).then(|| PathBuf::from(value))
+        };
+
         let middleware = MiddlewareConfig {
             request_timeout_secs: parse_env_or("MIDDLEWARE_REQUEST_TIMEOUT_SECS", 10_u64)?,
             max_body_bytes: parse_env_or("MIDDLEWARE_MAX_BODY_BYTES", 2 * 1024 * 1024_usize)?,
@@ -425,6 +435,7 @@ impl AppConfig {
             seed,
             logging,
             middleware,
+            ip_location_db_path,
         })
     }
 }

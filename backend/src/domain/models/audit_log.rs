@@ -57,6 +57,8 @@ pub struct LoginLogEntry {
     pub username: String,
     pub status: i64,
     pub message: String,
+    /// 由 `IpLocation` 解析：本地网段给出本机 / 内网，公网给出地名。
+    pub location: Option<String>,
     pub source: ClientSource,
 }
 
@@ -70,6 +72,8 @@ pub struct OperationLogEntry {
     pub request_params: Option<String>,
     pub operator: Option<String>,
     pub ip: Option<String>,
+    /// 由 `IpLocation` 解析：本地网段给出本机 / 内网，公网给出地名。
+    pub location: Option<String>,
     pub cost_ms: i64,
     pub result: i64,
     pub error_message: Option<String>,

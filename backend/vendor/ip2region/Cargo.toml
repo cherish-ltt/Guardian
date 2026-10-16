@@ -1,0 +1,14 @@
+[package]
+name = "ip2region"
+version = "0.2.1"
+edition = "2024"
+rust-version = "1.99.0"
+description = "ip2region 官方 Rust 查询客户端（vendor 副本）"
+license = "Apache-2.0 OR MIT"
+repository = "https://github.com/lionsoul2014/ip2region"
+
+[dependencies]
+# 错误类型
+thiserror = "=2.0.21"
+# 加载与查询的调试日志
+tracing = { version = "=0.1.44", default-features = false, features = ["std"] }

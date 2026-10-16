@@ -225,6 +225,7 @@ async fn interrupted_database_stage_is_reported(logs: &Arc<LogBuffer>) {
             request_timeout_secs: 1,
             ..base_config()
         },
+        ip_location_db_path: None,
     };
 
     let container = Arc::new(

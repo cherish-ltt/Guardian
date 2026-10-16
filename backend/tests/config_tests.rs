@@ -1,6 +1,9 @@
 use std::env;
 use std::net::IpAddr;
-use std::sync::{Mutex, MutexGuard, OnceLock};
+use std::{
+    path::Path,
+    sync::{Mutex, MutexGuard, OnceLock},
+};
 
 use guardian_backend::infrastructure::config::{AppConfig, RedisConfig, ServerConfig};
 
@@ -111,6 +114,7 @@ fn valid_config_loads_with_defaults() {
             ("MIDDLEWARE_CLIENT_MAX_ENTRIES", None),
             ("MIDDLEWARE_CLIENT_IDLE_SECS", None),
             ("MIDDLEWARE_SLOW_REQUEST_MS", None),
+            ("IP_LOCATION_DB_PATH", None),
         ],
         || {
             let config = AppConfig::from_env().expect("默认配置应可加载");
@@ -152,6 +156,37 @@ fn valid_config_loads_with_defaults() {
             assert_eq!(config.middleware.client_max_entries, 16384);
             assert_eq!(config.middleware.client_idle_secs, 60);
             assert_eq!(config.middleware.slow_request_ms, 1000);
+            assert!(config.ip_location_db_path.is_none());
+        },
+    );
+}
+
+#[test]
+fn ip_location_database_path_is_optional_and_trimmed() {
+    with_env(
+        &[
+            ("JWT_SECRET", Some(CUSTOM_SECRET)),
+            ("IP_LOCATION_DB_PATH", Some("  /data/ip2region_v4.xdb  ")),
+        ],
+        || {
+            let config = AppConfig::from_env().expect("配置应可加载");
+
+            assert_eq!(
+                config.ip_location_db_path.as_deref(),
+                Some(Path::new("/data/ip2region_v4.xdb"))
+            );
+        },
+    );
+
+    with_env(
+        &[
+            ("JWT_SECRET", Some(CUSTOM_SECRET)),
+            ("IP_LOCATION_DB_PATH", Some("   ")),
+        ],
+        || {
+            let config = AppConfig::from_env().expect("空白视为未配置");
+
+            assert!(config.ip_location_db_path.is_none());
         },
     );
 }

@@ -14,6 +14,7 @@ use crate::{
     infrastructure::{
         config::AppConfig,
         databases::{connect_database, run_migrations},
+        ip_location::IpLocation,
         repositories::transaction::SeaOrmTransferRepository,
         services::{
             auth_store::{AuthStore, MemoryAuthStore},
@@ -46,6 +47,8 @@ pub struct Container {
     pub generator_service: Arc<dyn GeneratorUseCase>,
     /// 操作留痕：由审计中间件在写操作后调用。
     pub audit_service: Arc<dyn OperationLogUseCase>,
+    /// 客户端 IP 的地点：登录日志与操作日志的 `location` 列都由它解析。
+    pub ip_location: Arc<IpLocation>,
 }
 
 impl Container {
@@ -65,6 +68,7 @@ impl Container {
         let database = connect_database(&config.database).await?;
         run_migrations(&database, &config.database.url, &config.seed).await?;
         let jwt_service = Arc::new(JwtService::new(config.jwt.clone())?);
+        let ip_location = Arc::new(IpLocation::load(config.ip_location_db_path.as_deref())?);
 
         let auth_service: Arc<dyn AuthUseCase> = Arc::new(AuthService::new(jwt_service.clone()));
         let example_service: Arc<dyn ExampleUseCase> = Arc::new(ExampleService::new());
@@ -78,6 +82,7 @@ impl Container {
             database.clone(),
             jwt_service.clone(),
             auth_store,
+            ip_location.clone(),
         ));
         let admin_service: Arc<dyn AdminUseCase> = Arc::new(AdminService::new(
             database.clone(),
@@ -106,6 +111,7 @@ impl Container {
             dashboard_service,
             generator_service,
             audit_service,
+            ip_location,
         })
     }
 

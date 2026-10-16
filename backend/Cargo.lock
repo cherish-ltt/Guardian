@@ -855,6 +855,7 @@ dependencies = [
  "chrono",
  "dotenv",
  "http-body-util",
+ "ip2region",
  "ipnet",
  "jsonwebtoken",
  "mimalloc",
@@ -1187,6 +1188,14 @@ dependencies = [
  "hashbrown 0.17.0",
  "serde",
  "serde_core",
+]
+
+[[package]]
+name = "ip2region"
+version = "0.2.1"
+dependencies = [
+ "thiserror",
+ "tracing",
 ]
 
 [[package]]

@@ -93,6 +93,7 @@ async fn setup_app_with_cors_origins(cors_allowed_origins: Vec<String>) -> Route
             client_idle_secs: 60,
             slow_request_ms: 1000,
         },
+        ip_location_db_path: None,
     };
 
     // 会话用内存实现：集成测试不依赖外部 Redis。

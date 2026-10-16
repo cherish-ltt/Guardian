@@ -78,19 +78,6 @@ pub trait AuditLogRepository: Send + Sync {
 #[derive(Debug, Default, Clone, Copy)]
 pub struct SeaOrmAuditLogRepository;
 
-/// 端点 IP 归属地与 Spring 版一致：本机回环显示「本机」，其余显示「内网」。
-pub fn location_of(ip: Option<&str>) -> Option<String> {
-    let ip = ip.filter(|value| !value.is_empty())?;
-
-    Some(
-        if ip == "127.0.0.1" || ip == "::1" || ip == "0:0:0:0:0:0:0:1" {
-            "本机".to_string()
-        } else {
-            "内网".to_string()
-        },
-    )
-}
-
 #[async_trait]
 impl AuditLogRepository for SeaOrmAuditLogRepository {
     async fn count_oper_logs<C>(
@@ -219,7 +206,7 @@ impl AuditLogRepository for SeaOrmAuditLogRepository {
                 entry.operator.clone().into(),
                 Option::<String>::None.into(),
                 entry.ip.clone().into(),
-                location_of(entry.ip.as_deref()).into(),
+                entry.location.clone().into(),
                 entry.cost_ms.into(),
                 entry.result.into(),
                 entry.error_message.clone().into(),

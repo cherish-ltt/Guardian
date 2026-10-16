@@ -74,6 +74,7 @@ fn test_config(out_dir: &str) -> AppConfig {
             client_idle_secs: 60,
             slow_request_ms: 1000,
         },
+        ip_location_db_path: None,
     }
 }
 

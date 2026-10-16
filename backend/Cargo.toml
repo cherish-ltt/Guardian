@@ -54,6 +54,11 @@ ipnet = "=2.12.0"
 # 规则表已随 crate 发布、无需任何 feature；构建期生成规则用的 generate feature 不启用。
 woothee = "=0.13.0"
 
+# 离线 IP 地名库查询客户端（日志的 location 列）
+# 官方 crate 未上 crates.io 且会把生成工具 maker（clap / chrono 等约 70 个包）拖进依赖树，
+# 因此 vendor 到 vendor/ip2region：保留官方查询实现，maker 换成只含头部解析的本地模块。
+ip2region = { version = "=0.2.1", path = "vendor/ip2region" }
+
 # 异步运行时与性能
 # 不用 "full"：按实际调用面逐项开启（macros 覆盖 main/test/select!，time 覆盖 timeout/sleep，
 # net 覆盖 TcpListener，signal 覆盖 ctrl_c/SIGTERM，rt-multi-thread 覆盖多线程运行时）。

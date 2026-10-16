@@ -104,6 +104,7 @@ pub async fn setup_app_with_trusted_proxies(trusted_proxies: Vec<IpNet>) -> Rout
             client_idle_secs: 60,
             slow_request_ms: 1000,
         },
+        ip_location_db_path: None,
     };
 
     let container = Container::bootstrap_with_auth_store(config, Container::memory_auth_store())

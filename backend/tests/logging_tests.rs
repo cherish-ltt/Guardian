@@ -68,6 +68,7 @@ fn test_config(out_dir: &str, utc_offset_hour: i8, utc_offset_minute: i8) -> App
             client_idle_secs: 60,
             slow_request_ms: 1000,
         },
+        ip_location_db_path: None,
     }
 }
 

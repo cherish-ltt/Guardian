@@ -13,8 +13,6 @@ use crate::{
     util::time,
 };
 
-use super::audit_log::location_of;
-
 /// 登录鉴权与数据权限所需的读操作。
 ///
 /// 每个方法都接收 `C: ConnectionTrait`，由调用方决定是否在事务内执行。
@@ -221,7 +219,7 @@ impl AdminAuthRepository for SeaOrmAdminAuthRepository {
             vec![
                 entry.username.clone().into(),
                 entry.source.ip.clone().into(),
-                location_of(entry.source.ip.as_deref()).into(),
+                entry.location.clone().into(),
                 entry.source.browser.clone().into(),
                 entry.source.os.clone().into(),
                 entry.status.into(),

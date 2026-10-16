@@ -1273,7 +1273,7 @@ async fn login_log_records_trusted_client_source() {
     assert_eq!(row["username"], "admin");
     assert_eq!(row["msg"], "登录成功");
     assert_eq!(row["ip"], "203.0.113.7", "可信代理透传的真实来源");
-    assert_eq!(row["location"], "内网");
+    assert_eq!(row["location"], "外网");
     assert_eq!(row["browser"], "Chrome");
     assert_eq!(row["os"], "Windows 10");
 

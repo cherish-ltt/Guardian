@@ -161,7 +161,8 @@ pub async fn record_operation(
     let method = request.method().to_string();
     let url = request.uri().path().to_string();
     let operator = operator_of(&container, request.headers());
-    let ip = client_ip::source_of(request.extensions(), request.headers()).ip;
+    let source = client_ip::source_of(request.extensions(), request.headers());
+    let location = container.ip_location.resolve(source.ip.as_deref());
     let limit = container.config.middleware.max_body_bytes;
     let (request, params) = buffered_request(request, limit, &url).await;
 
@@ -181,7 +182,8 @@ pub async fn record_operation(
         request_url: Some(url.clone()),
         request_params: params,
         operator,
-        ip,
+        ip: source.ip,
+        location,
         cost_ms,
         result: i64::from(status.is_success()),
         error_message,
