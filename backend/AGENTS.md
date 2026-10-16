@@ -285,7 +285,9 @@ msrv = "1.99.0"
 - 容量参数只允许定义在 `MiddlewareConfig`（`src/infrastructure/config.rs`）并从 `.env` 读取；
   中间件代码中不得出现字面量。新增参数必须同步 `.env`、`.env-example`、`tests/config_tests.rs`。
 - 代码兜底默认值必须与 `.env-example` 保持一致（当前：并发 256、背压队列 256、限流 32768 req/s、
-  超时 10s、Body 2 MiB、周期 1s）；修改任一侧都必须同步另一侧与 `docs/MIDDLEWARE.md` 的「中间件配置」表格。
+  超时 10s、Body 2 MiB、周期 1s、单 IP 并发 32、单 IP 速率 1024/窗口、客户端注册表 16384、
+  空闲保留期 60s、慢请求阈值 1000ms、可信代理空）；修改任一侧都必须同步另一侧与
+  `docs/MIDDLEWARE.md` 的「中间件配置」表格。
 - 中间件的错误响应必须复用 `ApiResponse::error(status, message)`，与业务错误 `AppError`
   的响应格式保持一致；不要在中间件里手写 JSON。
 - 并发限制与限速是两个维度：并发限制约束在途请求数，限速约束单位时间请求数；
@@ -294,17 +296,20 @@ msrv = "1.99.0"
   （栈的最内层），来源白名单读 `MIDDLEWARE_CORS_ALLOWED_ORIGINS`；禁止在 `create_app`
   或 controller 里直接挂 `CorsLayer::permissive()`，默认必须是不发任何 CORS 头。
 - 调整执行顺序、新增或移除中间件时，必须同步更新 `docs/MIDDLEWARE.md` 的「中间件栈」章节与
-  `docs/CHANGELOG.md`，并在 `tests/middleware_tests.rs` 补对应断言（至少覆盖超时、Body 超限、
-  背压 503、限流 429、`request_id` 关联）。
+  `docs/CHANGELOG.md`，并在 `tests/middleware_tests.rs` 补对应断言（至少覆盖含排队的超时、
+  Body 超限、背压 503、限流 429、panic 隔离、框架错误归一化、`request_id` 关联），
+  按来源 IP 的额度另在 `tests/client_protection_tests.rs` 覆盖。
 - 需要断言日志内容的测试必须单独成进程（如 `tests/middleware_log_tests.rs`）：`tracing` 的
   callsite interest 缓存是进程级的，其他测试线程若在没有订阅者时命中过 tower-http 的 span
   callsite，该 callsite 会被缓存为 `never`，而 `tracing::subscriber::set_global_default` 并不重建
   这个缓存（需显式调用 `tracing::callsite::rebuild_interest_cache()`）。
-- 依赖约束：`tower` 必须是正式依赖（`buffer`/`limit`/`load-shed`）；`tower-http` 需包含
-  `cors`、`trace`、`request-id`、`limit`、`timeout`、`set-header`、`compression-gzip`。
+- 依赖约束：`tower` 必须是正式依赖（`buffer`/`limit`/`load-shed`/`util`，`util` 提供
+  `ServiceBuilder::map_response`）；`tower-http` 需包含 `catch-panic`、`compression-gzip`、`cors`、
+  `limit`、`request-id`、`set-header`（`trace` 与 `timeout` 已无人使用：访问日志与总超时
+  改由请求观测层承担）；可信代理解析需要 `ipnet`；`axum` 需启用 `matched-path`（路由模板）。
 - 限流（`429`）与背压（`503`）触发时是批量拒绝，逐条告警无信息量：
   `src/middleware/error_response.rs` 不得为这两类拒绝打印逐条 `warn` 日志，
-  每次请求（含被拒绝的请求）由 `TraceLayer` 的访问日志（INFO）覆盖；
+  每次请求（含被拒绝的请求）由请求观测层的一条访问/诊断日志覆盖；
   `internal()` 等真正的内部错误仍须保留 `error!` 日志。
 
 ### 10.7 日志分批写入
@@ -363,6 +368,9 @@ msrv = "1.99.0"
     新增或删除路由必须同步三张端点表，否则 `endpoint_tables_cover_every_registered_route` 会失败。
   - `tests/config_tests.rs`：覆盖 `AppConfig::from_env` 的默认值、覆盖项与全部校验分支。
   - `tests/logging_tests.rs`：覆盖日志初始化与配置校验。
+  - `tests/middleware_tests.rs`：覆盖中间件栈的对外行为（含排队的超时、Body 超限、背压、限流、
+    panic 隔离、框架错误归一化、CORS）；`tests/client_protection_tests.rs` 覆盖可信代理与按 IP 额度；
+    `tests/middleware_log_tests.rs` 单独成进程断言日志内容。
 - 环境变量是进程级全局状态，依赖环境变量的测试必须通过共享 `Mutex` 串行执行，并在结束后恢复原值。
 - 集成测试使用临时 SQLite 文件数据库，每个测试独立装配 `Container`，互不共享状态。
 - 覆盖率检测命令：`cargo llvm-cov --features docs --summary-only`，要求行覆盖率 ≥ 80%（全局口径，不按文件考核；
@@ -481,8 +489,9 @@ msrv = "1.99.0"
   （`macros` / `net` / `rt-multi-thread` / `signal` / `time`）；新增能力时对着代码补 feature，
   不要回退到 `full`。`axum`、`sea-orm` 未关默认 feature 集同样属于「隐式全开」，
   用 `default-features = false` + 显式列表取代。
-- **`axum` 的默认集**：`form` / `matched-path` / `original-uri` / `tower-log` 均未被使用，
-  当前只开 `http1` / `json` / `query` / `tokio` / `tracing`。路由与提取器改动后若编译报
+- **`axum` 的默认集**：`form` / `original-uri` / `tower-log` 未被使用，
+  当前开 `http1` / `json` / `matched-path` / `query` / `tokio` / `tracing`（`matched-path` 供
+  诊断日志取路由模板）。路由与提取器改动后若编译报
   `no method/type found`，先核对是不是用到了新 feature 再补声明，不要直接恢复默认集。
 - **`sea-orm` 的默认集**：默认打开的 `with-json` / `with-chrono` / `with-uuid` / `with-time` /
   `with-rust_decimal` / `stream` 都未被使用（实体列只有 `i64` 与 `String`，也没有流式查询）。
@@ -510,3 +519,37 @@ msrv = "1.99.0"
 - 需求是“快”而不是“小”时，改回去只需删这两行；不要在业务代码里为体积做特殊处理。
 - 修改 profile 后必须重跑 `cargo build --release` 并记录产物大小（`stat -c%s target/release/guardian-backend`）
   与 `docs/CHANGELOG.md`。
+
+---
+
+### 10.14 客户端 IP 与保护
+
+- HTTP 监听必须通过 `into_make_service_with_connect_info::<SocketAddr>()` 注入真实 TCP 对端；
+  集成测试要显式注入 `ConnectInfo<SocketAddr>`（`tests/support/mod.rs` 的 `send` / `send_raw` 已代劳），
+  缺少对端信息时拒绝请求（500），不静默绕过保护。
+- 客户端以规范化 IP 为键（IPv4 映射 IPv6 归一成 IPv4），共享出口共用额度；
+  仅对 `MIDDLEWARE_TRUSTED_PROXIES` 里的显式 IP/CIDR 采信 `X-Forwarded-For`，从右向左剥离可信代理。
+  不要相信所有转发头，也不要默认信任私网；不使用 `X-Real-IP` / `Forwarded` 兜底。
+- 单个来源 IP 的并发许可必须在正常完成、取消、超时与异常退出时都释放；注册表有界，
+  活动项不得驱逐，空闲保留期不得小于客户端限流窗口（启动时校验）。
+- 保护层拒绝要用统一响应结构：速率超限带 `Retry-After`（秒），并发超限不猜测等待时间；
+  5xx 文案统一「系统内部错误」，不得把容量细节透给客户端。
+- 访问日志不记录 query、Authorization 或请求体；客户端 IP 与请求 ID 仅用于请求追溯。
+  留痕模块（`src/middleware/audit.rs`）的 `oper_ip` 是另一套来源：按 Spring 契约直接取
+  `X-Forwarded-For` / `X-Real-IP`，不回退到保护层的可信解析，两者不得互相替代。
+
+### 10.15 请求诊断与失败隔离
+
+- 请求观测与总超时必须放在全局排队层之外；超时涵盖排队至响应头产生，不保证响应流发送期限，
+  也不代表已提交的外部副作用被撤销。取消时所有已持有的许可必须释放。
+- 路由模板采集允许在统一装配点施加无状态 `route_layer`（`diagnostics::route`）；
+  controller 不得自行装配中间件。
+- 每请求仅一条访问或诊断事件（`request completed` / `request diagnostic`）；慢请求、408 与业务 5xx
+  才输出阶段汇总，429/容量拒绝不逐条告警。services 的关键 IO 用固定阶段名 `measure` 包裹，
+  不逐阶段打印，也不得把用户输入、SQL 或参数写进阶段名。
+- 框架生成的纯文本 400/404/405/413/415/422 由观测层归一化成统一 JSON，不回显解析细节，
+  不改写已有业务 JSON，405 保留 `Allow`；panic 保留 `error!` 日志并返回安全 500。
+- `traceId` 的响应体注入留在压缩层之内（否则读到的是压缩后的字节）；由外层生成的响应
+  （限流、背压、panic）至少保证 `x-trace-id` 响应头，异常点已记在 `docs/RESPONSE.md`。
+- production 配置必须拒绝 debug 构建：`main` 启动校验与 `create_app` 嵌入入口都要守住边界；
+  `docs` feature 仍独立，release + docs 必须能编译，生产文档访问由网关限制。
