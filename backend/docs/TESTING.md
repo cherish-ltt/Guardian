@@ -98,8 +98,8 @@ cargo llvm-cov --features docs --summary-only
 | 文件 | 覆盖范围 |
 | --- | --- |
 | `tests/contract_tests.rs` | 全部 83 个 `(方法, 路径)` 的鉴权与错误语义矩阵：74 个受保护端点缺令牌一律 401、64 个权限码端点用零权限账号一律 403、9 个公开端点免令牌；404 / 405 / 400 的统一文案 |
-| `tests/admin_api_tests.rs` | 认证全流程、用户 / 角色 / 菜单 / 部门 / 岗位 / 字典 / 参数的 CRUD 与校验文案、导出、403 与数据范围、404 / 405 文案 |
-| `tests/monitor_api_tests.rs` | 写操作留痕的内容与脱敏、操作 / 登录日志的列表与统计、时间线、热力图、导出、删除与清空、工作台聚合 |
+| `tests/admin_api_tests.rs` | 认证全流程（含登录 / 退出日志的客户端来源与浏览器采集）、用户 / 角色 / 菜单 / 部门 / 岗位 / 字典 / 参数的 CRUD 与校验文案、导出、403 与数据范围、404 / 405 文案 |
+| `tests/monitor_api_tests.rs` | 写操作留痕的内容（含可信代理下的来源 IP）与脱敏、操作 / 登录日志的列表与统计、时间线、热力图、导出、删除与清空、工作台聚合 |
 | `tests/generator_api_tests.rs` | 候选表与导入幂等、字段元数据、7 个生成文件的内容、ZIP 条目、留痕动作 |
 
 `tests/contract_tests.rs` 的三张端点表与 `src/api/controllers` 的路由注册一一对应：

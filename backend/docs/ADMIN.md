@@ -127,6 +127,21 @@ src/middleware/audit.rs                       写操作留痕
 - 认证或权限被拒（401 / 403）不写日志：这两种情况下请求根本没进业务方法。
 - 留痕写入失败只 `error!` 记日志，不改变业务响应。
 - 操作人只解 JWT，不再查库（处理器已完成完整鉴权）。
+- 来源 IP 取保护层的可信代理解析结果，而不是请求头原值（见 [中间件栈与配置](MIDDLEWARE.md)）。
+
+## 登录日志
+
+`sys_login_log` 在每次登录尝试与退出时各写一行，客户端来源与其他字段：
+
+| 列 | 来源 |
+| --- | --- |
+| `username` / `status` / `msg` | 业务结果：密码错误、账号停用（成功登录前的失败也记录，验证码失败不写） |
+| `ip` | 保护层解析出的真实对端 IP（可信代理命中时取 `X-Forwarded-For` 最右侧的不可信地址） |
+| `location` | 按 `ip` 推导，「本机 / 内网」，与操作日志同一套（`location_of`），不做地理库解析 |
+| `browser` / `os` | 请求 `User-Agent` 经 `src/util/user_agent.rs`（woothee 规则表）解析出的名称，识别不出时留空 |
+
+`src/api/extractors/client_source.rs` 把来源收成一个提取器：控制器只需声明参数，
+不自己读头或扩展；服务层签名收 `&ClientSource`，会话、验证码与事务边界都不受影响。
 
 ## 存储映射（MySQL → SQLite）
 
@@ -170,15 +185,16 @@ src/middleware/audit.rs                       写操作留痕
 | 生成器模板 | Java 文本块 | 逐字对齐的 Rust 字符串 | 集成测试按字节断言 7 个文件的内容 |
 | 生成产物包名 | `com.scaffold.*` | 同前 | 生成器输出与参考实现逐字一致，不因本项目改名而漂移 |
 | 时间字段 | `DATETIME` | `TEXT` 本地时间字符串 | SQLite 无原生日期类型 |
-| 登录日志 IP | 不写 | 不写 | 保持与 Spring 一致；操作日志按 `x-forwarded-for` → `x-real-ip` 取 |
+| 留痕来源 IP | 操作日志按 `x-forwarded-for` → `x-real-ip` 取；登录日志不写 | 两者都取保护层按可信代理解出的真实对端（未命中可信代理时忽略转发头） | 转发头可被调用方伪造，日志里的来源必须可追溯；部署时需配置 `MIDDLEWARE_TRUSTED_PROXIES`，见 [生产部署](../../docs/DEPLOYMENT.md) |
+| 登录日志客户端 | 只写账号与结果 | 另写 IP、地点、浏览器、操作系统 | 排查需要知道「谁从哪里用什么客户端登录」；`User-Agent` 用 woothee 规则表解析，版本号不写入 |
 
 ## 测试
 
 `tests/support/mod.rs` 提供装配装置（临时 SQLite + 内存会话、登录、带令牌请求、CSV / ZIP 原始响应读取）。
 新增接口的契约测试：
 
-- `tests/admin_api_tests.rs`：认证全流程、七个系统管理页面的 CRUD / 树 / 导出 / 权限 403 / 数据范围 / 404 / 405 文案。
-- `tests/monitor_api_tests.rs`：留痕内容与脱敏、日志统计 / 时间线 / 热力图 / 导出 / 删除清空、工作台聚合。
+- `tests/admin_api_tests.rs`：认证全流程（含登录 / 退出日志的来源与浏览器采集）、七个系统管理页面的 CRUD / 树 / 导出 / 权限 403 / 数据范围 / 404 / 405 文案。
+- `tests/monitor_api_tests.rs`：留痕内容（含可信代理下的来源 IP）与脱敏、日志统计 / 时间线 / 热力图 / 导出 / 删除清空、工作台聚合。
 - `tests/generator_api_tests.rs`：候选表与导入幂等、字段元数据、7 个生成文件的内容、ZIP 条目、留痕动作。
 
 测试要求与命令见 [测试与构建检查](TESTING.md)。
