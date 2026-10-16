@@ -1,6 +1,6 @@
 [package]
 name = "guardian-backend"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.99.0"
 authors = ["Guardian team"]
@@ -24,26 +24,31 @@ async-trait = "=0.1.92"
 thiserror = "=2.0.21"
 
 # Web 框架与 HTTP 中间件
-# axum 默认 feature 含 form / matched-path / original-uri / tower-log，本项目均未使用，
+# axum 默认 feature 含 form / original-uri / tower-log，本项目均未使用，
 # 因此关掉默认集后按实际用到的能力逐项列出：
-#   http1+tokio → axum::serve；json → Json（提取器与响应）；query → Query；tracing → 内部 span。
+#   http1+tokio → axum::serve；json → Json（提取器与响应）；query → Query；tracing → 内部 span；
+#   matched-path → 诊断日志里的路由模板。
 axum = { version = "=0.8.9", default-features = false, features = [
   "http1",
   "json",
+  "matched-path",
   "query",
   "tokio",
   "tracing",
 ] }
-tower = { version = "=0.5.3", features = ["buffer", "limit", "load-shed"] }
+# util 提供 ServiceBuilder::map_response，用于把栈内响应体统一收敛为 axum::body::Body。
+tower = { version = "=0.5.3", features = ["buffer", "limit", "load-shed", "util"] }
 tower-http = { version = "=0.7.1", features = [
+  "catch-panic",
   "compression-gzip",
   "cors",
   "limit",
   "request-id",
   "set-header",
-  "timeout",
-  "trace",
 ] }
+
+# 可信代理网段解析（客户端 IP 识别）
+ipnet = "=2.12.0"
 
 # 异步运行时与性能
 # 不用 "full"：按实际调用面逐项开启（macros 覆盖 main/test/select!，time 覆盖 timeout/sleep，

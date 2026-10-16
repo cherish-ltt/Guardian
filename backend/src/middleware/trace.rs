@@ -15,6 +15,10 @@ pub const TRACE_ID_HEADER: &str = "x-trace-id";
 /// 统一响应体里的追踪字段名。
 pub const TRACE_ID_FIELD: &str = "traceId";
 
+/// 请求上下文里的追踪 ID：请求观测层解析一次后放进 extensions，其余层复用同一个值。
+#[derive(Clone)]
+pub(crate) struct TraceId(pub String);
+
 /// 沿用调用方传入的追踪 ID，缺失或空白时生成 32 位十六进制。
 pub fn resolve_trace_id(existing: Option<&str>) -> String {
     match existing.map(str::trim) {
@@ -29,24 +33,42 @@ pub fn resolve_trace_id(existing: Option<&str>) -> String {
 /// 因此追踪 ID 在响应出栈时统一注入：这里只改写 JSON 响应体，
 /// CSV / ZIP 等文件响应只加响应头。
 pub async fn inject_trace_id(request: Request, next: Next) -> Response {
-    let trace_id = resolve_trace_id(
-        request
-            .headers()
-            .get(TRACE_ID_HEADER)
-            .and_then(|value| value.to_str().ok()),
-    );
-    let mut response = next.run(request).await;
-
-    let Ok(header_value) = HeaderValue::from_str(&trace_id) else {
-        tracing::warn!(%trace_id, "trace id is not a valid header value, response keeps untraced");
-        return response;
+    // 正常路径上观测层已经解析好并放进上下文；单独使用时回退到请求头。
+    let trace_id = match request.extensions().get::<TraceId>() {
+        Some(trace_id) => trace_id.0.clone(),
+        None => resolve_trace_id(
+            request
+                .headers()
+                .get(TRACE_ID_HEADER)
+                .and_then(|value| value.to_str().ok()),
+        ),
     };
-    response.headers_mut().insert(
-        header::HeaderName::from_static(TRACE_ID_HEADER),
-        header_value,
-    );
+    let response = next.run(request).await;
 
-    inject_body(response, &trace_id).await
+    inject(response, &trace_id).await
+}
+
+/// 补响应头并改写 JSON 响应体。
+pub(crate) async fn inject(response: Response, trace_id: &str) -> Response {
+    inject_body(attach_header(response, trace_id), trace_id).await
+}
+
+/// 只补 `x-trace-id` 响应头，不读响应体。
+///
+/// 限流、背压、超时与 panic 的响应由内外两层各自生成，且往往是流式或压缩后的体，
+/// 这里只保证关联 ID 不丢，不再为它们重新缓冲一遍。
+pub(crate) fn attach_header(mut response: Response, trace_id: &str) -> Response {
+    match HeaderValue::from_str(trace_id) {
+        Ok(value) => {
+            response
+                .headers_mut()
+                .insert(header::HeaderName::from_static(TRACE_ID_HEADER), value);
+        },
+        Err(_) => {
+            tracing::warn!(%trace_id, "trace id is not a valid header value, response keeps untraced");
+        },
+    }
+    response
 }
 
 /// 只在 JSON 响应体里补写 `traceId`；其余类型（CSV / ZIP 等）只保留响应头。

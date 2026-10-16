@@ -90,6 +90,13 @@ pub async fn setup_app() -> Router {
             rate_limit_period_secs: 1,
             hsts_enabled: false,
             cors_allowed_origins: Vec::new(),
+            trusted_proxies: Vec::new(),
+            client_max_concurrency: 32,
+            client_rate_limit_requests: 1024,
+            client_rate_limit_period_secs: 1,
+            client_max_entries: 16384,
+            client_idle_secs: 60,
+            slow_request_ms: 1000,
         },
     };
 
@@ -100,7 +107,8 @@ pub async fn setup_app() -> Router {
     create_app(Arc::new(container))
 }
 
-pub async fn send(app: Router, request: Request<Body>) -> (StatusCode, Value) {
+pub async fn send(app: Router, mut request: Request<Body>) -> (StatusCode, Value) {
+    with_peer(&mut request);
     let response = app.oneshot(request).await.expect("请求应成功返回");
     let status = response.status();
 
@@ -110,14 +118,30 @@ pub async fn send(app: Router, request: Request<Body>) -> (StatusCode, Value) {
 /// 原样返回状态码、响应头与响应体，供 CSV / ZIP 等非 JSON 响应断言。
 pub async fn send_raw(
     app: Router,
-    request: Request<Body>,
+    mut request: Request<Body>,
 ) -> (StatusCode, axum::http::HeaderMap, Vec<u8>) {
+    with_peer(&mut request);
     let response = app.oneshot(request).await.expect("请求应成功返回");
     let status = response.status();
     let headers = response.headers().clone();
     let bytes = read_bytes(response).await;
 
     (status, headers, bytes)
+}
+
+/// 请求保护层按真实 TCP 对端分配额度：`oneshot` 不会自动注入，测试里显式补一个本地对端。
+pub fn with_peer(request: &mut Request<Body>) {
+    if request
+        .extensions()
+        .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
+        .is_none()
+    {
+        request.extensions_mut().insert(axum::extract::ConnectInfo(
+            "127.0.0.1:12345"
+                .parse::<std::net::SocketAddr>()
+                .expect("测试对端地址应合法"),
+        ));
+    }
 }
 
 pub async fn read_json(response: Response) -> Value {

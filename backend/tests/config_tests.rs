@@ -1,4 +1,5 @@
 use std::env;
+use std::net::IpAddr;
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use guardian_backend::infrastructure::config::{AppConfig, RedisConfig, ServerConfig};
@@ -103,6 +104,13 @@ fn valid_config_loads_with_defaults() {
             ("MIDDLEWARE_RATE_LIMIT_PERIOD_SECS", None),
             ("MIDDLEWARE_HSTS_ENABLED", None),
             ("MIDDLEWARE_CORS_ALLOWED_ORIGINS", None),
+            ("MIDDLEWARE_TRUSTED_PROXIES", None),
+            ("MIDDLEWARE_CLIENT_MAX_CONCURRENCY", None),
+            ("MIDDLEWARE_CLIENT_RATE_LIMIT_REQUESTS", None),
+            ("MIDDLEWARE_CLIENT_RATE_LIMIT_PERIOD_SECS", None),
+            ("MIDDLEWARE_CLIENT_MAX_ENTRIES", None),
+            ("MIDDLEWARE_CLIENT_IDLE_SECS", None),
+            ("MIDDLEWARE_SLOW_REQUEST_MS", None),
         ],
         || {
             let config = AppConfig::from_env().expect("默认配置应可加载");
@@ -137,6 +145,13 @@ fn valid_config_loads_with_defaults() {
             assert_eq!(config.middleware.rate_limit_period_secs, 1);
             assert!(!config.middleware.hsts_enabled);
             assert!(config.middleware.cors_allowed_origins.is_empty());
+            assert!(config.middleware.trusted_proxies.is_empty());
+            assert_eq!(config.middleware.client_max_concurrency, 32);
+            assert_eq!(config.middleware.client_rate_limit_requests, 1024);
+            assert_eq!(config.middleware.client_rate_limit_period_secs, 1);
+            assert_eq!(config.middleware.client_max_entries, 16384);
+            assert_eq!(config.middleware.client_idle_secs, 60);
+            assert_eq!(config.middleware.slow_request_ms, 1000);
         },
     );
 }
@@ -422,6 +437,16 @@ fn middleware_overrides_are_applied() {
             ("MIDDLEWARE_RATE_LIMIT_PERIOD_SECS", Some("2")),
             ("MIDDLEWARE_HSTS_ENABLED", Some("true")),
             (
+                "MIDDLEWARE_TRUSTED_PROXIES",
+                Some("10.0.0.0/8, ::1, 127.0.0.1"),
+            ),
+            ("MIDDLEWARE_CLIENT_MAX_CONCURRENCY", Some("4")),
+            ("MIDDLEWARE_CLIENT_RATE_LIMIT_REQUESTS", Some("20")),
+            ("MIDDLEWARE_CLIENT_RATE_LIMIT_PERIOD_SECS", Some("2")),
+            ("MIDDLEWARE_CLIENT_MAX_ENTRIES", Some("100")),
+            ("MIDDLEWARE_CLIENT_IDLE_SECS", Some("30")),
+            ("MIDDLEWARE_SLOW_REQUEST_MS", Some("250")),
+            (
                 "MIDDLEWARE_CORS_ALLOWED_ORIGINS",
                 Some("https://a.example, https://b.example ,"),
             ),
@@ -435,6 +460,13 @@ fn middleware_overrides_are_applied() {
             assert_eq!(config.middleware.backpressure_queue, 4);
             assert_eq!(config.middleware.rate_limit_requests, 50);
             assert_eq!(config.middleware.rate_limit_period_secs, 2);
+            assert_eq!(config.middleware.trusted_proxies.len(), 3);
+            assert_eq!(config.middleware.client_max_concurrency, 4);
+            assert_eq!(config.middleware.client_rate_limit_requests, 20);
+            assert_eq!(config.middleware.client_rate_limit_period_secs, 2);
+            assert_eq!(config.middleware.client_max_entries, 100);
+            assert_eq!(config.middleware.client_idle_secs, 30);
+            assert_eq!(config.middleware.slow_request_ms, 250);
             assert!(config.middleware.hsts_enabled);
             assert_eq!(
                 config.middleware.cors_allowed_origins,
@@ -493,6 +525,12 @@ fn zero_middleware_capacity_is_rejected() {
         "MIDDLEWARE_BACKPRESSURE_QUEUE",
         "MIDDLEWARE_RATE_LIMIT_REQUESTS",
         "MIDDLEWARE_RATE_LIMIT_PERIOD_SECS",
+        "MIDDLEWARE_CLIENT_MAX_CONCURRENCY",
+        "MIDDLEWARE_CLIENT_RATE_LIMIT_REQUESTS",
+        "MIDDLEWARE_CLIENT_RATE_LIMIT_PERIOD_SECS",
+        "MIDDLEWARE_CLIENT_MAX_ENTRIES",
+        "MIDDLEWARE_CLIENT_IDLE_SECS",
+        "MIDDLEWARE_SLOW_REQUEST_MS",
     ] {
         with_env(
             &[("JWT_SECRET", Some(CUSTOM_SECRET)), (key, Some("0"))],
@@ -507,6 +545,129 @@ fn zero_middleware_capacity_is_rejected() {
             },
         );
     }
+}
+
+#[test]
+fn wildcard_trusted_proxies_cover_every_peer() {
+    with_env(
+        &[
+            ("JWT_SECRET", Some(CUSTOM_SECRET)),
+            ("MIDDLEWARE_TRUSTED_PROXIES", Some("*")),
+        ],
+        || {
+            let config = AppConfig::from_env().expect("`*` 应可加载");
+            let nets = &config.middleware.trusted_proxies;
+            assert_eq!(nets.len(), 2);
+            for peer in ["203.0.113.7", "2001:db8::1"] {
+                let peer: IpAddr = peer.parse().expect("测试用地址应合法");
+                assert!(
+                    nets.iter().any(|net| net.contains(&peer)),
+                    "`*` 应覆盖 {peer}"
+                );
+            }
+        },
+    );
+}
+
+/// 生产环境不能信任所有直连对端：转发头一旦完全采信，按 IP 的额度就形同虚设。
+#[test]
+fn production_rejects_trust_all_proxies() {
+    for value in ["*", "0.0.0.0/0"] {
+        with_env(
+            &[
+                ("APP_ENV", Some("production")),
+                ("JWT_SECRET", Some(CUSTOM_SECRET)),
+                ("MIDDLEWARE_TRUSTED_PROXIES", Some(value)),
+            ],
+            || {
+                let error = AppConfig::from_env().expect_err("生产环境信任全部对端应被拒绝");
+                assert!(
+                    error
+                        .to_string()
+                        .contains("MIDDLEWARE_TRUSTED_PROXIES must not trust every peer"),
+                    "{value} 的报错信息不符合预期: {error}"
+                );
+            },
+        );
+    }
+
+    with_env(
+        &[
+            ("APP_ENV", Some("development")),
+            ("JWT_SECRET", Some(CUSTOM_SECRET)),
+            ("MIDDLEWARE_TRUSTED_PROXIES", Some("0.0.0.0/0")),
+        ],
+        || {
+            assert!(AppConfig::from_env().is_ok());
+        },
+    );
+}
+
+#[test]
+fn invalid_client_configuration_is_rejected() {
+    for value in ["*,10.0.0.0/8", "10.0.0.1/99", "not-an-ip"] {
+        with_env(
+            &[
+                ("JWT_SECRET", Some(CUSTOM_SECRET)),
+                ("MIDDLEWARE_TRUSTED_PROXIES", Some(value)),
+            ],
+            || {
+                assert!(
+                    AppConfig::from_env()
+                        .expect_err("非法可信代理配置应被拒绝")
+                        .to_string()
+                        .contains("MIDDLEWARE_TRUSTED_PROXIES")
+                );
+            },
+        );
+    }
+
+    // 空闲保留期比限流窗口还短，会让刚被限流的来源被当成新来源重新计时。
+    with_env(
+        &[
+            ("JWT_SECRET", Some(CUSTOM_SECRET)),
+            ("MIDDLEWARE_CLIENT_IDLE_SECS", Some("1")),
+            ("MIDDLEWARE_CLIENT_RATE_LIMIT_PERIOD_SECS", Some("2")),
+        ],
+        || {
+            assert!(
+                AppConfig::from_env()
+                    .expect_err("空闲保留期小于窗口应被拒绝")
+                    .to_string()
+                    .contains("MIDDLEWARE_CLIENT_IDLE_SECS")
+            );
+        },
+    );
+}
+
+/// 开发构建带着可直接指定身份的开发登录接口，production 必须用 release 构建运行。
+#[test]
+fn production_runtime_requires_release() {
+    with_env(
+        &[
+            ("JWT_SECRET", Some(CUSTOM_SECRET)),
+            ("APP_ENV", Some("production")),
+        ],
+        || {
+            let config = AppConfig::from_env().expect("生产配置应可加载");
+            assert_eq!(config.validate_runtime().is_err(), cfg!(debug_assertions));
+        },
+    );
+
+    with_env(
+        &[
+            ("JWT_SECRET", Some(CUSTOM_SECRET)),
+            ("APP_ENV", Some("development")),
+        ],
+        || {
+            assert!(
+                AppConfig::from_env()
+                    .expect("开发配置应可加载")
+                    .validate_runtime()
+                    .is_ok()
+            );
+        },
+    );
 }
 
 /// 脚手架只支持 SQLite：迁移文件与补列逻辑都依赖 SQLite 语法，其他后端必须启动即拒。

@@ -19,6 +19,7 @@ use crate::{
         services::transaction::TransferUseCase,
     },
     infrastructure::repositories::transaction::TransferRepository,
+    middleware::measure,
 };
 
 const DEFAULT_PAGE: u64 = 1;
@@ -52,23 +53,24 @@ impl<R: TransferRepository> TransferUseCase for TransferService<R> {
         // 参数校验放在开启事务之前，避免为必然失败的请求占用连接。
         // SQLite 不支持在事务内设置隔离级别（`IsolationLevel` 会被忽略）；改用 IMMEDIATE
         // 让 BEGIN 时就拿到写锁，避免 DEFERRED 下并发读改写互相覆盖。
-        let transaction = self
-            .database
-            .begin_with_options(TransactionOptions {
+        let transaction = measure(
+            "db.begin",
+            self.database.begin_with_options(TransactionOptions {
                 sqlite_transaction_mode: Some(SqliteTransactionMode::Immediate),
                 ..Default::default()
-            })
-            .await?;
+            }),
+        )
+        .await?;
 
         match transfer_in_transaction(&transaction, self.repository.as_ref(), &command).await {
             Ok(receipt) => {
-                transaction.commit().await?;
+                measure("db.commit", transaction.commit()).await?;
                 info!(record_id = %receipt.record_id, "transfer transaction committed");
                 Ok(receipt)
             },
             Err(error) => {
                 // 回滚失败不覆盖业务错误：该连接会在归还连接池时被丢弃重建。
-                if let Err(rollback_error) = transaction.rollback().await {
+                if let Err(rollback_error) = measure("db.rollback", transaction.rollback()).await {
                     warn!(%rollback_error, "transfer transaction rollback failed");
                 }
                 info!(%error, "transfer transaction rolled back");
@@ -82,17 +84,19 @@ impl<R: TransferRepository> TransferUseCase for TransferService<R> {
             return Err(AppError::not_found("transfer record ID must not be empty"));
         }
 
-        let record = self
-            .repository
-            .find_record(&self.database, &record_id)
-            .await?
-            .ok_or_else(|| {
-                AppError::not_found(format!("transfer record {record_id} does not exist"))
-            })?;
-        let audits = self
-            .repository
-            .list_audits(&self.database, &record_id)
-            .await?;
+        let record = measure(
+            "db.find_record",
+            self.repository.find_record(&self.database, &record_id),
+        )
+        .await?
+        .ok_or_else(|| {
+            AppError::not_found(format!("transfer record {record_id} does not exist"))
+        })?;
+        let audits = measure(
+            "db.list_audits",
+            self.repository.list_audits(&self.database, &record_id),
+        )
+        .await?;
 
         Ok(TransferDetail { record, audits })
     }
@@ -115,11 +119,16 @@ impl<R: TransferRepository> TransferUseCase for TransferService<R> {
             )));
         }
 
-        let total = self.repository.count_records(&self.database).await?;
-        let items = self
-            .repository
-            .list_records(&self.database, page, size)
-            .await?;
+        let total = measure(
+            "db.count_records",
+            self.repository.count_records(&self.database),
+        )
+        .await?;
+        let items = measure(
+            "db.list_records",
+            self.repository.list_records(&self.database, page, size),
+        )
+        .await?;
 
         Ok(TransferRecordPage {
             page,
@@ -143,12 +152,16 @@ async fn transfer_in_transaction<R: TransferRepository>(
 
     let from_after = debit(&from, command.amount_cents)?;
     let to_after = credit(&to, command.amount_cents)?;
-    repository
-        .update_account_balance(transaction, &from_after, from.version)
-        .await?;
-    repository
-        .update_account_balance(transaction, &to_after, to.version)
-        .await?;
+    measure(
+        "db.debit",
+        repository.update_account_balance(transaction, &from_after, from.version),
+    )
+    .await?;
+    measure(
+        "db.credit",
+        repository.update_account_balance(transaction, &to_after, to.version),
+    )
+    .await?;
 
     let identity = RecordIdentity {
         record_id: Uuid::now_v7().to_string(),
@@ -157,7 +170,11 @@ async fn transfer_in_transaction<R: TransferRepository>(
     };
     let record = build_record(&identity, command, &from_after, &to_after);
     // 幂等键冲突会在这里返回唯一约束错误，由本函数的上层回滚整个事务。
-    repository.insert_record(transaction, &record).await?;
+    measure(
+        "db.insert_record",
+        repository.insert_record(transaction, &record),
+    )
+    .await?;
 
     let changes = BalanceChanges {
         from_before: &from,
@@ -177,7 +194,11 @@ async fn transfer_in_transaction<R: TransferRepository>(
     }
 
     for audit in &audits {
-        repository.insert_audit(transaction, audit).await?;
+        measure(
+            "db.insert_audit",
+            repository.insert_audit(transaction, audit),
+        )
+        .await?;
     }
 
     if command.force_fail {
@@ -207,10 +228,12 @@ async fn require_account<R: TransferRepository>(
     repository: &R,
     account_id: &str,
 ) -> Result<TransferAccountState, AppError> {
-    repository
-        .find_account(transaction, account_id)
-        .await?
-        .ok_or_else(|| AppError::not_found(format!("account {account_id} does not exist")))
+    measure(
+        "db.find_account",
+        repository.find_account(transaction, account_id),
+    )
+    .await?
+    .ok_or_else(|| AppError::not_found(format!("account {account_id} does not exist")))
 }
 
 fn validate(command: &TransferCommand) -> Result<(), AppError> {

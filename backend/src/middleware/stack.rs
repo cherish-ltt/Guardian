@@ -4,7 +4,7 @@ use axum::{
     Router,
     body::Body,
     error_handling::HandleErrorLayer,
-    http::{HeaderName, HeaderValue, Request, StatusCode, header},
+    http::{HeaderName, HeaderValue, header},
     response::Response,
 };
 use tower::{
@@ -14,20 +14,22 @@ use tower::{
     load_shed::LoadShedLayer,
 };
 use tower_http::{
-    LatencyUnit,
+    catch_panic::CatchPanicLayer,
     compression::CompressionLayer,
     cors::{AllowOrigin, Any, CorsLayer},
     limit::RequestBodyLimitLayer,
     request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer},
     set_header::{HeaderMetadata, response::SetMultipleResponseHeadersLayer},
-    timeout::TimeoutLayer,
-    trace::{DefaultOnFailure, DefaultOnResponse, TraceLayer},
 };
-use tracing::Level;
 
-use crate::{infrastructure::config::MiddlewareConfig, middleware::error_response};
-
-use super::trace;
+use crate::{
+    infrastructure::config::MiddlewareConfig,
+    middleware::{
+        client_ip,
+        client_limits::{self, ClientLimits},
+        diagnostics, error_response, trace,
+    },
+};
 
 const REQUEST_ID_HEADER: &str = "x-request-id";
 
@@ -36,37 +38,27 @@ const REQUEST_ID_HEADER: &str = "x-request-id";
 /// 必须包住整个 Router，不能用 `Router::layer`：后者会把有状态中间件逐路由复制一份，
 /// 全局并发上限与全局限流会因此失效。
 pub fn apply(app: Router, config: &MiddlewareConfig) -> Router {
+    let app = app.route_layer(axum::middleware::from_fn(diagnostics::route));
     let stack = ServiceBuilder::new()
+        .layer(axum::middleware::from_fn(client_ip::sanitize_request_id))
         .layer(SetRequestIdLayer::new(request_id_header(), MakeRequestUuid))
         .layer(PropagateRequestIdLayer::new(request_id_header()))
-        .layer(
-            TraceLayer::new_for_http()
-                .make_span_with(|request: &Request<Body>| {
-                    let request_id = request
-                        .headers()
-                        .get(REQUEST_ID_HEADER)
-                        .and_then(|value| value.to_str().ok())
-                        .unwrap_or_default();
-                    tracing::info_span!(
-                        "http_request",
-                        method = %request.method(),
-                        uri = %request.uri(),
-                        request_id = %request_id,
-                    )
-                })
-                .on_response(
-                    DefaultOnResponse::new()
-                        .level(Level::INFO)
-                        .latency_unit(LatencyUnit::Millis),
-                )
-                .on_failure(
-                    DefaultOnFailure::new()
-                        .level(Level::ERROR)
-                        .latency_unit(LatencyUnit::Millis),
-                ),
-        )
+        .layer(axum::middleware::from_fn_with_state(
+            config.clone(),
+            client_ip::identify,
+        ))
         .layer(SetMultipleResponseHeadersLayer::overriding(
             security_headers(config),
+        ))
+        .layer(axum::middleware::from_fn_with_state(
+            config.clone(),
+            diagnostics::observe,
+        ))
+        .map_response(|response: axum::http::Response<_>| response.map(Body::new))
+        .layer(CatchPanicLayer::custom(error_response::panic_response))
+        .layer(axum::middleware::from_fn_with_state(
+            ClientLimits::new(config),
+            client_limits::protect,
         ))
         .layer(HandleErrorLayer::new(error_response::overload))
         .layer(LoadShedLayer::new())
@@ -80,10 +72,7 @@ pub fn apply(app: Router, config: &MiddlewareConfig) -> Router {
             Duration::from_secs(config.rate_limit_period_secs),
         ))
         .layer(CompressionLayer::new())
-        .layer(TimeoutLayer::with_status_code(
-            StatusCode::REQUEST_TIMEOUT,
-            Duration::from_secs(config.request_timeout_secs),
-        ))
+        .layer(axum::middleware::from_fn(diagnostics::enter))
         // 必须在 `RequestBodyLimitLayer` 之外：限流层会把请求体换成 `Limited<Body>`，
         // 而中间件函数只接受 `Request<Body>`；同时要留在 `CompressionLayer` 之内，
         // 才能读到未压缩的 JSON 响应体。

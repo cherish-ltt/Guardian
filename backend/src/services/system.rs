@@ -11,6 +11,7 @@ use crate::{
         services::system::SystemUseCase,
     },
     infrastructure::{config::AppConfig, databases::ping_database},
+    middleware::measure,
 };
 
 pub struct SystemService {
@@ -50,7 +51,10 @@ impl SystemUseCase for SystemService {
     }
 
     async fn ready(&self) -> Result<(), AppError> {
-        if ping_database(&self.database, 2).await.is_err() {
+        if measure("db.ready", ping_database(&self.database, 2))
+            .await
+            .is_err()
+        {
             return Err(AppError::unavailable("database is not ready yet"));
         }
 

@@ -1,7 +1,12 @@
-use std::{env, net::SocketAddr, str::FromStr};
+use std::{
+    env,
+    net::{IpAddr, SocketAddr},
+    str::FromStr,
+};
 
 use anyhow::{Context, Result, anyhow};
 use axum::http::HeaderValue;
+use ipnet::IpNet;
 use tracing_appender::rolling::Rotation;
 
 #[derive(Debug, Clone)]
@@ -182,7 +187,7 @@ pub struct LoggingConfig {
 /// HTTP 中间件容量参数，全部集中在 `.env`，业务代码不得内联这些数字。
 #[derive(Debug, Clone)]
 pub struct MiddlewareConfig {
-    /// 单个请求从进入服务到响应完成的整体超时（秒）。
+    /// 从进入请求保护层到响应头生成（含全局排队）的超时，响应流发送不在范围内。
     pub request_timeout_secs: u64,
     /// 请求体最大字节数。
     pub max_body_bytes: usize,
@@ -201,9 +206,33 @@ pub struct MiddlewareConfig {
     /// 空列表表示不下发任何 CORS 放行头；单元素为 `*` 表示放行所有来源。
     /// 条目在 `AppConfig::from_env` 阶段校验为合法 header 值。
     pub cors_allowed_origins: Vec<String>,
+    /// 显式可信代理：只有匹配这些 IP/CIDR 的直连对端，其 `x-forwarded-for` 才被采信。
+    pub trusted_proxies: Vec<IpNet>,
+    /// 单个来源 IP 的在途请求上限（含全局排队）。
+    pub client_max_concurrency: usize,
+    /// 单个来源 IP 在每个固定窗口内允许的请求数。
+    pub client_rate_limit_requests: u64,
+    /// 客户端限流的固定窗口长度（秒）。
+    pub client_rate_limit_period_secs: u64,
+    /// 客户端注册表容量上限，满了以后新来源直接拒绝。
+    pub client_max_entries: usize,
+    /// 客户端注册表的空闲保留期（秒），不得小于限流窗口。
+    pub client_idle_secs: u64,
+    /// 超过该耗时的请求额外输出阶段诊断日志（毫秒）。
+    pub slow_request_ms: u64,
 }
 
 impl AppConfig {
+    /// 运行期前置校验：`main` 与 `create_app` 都必须调用，嵌入自定义入口也不能绕过。
+    pub fn validate_runtime(&self) -> Result<()> {
+        if self.app_env.eq_ignore_ascii_case("production") && cfg!(debug_assertions) {
+            return Err(anyhow!(
+                "production requires a release build: debug authentication routes are unsafe"
+            ));
+        }
+        Ok(())
+    }
+
     pub fn from_env() -> Result<Self> {
         let app_name = get_env_or("APP_NAME", "guardian-backend");
         let app_env = get_env_or("APP_ENV", "development");
@@ -320,6 +349,17 @@ impl AppConfig {
             batch_flush_interval_secs,
         };
 
+        let trusted_proxies = parse_proxies(&get_env_or("MIDDLEWARE_TRUSTED_PROXIES", ""))?;
+        // 信任所有对端等于把转发头交给客户端自报，按来源 IP 分配的额度随之失效；
+        // 前缀长度为 0 的网段（`*` 与手写的 0.0.0.0/0）在生产环境直接拒绝启动。
+        if app_env.eq_ignore_ascii_case("production")
+            && trusted_proxies.iter().any(|net| net.prefix_len() == 0)
+        {
+            return Err(anyhow!(
+                "MIDDLEWARE_TRUSTED_PROXIES must not trust every peer in production"
+            ));
+        }
+
         let middleware = MiddlewareConfig {
             request_timeout_secs: parse_env_or("MIDDLEWARE_REQUEST_TIMEOUT_SECS", 10_u64)?,
             max_body_bytes: parse_env_or("MIDDLEWARE_MAX_BODY_BYTES", 2 * 1024 * 1024_usize)?,
@@ -335,6 +375,19 @@ impl AppConfig {
                 "MIDDLEWARE_CORS_ALLOWED_ORIGINS",
                 "",
             ))?,
+            trusted_proxies,
+            client_max_concurrency: parse_env_or("MIDDLEWARE_CLIENT_MAX_CONCURRENCY", 32_usize)?,
+            client_rate_limit_requests: parse_env_or(
+                "MIDDLEWARE_CLIENT_RATE_LIMIT_REQUESTS",
+                1024_u64,
+            )?,
+            client_rate_limit_period_secs: parse_env_or(
+                "MIDDLEWARE_CLIENT_RATE_LIMIT_PERIOD_SECS",
+                1_u64,
+            )?,
+            client_max_entries: parse_env_or("MIDDLEWARE_CLIENT_MAX_ENTRIES", 16384_usize)?,
+            client_idle_secs: parse_env_or("MIDDLEWARE_CLIENT_IDLE_SECS", 60_u64)?,
+            slow_request_ms: parse_env_or("MIDDLEWARE_SLOW_REQUEST_MS", 1000_u64)?,
         };
 
         if middleware.request_timeout_secs == 0
@@ -343,9 +396,22 @@ impl AppConfig {
             || middleware.backpressure_queue == 0
             || middleware.rate_limit_requests == 0
             || middleware.rate_limit_period_secs == 0
+            || middleware.client_max_concurrency == 0
+            || middleware.client_rate_limit_requests == 0
+            || middleware.client_rate_limit_period_secs == 0
+            || middleware.client_max_entries == 0
+            || middleware.client_idle_secs == 0
+            || middleware.slow_request_ms == 0
         {
             return Err(anyhow!(
                 "MIDDLEWARE capacity parameters must be greater than 0"
+            ));
+        }
+
+        // 空闲项在窗口内不能清理，否则刚被限流的来源会被当成新来源重新计时。
+        if middleware.client_idle_secs < middleware.client_rate_limit_period_secs {
+            return Err(anyhow!(
+                "MIDDLEWARE_CLIENT_IDLE_SECS must be at least the client rate limit period"
             ));
         }
 
@@ -386,6 +452,37 @@ fn parse_origins(raw: &str) -> Result<Vec<String>> {
     }
 
     Ok(origins)
+}
+
+/// `*` 的展开形式：包含判断只看网段，同时信任全部 IPv4 与 IPv6 即等价于信任所有直连对端。
+const TRUST_ALL_PROXIES: [&str; 2] = ["0.0.0.0/0", "::/0"];
+
+/// 解析可信代理列表：接受 CIDR 或单个 IP，`*` 表示信任所有直连对端。
+///
+/// `*` 与具体条目混写会拒绝启动，避免把「多信任一个网段」误读成放行全部。
+fn parse_proxies(raw: &str) -> Result<Vec<IpNet>> {
+    let entries: Vec<&str> = raw
+        .split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .collect();
+    match entries.as_slice() {
+        ["*"] => TRUST_ALL_PROXIES
+            .iter()
+            .map(|net| parse_proxy(net))
+            .collect(),
+        entries if entries.contains(&"*") => Err(anyhow!(
+            "MIDDLEWARE_TRUSTED_PROXIES: `*` cannot be combined with explicit entries"
+        )),
+        entries => entries.iter().map(|value| parse_proxy(value)).collect(),
+    }
+}
+
+fn parse_proxy(value: &str) -> Result<IpNet> {
+    value
+        .parse::<IpNet>()
+        .or_else(|_| value.parse::<IpAddr>().map(IpNet::from))
+        .map_err(|_| anyhow!("invalid MIDDLEWARE_TRUSTED_PROXIES entry: {value}"))
 }
 
 fn parse_env_or<T>(key: &str, default: T) -> Result<T>

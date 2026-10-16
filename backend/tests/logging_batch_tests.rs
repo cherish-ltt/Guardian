@@ -66,6 +66,13 @@ fn test_config(out_dir: &str) -> AppConfig {
             rate_limit_period_secs: 1,
             hsts_enabled: false,
             cors_allowed_origins: Vec::new(),
+            trusted_proxies: Vec::new(),
+            client_max_concurrency: 32,
+            client_rate_limit_requests: 1024,
+            client_rate_limit_period_secs: 1,
+            client_max_entries: 16384,
+            client_idle_secs: 60,
+            slow_request_ms: 1000,
         },
     }
 }

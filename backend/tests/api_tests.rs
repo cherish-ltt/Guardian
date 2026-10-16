@@ -85,6 +85,13 @@ async fn setup_app_with_cors_origins(cors_allowed_origins: Vec<String>) -> Route
             rate_limit_period_secs: 1,
             hsts_enabled: false,
             cors_allowed_origins,
+            trusted_proxies: Vec::new(),
+            client_max_concurrency: 32,
+            client_rate_limit_requests: 1024,
+            client_rate_limit_period_secs: 1,
+            client_max_entries: 16384,
+            client_idle_secs: 60,
+            slow_request_ms: 1000,
         },
     };
 
@@ -95,7 +102,13 @@ async fn setup_app_with_cors_origins(cors_allowed_origins: Vec<String>) -> Route
     create_app(Arc::new(container))
 }
 
-async fn send_response(app: Router, request: Request<Body>) -> Response {
+async fn send_response(app: Router, mut request: Request<Body>) -> Response {
+    // 请求保护层按真实 TCP 对端分配额度：`oneshot` 不会自动注入，这里显式补一个本地对端。
+    request.extensions_mut().insert(axum::extract::ConnectInfo(
+        "127.0.0.1:12345"
+            .parse::<std::net::SocketAddr>()
+            .expect("测试对端地址应合法"),
+    ));
     app.oneshot(request).await.expect("请求应成功返回")
 }
 

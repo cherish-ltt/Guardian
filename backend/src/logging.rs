@@ -212,6 +212,22 @@ pub fn log_startup_config(config: &AppConfig) {
                 middleware.rate_limit_period_secs
             ),
             format!("hsts_enabled={}", middleware.hsts_enabled),
+            format!("trusted_proxies={:?}", middleware.trusted_proxies),
+            format!(
+                "client_max_concurrency={}",
+                middleware.client_max_concurrency
+            ),
+            format!(
+                "client_rate_limit_requests={}",
+                middleware.client_rate_limit_requests
+            ),
+            format!(
+                "client_rate_limit_period_secs={}",
+                middleware.client_rate_limit_period_secs
+            ),
+            format!("client_max_entries={}", middleware.client_max_entries),
+            format!("client_idle_secs={}", middleware.client_idle_secs),
+            format!("slow_request_ms={}", middleware.slow_request_ms),
         ],
     );
 

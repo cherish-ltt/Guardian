@@ -28,6 +28,7 @@ async fn main() -> Result<()> {
     dotenv().ok();
 
     let config = AppConfig::from_env()?;
+    config.validate_runtime()?;
     let _log_guard = logging::init(&config)?;
     logging::log_startup_config(&config);
 
@@ -38,9 +39,13 @@ async fn main() -> Result<()> {
     let listener = tokio::net::TcpListener::bind(address).await?;
     info!(address = %address, "HTTP server started successfully");
 
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
+    axum::serve(
+        listener,
+        // 请求保护层按真实 TCP 对端分配额度，缺少对端信息时拒绝请求，不静默绕过。
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await?;
 
     info!("HTTP server shut down gracefully");
     if let Err(error) = container.database.close_by_ref().await {
