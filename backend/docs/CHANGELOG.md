@@ -9,6 +9,51 @@
 > [AxumServiceScaffold](https://github.com/cherish-ltt/AxumServiceScaffold)。
 > 下方 `0.6.0` 及更早的条目属于上游项目的历史记录，版本号与本项目不连续。
 
+## [0.2.0] - 2026-10-16
+
+本次把上游 `v0.7.0`（客户端保护、低噪声诊断与版本可追溯）的功能原样同步进来。
+
+### 新增
+
+- **按真实来源 IP 的客户端保护**（`src/middleware/client_ip.rs`、`client_limits.rs`）：
+  进程级单 IP 并发与固定窗口请求额度，跨路由共享；有界注册表（满时新来源 `503`）、空闲清理、
+  取消释放许可；速率拒绝带 `Retry-After`。
+- **显式可信代理**：只有直连对端命中 `MIDDLEWARE_TRUSTED_PROXIES` 时才采信 `X-Forwarded-For`，
+  从右向左剥离可信代理，IPv4 映射 IPv6 归一化，重复或非法转发头返回 `400`；缺少 `ConnectInfo` 时
+  失败关闭（`500`）。单值 `*` 信任全部对端，仅限本地调试（生产环境拒绝启动）。
+- **请求观测与失败隔离**（`src/middleware/diagnostics.rs`）：每请求一条访问或诊断日志，含路由模板、
+  排队耗时与数据库阶段耗时；总超时覆盖全局排队；`CatchPanicLayer` 把请求 panic 隔离成安全 500；
+  框架生成的纯文本 400/404/405/413/415/422 归一化成统一 JSON（405 保留 `Allow`）。
+- **生产启动守卫**：`APP_ENV=production` 时拒绝 debug 构建（`AppConfig::validate_runtime`，
+  `main` 与 `create_app` 双入口）；`HTTP` 监听改用 `into_make_service_with_connect_info`。
+- **阶段耗时标记**：事务示例与就绪检查的关键 IO 用 `middleware::measure("固定阶段名", future)` 包裹。
+
+### 变更
+
+- 中间件栈重排：新增客户端识别、请求观测与总超时、panic 隔离、客户端保护与诊断上下文；
+  移除 `TraceLayer` 与 `TimeoutLayer`（访问日志与超时改由请求观测层承担），因此
+  `tower-http` 不再需要 `trace` / `timeout` feature，新增 `catch-panic`、`tower/util`（`map_response`）、
+  `axum/matched-path`（路由模板）与 `ipnet`（可信网段）。
+- `MiddlewareConfig` 新增 `trusted_proxies` 与 6 项客户端/诊断参数，均走 `.env`；
+  新增校验：容量非 0、`MIDDLEWARE_CLIENT_IDLE_SECS` 不小于限流窗口、可信代理条目合法、
+  生产环境不得信任全部对端；启动配置快照同步输出这些字段。
+- 新增错误文案遵循后台契约：4xx 用中文原样透出（如「请求过于频繁」「请求头 X-Forwarded-For 格式错误」），
+  5xx 统一「系统内部错误」；不照搬上游的英文文案。
+- `traceId` 改为由请求观测层解析一次并放进请求上下文，`x-trace-id` 响应头覆盖包括限流、
+  背压与 panic 在内的全部响应；响应体 `traceId` 仍由压缩层之内的注入层改写，异常点已记入
+  [统一响应结构](RESPONSE.md)。
+- 版本号提升到 `0.2.0`（`Cargo.toml` / `Cargo.lock` / OpenAPI 版本示例）。
+
+### 测试与文档
+
+- 新增 `tests/client_protection_tests.rs`（代理防伪、额度隔离、跨路由共享、取消释放）；
+  `tests/middleware_tests.rs` 补含排队的超时、panic 隔离、HEAD 无响应体、非法请求 ID 替换；
+  `tests/middleware_log_tests.rs` 补低噪声日志、路由模板、query 不泄漏与池占满时的
+  `db.ready` 中断诊断；`tests/config_tests.rs` 补可信代理与客户端参数分支；
+  集成测试统一注入 `ConnectInfo`。
+- 适配 `docs/MIDDLEWARE.md`（栈顺序、配置表、部署与生产边界）、`docs/LOGGING.md`
+  （低噪声请求诊断）、`docs/TESTING.md`、`README.md` 与 `AGENTS.md`（新增 10.14 / 10.15）。
+
 ## [0.1.0] - 2026-10-14
 
 ### 新增

@@ -18,7 +18,7 @@ src/
 ├── services/          应用服务层：用例编排、事务边界
 ├── domain/            领域层（内核）：模型、用例接口 trait、领域错误
 ├── infrastructure/    基础设施层：配置、数据库、仓储适配器、AuthStore 实现
-├── middleware/        中间件栈、错误响应、trace、审计留痕
+├── middleware/        中间件栈、请求观测与诊断、客户端保护、trace、审计留痕
 ├── entities/          sea-orm 实体
 ├── util/              CSV、口令哈希、时间格式化
 ├── container.rs       依赖装配中心
@@ -65,17 +65,23 @@ docs/                  架构、中间件、日志、事务、响应、测试、
 
 `src/middleware/stack.rs` 按固定顺序组装（外到内）：
 
-请求 ID / `Trace` 日志 → 安全响应头 → CORS 白名单 → 限流 → 并发限制与背压 → 超时 →
-请求体上限 → 压缩（`CompressionLayer`），最后是 `traceId` 注入与审计留痕。
+请求 ID 校验 → 客户端识别（可信代理）→ 安全响应头 → 请求观测与总超时 → panic 隔离 →
+客户端保护（按来源 IP 限并发与请求量）→ 限流 → 并发限制与背压 → 压缩 → 诊断上下文 →
+`traceId` 注入 → 请求体上限 → CORS 白名单，最后是路由模板采集与审计留痕。
 
 - **统一响应**：`{code, message, data?, traceId, timestamp}`，`code` 与 HTTP 状态码派生自同一真值，
   见 [统一响应结构](docs/RESPONSE.md)。
 - **traceId**：优先沿用请求头 `x-trace-id`，缺失时生成 32 位十六进制，同时写入响应头；
   CSV / ZIP 等非 JSON 响应只加响应头。
+- **客户端保护**：HTTP 监听通过 `ConnectInfo` 拿到真实 TCP 对端，只对显式可信代理采信
+  `X-Forwarded-For`；按规范化来源 IP 分配并发与固定窗口请求额度，跨路由共享、取消即释放。
+- **总超时含排队**：从进入保护层到响应头生成（含全局排队）计时，超时取消请求并释放额度。
+- **低噪声诊断**：每请求一条访问日志；慢请求、超时与业务 5xx 才输出阶段汇总
+  （排队、数据库阶段耗时、是否被中断），不记录 query 与请求体。
 - **审计留痕**：按「请求方法 + 路径段模式」匹配 31 条规则，记录模块、动作、操作人、耗时与
   请求体（敏感字段脱敏），写入失败不影响业务响应。
-- **容量参数**：全部集中在 `.env`（超时、Body 上限、并发、背压队列、限流额度、CORS 白名单），
-  调参见 [中间件栈与配置](docs/MIDDLEWARE.md)。
+- **容量参数**：全部集中在 `.env`（超时、Body 上限、并发、背压队列、全局与单 IP 限流额度、
+  可信代理、慢请求阈值、CORS 白名单），调参见 [中间件栈与配置](docs/MIDDLEWARE.md)。
 - **日志**：按天滚动文件 + 分批落盘 + 启动配置快照，见 [日志](docs/LOGGING.md)。
 
 ## 数据库与迁移
@@ -156,7 +162,7 @@ SEED_USERS=ops_admin:运维管理员:ops@example.com:2
 
 | 位置 | 内容 | 处理 |
 | --- | --- | --- |
-| `.env` | `JWT_SECRET=change-me-...` | 换成足够长的随机串；`APP_ENV=production` |
+| `.env` | `JWT_SECRET=change-me-...` | 换成足够长的随机串；`APP_ENV=production`（必须用 release 构建，否则拒绝启动） |
 | `.env` | `DATABASE_URL` 指向本地 `guardian.db` | 指向部署目录下的库文件，或删除该文件后重新初始化 |
 | `.env` | `SEED_ADMIN_PASSWORD` | 换成强口令；首个账号登录后立即改密 |
 | `.env` | `SEED_USERS`（不设置会播种三个演示账号） | 换成真实管理员账号，或只留一个账号并在首次登录后改密 |
@@ -168,6 +174,7 @@ SEED_USERS=ops_admin:运维管理员:ops@example.com:2
 | `sys_oper_log` / `sys_login_log` | 本地联调产生的日志 | 上线前清空 |
 | Redis | `captcha:*`、`auth:token:*`、`auth:user:*` | 切换环境时清空，避免旧会话残留 |
 | `log/` | 本地运行日志 | 不入库，部署时按需清理 |
+| `.env` | `MIDDLEWARE_TRUSTED_PROXIES`（默认空） | 部署在反向代理后时必须填写代理 IP/CIDR，否则所有用户共用代理 IP 的额度；不要用 `*`（生产环境会拒绝启动） |
 
 建议保留的默认数据（清掉会导致页面无法正常使用）：
 
@@ -180,6 +187,10 @@ SEED_USERS=ops_admin:运维管理员:ops@example.com:2
 
 另外，示例模块（`examples`）与转账示例接口（`transactions`，含 `dev-*` 调试入口）
 在真实项目中应当替换或删除：`dev-login` / `dev-transfer` 只在 debug 构建注册，release 构建不存在。
+
+按来源 IP 的额度、限流与背压都是**进程级**的，多实例部署需要网关或共享存储兜底；
+TLS、连接层保护与磁盘配额由部署设施负责，完整边界见
+[生产保障边界](docs/MIDDLEWARE.md#生产保障边界)。
 
 ## 接口清单
 

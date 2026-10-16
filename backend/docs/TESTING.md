@@ -50,10 +50,16 @@ cargo test --features docs
   `(StatusCode, HeaderMap, Vec<u8>)` 断言 CSV / ZIP 等非 JSON 响应）。
 - `send()` 返回 `(StatusCode, Value)`，断言同时覆盖 HTTP 状态码与统一响应结构。
 - `Router` 在 `oneshot` 后即被消费，需要多次请求时先 `app.clone()`。
+- 请求必须注入真实或测试用的 `ConnectInfo<SocketAddr>`（`tests/support/mod.rs` 的 `send` / `send_raw`
+  会自己补一个本地对端）；缺少对端时保护层失败关闭，返回 `500` 而不是静默绕过。
 - 黑盒测试锁定的是对外契约：HTTP 状态码、`{code, message, data?, traceId, timestamp}` 统一响应结构、
   CORS 预检与 `allow` 响应头，以及 400/401/404/405/409/415/422 等错误语义。
-- 请求体未通过 JSON 提取器时（400/415/422）响应是 axum 生成的纯文本，不属于统一响应结构，
-  这类用例只断言状态码；后台接口的请求体走 `ApiJson`，非法 JSON 统一为 400「请求体格式错误」。
+- 框架生成的纯文本 400/404/405/413/415/422 由请求观测层归一化成统一 JSON，不回显解析细节；
+  后台接口的请求体走 `ApiJson`，非法 JSON 统一为 400「请求体格式错误」。
+- `tests/client_protection_tests.rs` 验证代理防伪、IP 额度隔离、跨路由共享与取消后释放；
+  `tests/middleware_tests.rs` 覆盖超时含排队、panic 隔离、HEAD 无响应体与非法请求 ID 替换；
+  `tests/middleware_log_tests.rs` 单独成进程，覆盖低噪声日志、路由模板、query 不泄漏，
+  并用真实 SQLite 连接池占满验证 `db.ready` 阶段的中断诊断。
 
 新增接口时按同样方式补一条 `oneshot` 用例即可，无需启动服务或 mock 端口。
 
