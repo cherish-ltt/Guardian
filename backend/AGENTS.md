@@ -117,6 +117,7 @@ jobs:
   关掉未使用的部分再显式开启。
 - **依赖与 feature 只保留被引用的部分**：`src/`、`tests/`、`benches/` 里查不到调用点的依赖必须删除，
   不得以「预置备用」「以后可能用」为理由保留；删完必须跑一次 `cargo tree` 对比规模。
+  `woothee` 是唯一因日志采集引入的依赖（登录日志的浏览器 / 操作系统，规则表随 crate 发布、无需 feature）。
 - 使用 `edition = "2024"` 以及环境中的 Rust 版本，例如:`rust-version = "1.99.0"`
 
 示例结构：
@@ -535,8 +536,8 @@ msrv = "1.99.0"
 - 保护层拒绝要用统一响应结构：速率超限带 `Retry-After`（秒），并发超限不猜测等待时间；
   5xx 文案统一「系统内部错误」，不得把容量细节透给客户端。
 - 访问日志不记录 query、Authorization 或请求体；客户端 IP 与请求 ID 仅用于请求追溯。
-  留痕模块（`src/middleware/audit.rs`）的 `oper_ip` 是另一套来源：按 Spring 契约直接取
-  `X-Forwarded-For` / `X-Real-IP`，不回退到保护层的可信解析，两者不得互相替代。
+  留痕模块（`src/middleware/audit.rs`）与登录日志的来源 IP 同样取保护层的可信解析结果
+  （`client_ip::source_of`），不得直接读请求头原值。
 
 ### 10.15 请求诊断与失败隔离
 
@@ -553,3 +554,28 @@ msrv = "1.99.0"
   （限流、背压、panic）至少保证 `x-trace-id` 响应头，异常点已记在 `docs/RESPONSE.md`。
 - production 配置必须拒绝 debug 构建：`main` 启动校验与 `create_app` 嵌入入口都要守住边界；
   `docs` feature 仍独立，release + docs 必须能编译，生产文档访问由网关限制。
+
+### 10.16 登录日志的客户端来源
+
+- `sys_login_log` 的 `ip` / `location` / `browser` / `os` 必须采集：`ip` 取保护层按可信代理链解析出的
+  真实对端（`client_ip::source_of`，与操作日志同源），**不得**直接读请求头原值；
+  `location` 复用 `location_of`（本机 / 内网，不做地理库解析）；`browser` / `os` 由
+  `src/util/user_agent.rs` 解析 `User-Agent`，识别不出时留空。
+- 登录 / 退出用例的签名收 `&ClientSource`（`src/domain/models/identity.rs`），
+  控制器通过 `src/api/extractors/client_source.rs` 提取，不自己读头或扩展。
+  验证码失败不写日志、账号密码错误与账号停用要写失败日志的既有约定不变。
+- 禁止把 `User-Agent` 原样或版本号写入日志列；`Column` 名称级的解析结果在
+  `tests/admin_api_tests.rs` 与 `tests/monitor_api_tests.rs` 各有一条断言，
+  调整采集字段或解析规则时同步这两处。
+
+### 10.17 生产部署文档
+
+- 部署相关说明统一维护在仓库根 [docs/DEPLOYMENT.md](../docs/DEPLOYMENT.md)，由根 README 的
+  「文档导航」链接；`backend/docs/MIDDLEWARE.md` 只保留可信代理的规则与指向该文档的链接，
+  不要在两处各写一份代理配置示例。
+- 真实客户端 IP 的结论以代码为准：只有直连对端命中 `MIDDLEWARE_TRUSTED_PROXIES` 时才解析
+  `X-Forwarded-For`，从右向左剥离可信代理。文档里的示例必须与服务端行为一致；
+  调整解析规则或 `ConnectInfo` 注入方式时，同步更新该文档的「部署形态与真实客户端 IP」
+  与「验证真实 IP 是否生效」两节。
+- 生产清单（示例密钥、默认口令、演示数据）仍以 `README.md` 的「生产环境注意事项」为准，
+  部署文档只引用、不复制。

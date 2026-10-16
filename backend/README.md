@@ -174,7 +174,7 @@ SEED_USERS=ops_admin:运维管理员:ops@example.com:2
 | `sys_oper_log` / `sys_login_log` | 本地联调产生的日志 | 上线前清空 |
 | Redis | `captcha:*`、`auth:token:*`、`auth:user:*` | 切换环境时清空，避免旧会话残留 |
 | `log/` | 本地运行日志 | 不入库，部署时按需清理 |
-| `.env` | `MIDDLEWARE_TRUSTED_PROXIES`（默认空） | 部署在反向代理后时必须填写代理 IP/CIDR，否则所有用户共用代理 IP 的额度；不要用 `*`（生产环境会拒绝启动） |
+| `.env` | `MIDDLEWARE_TRUSTED_PROXIES`（默认空） | 部署在反向代理后时必须填写代理 IP/CIDR，否则所有用户共用代理 IP 的额度，日志里的来源也会记成代理地址；不要用 `*`（生产环境会拒绝启动）。各形态的填法见 [生产部署](../docs/DEPLOYMENT.md) |
 
 建议保留的默认数据（清掉会导致页面无法正常使用）：
 
@@ -189,8 +189,8 @@ SEED_USERS=ops_admin:运维管理员:ops@example.com:2
 在真实项目中应当替换或删除：`dev-login` / `dev-transfer` 只在 debug 构建注册，release 构建不存在。
 
 按来源 IP 的额度、限流与背压都是**进程级**的，多实例部署需要网关或共享存储兜底；
-TLS、连接层保护与磁盘配额由部署设施负责，完整边界见
-[生产保障边界](docs/MIDDLEWARE.md#生产保障边界)。
+TLS、连接层保护与磁盘配额由部署设施负责。完整边界与反向代理 / CDN 下的真实客户端 IP 获取见
+[生产保障边界](docs/MIDDLEWARE.md#生产保障边界) 与 [生产部署](../docs/DEPLOYMENT.md)。
 
 ## 接口清单
 
@@ -207,6 +207,7 @@ TLS、连接层保护与磁盘配额由部署设施负责，完整边界见
 
 ## 文档导航
 
+- [生产部署](../docs/DEPLOYMENT.md)：部署形态与真实客户端 IP、环境变量、启动与前端托管、上线清单
 - [后台管理模块](docs/ADMIN.md)：接口清单、权限与数据范围、留痕、存储映射、与 Spring 版的差异
 - [架构设计](docs/ARCHITECTURE.md)：洋葱架构、目录结构、每层职责
 - [中间件栈与配置](docs/MIDDLEWARE.md)：执行顺序、容量参数、压测调参

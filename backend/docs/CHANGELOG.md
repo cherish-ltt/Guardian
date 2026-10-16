@@ -15,6 +15,14 @@
 
 ### 新增
 
+- **登录日志采集客户端来源**：每次登录尝试与退出都写入 `sys_login_log` 的 `ip` / `location` /
+  `browser` / `os`。IP 取保护层按可信代理链解析出的真实对端（与操作日志同源，不再采信请求头原值），
+  地点沿用「本机 / 内网」，浏览器与操作系统由新增依赖 `woothee` 从 `User-Agent` 解析、识别不出时留空。
+  登录 / 退出用例签名改为收 `&ClientSource`，控制器通过新提取器
+  (`src/api/extractors/client_source.rs`) 取得来源。
+- **生产部署文档**：新增 [docs/DEPLOYMENT.md](../../docs/DEPLOYMENT.md)，覆盖直连 / Nginx /
+  CDN 回源直连 / CDN + Nginx 四种形态下的真实客户端 IP 获取与防伪造要点、验证方法、
+  环境变量、启动与进程管理、前端构建与静态托管、安全边界、日志与磁盘、备份与上线清单。
 - **按真实来源 IP 的客户端保护**（`src/middleware/client_ip.rs`、`client_limits.rs`）：
   进程级单 IP 并发与固定窗口请求额度，跨路由共享；有界注册表（满时新来源 `503`）、空闲清理、
   取消释放许可；速率拒绝带 `Retry-After`。
@@ -30,6 +38,9 @@
 
 ### 变更
 
+- **留痕来源改为可信解析**：`sys_oper_log.oper_ip` 与 `sys_login_log.ip` 都改用保护层解析出的
+  真实对端，不再直接取 `X-Forwarded-For` / `X-Real-IP`（与 Spring 版的差异已记入
+  [后台管理模块](ADMIN.md)）；因此部署在代理后必须正确配置 `MIDDLEWARE_TRUSTED_PROXIES`。
 - 中间件栈重排：新增客户端识别、请求观测与总超时、panic 隔离、客户端保护与诊断上下文；
   移除 `TraceLayer` 与 `TimeoutLayer`（访问日志与超时改由请求观测层承担），因此
   `tower-http` 不再需要 `trace` / `timeout` feature，新增 `catch-panic`、`tower/util`（`map_response`）、
@@ -47,12 +58,16 @@
 ### 测试与文档
 
 - 新增 `tests/client_protection_tests.rs`（代理防伪、额度隔离、跨路由共享、取消释放）；
+  `tests/admin_api_tests.rs` 与 `tests/monitor_api_tests.rs` 补登录 / 退出日志的来源、地点、
+  浏览器与操作系统采集断言（含可信代理下的真实 IP 与不可信转发头不被采信）；
   `tests/middleware_tests.rs` 补含排队的超时、panic 隔离、HEAD 无响应体、非法请求 ID 替换；
   `tests/middleware_log_tests.rs` 补低噪声日志、路由模板、query 不泄漏与池占满时的
   `db.ready` 中断诊断；`tests/config_tests.rs` 补可信代理与客户端参数分支；
   集成测试统一注入 `ConnectInfo`。
 - 适配 `docs/MIDDLEWARE.md`（栈顺序、配置表、部署与生产边界）、`docs/LOGGING.md`
-  （低噪声请求诊断）、`docs/TESTING.md`、`README.md` 与 `AGENTS.md`（新增 10.14 / 10.15）。
+  （低噪声请求诊断）、`docs/ADMIN.md`（登录日志字段来源与差异表）、`docs/TESTING.md`、
+  根 `README.md` 与 `backend/README.md`（部署文档入口）、`AGENTS.md`（新增 10.14 / 10.15 /
+  10.16 / 10.17）。
 
 ## [0.1.0] - 2026-10-14
 

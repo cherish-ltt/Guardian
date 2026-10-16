@@ -34,7 +34,8 @@ Guardian 是一个功能完整的后台管理系统，后端基于 `axum + sea-o
   CSV 导出与权限关系图；菜单与按钮权限码驱动前端动态路由。
 - **数据权限**：`ALL` / `DEPT_AND_CHILD` / `DEPT` / `CUSTOM` / 仅本人，用户列表、导出与权限图统一受控。
 - **系统监控**：写操作留痕（请求体脱敏、失败留痕、401/403 不留痕）、操作与登录日志的列表、
-  统计、时间线、热力图、导出、删除与清空。
+  统计、时间线、热力图、导出、删除与清空；两份日志都记录真实来源 IP（按可信代理链解析）、
+  地点与浏览器 / 操作系统。
 - **工作台**：统计卡、登录趋势、近 7 天操作量、近期动态与角色分布。
 - **代码生成**：候选表、导入、字段配置、代码预览、生成与 ZIP 下载。
 - **工程化**：DDD + 洋葱架构分层、统一响应与 `traceId`、完整中间件栈（限流 / 背压 / 超时 / Body 上限 /
@@ -70,8 +71,9 @@ npm run dev                    # http://localhost:5173，/api/v1 代理到后端
 演示账号与口令取自 `.env`：`SEED_USERS` 决定播种哪些账号，`SEED_ADMIN_PASSWORD` 是它们的初始口令
 （模板默认 `admin` / `admin123456`）。
 
-> 生产环境部署前必须替换示例密钥、默认口令并清理演示数据，清单见
-> [backend/README.md](backend/README.md#生产环境注意事项) 与 [backend/AGENTS.md](backend/AGENTS.md)。
+> 生产环境部署前必须替换示例密钥、默认口令并清理演示数据，且要按部署形态配置可信代理
+> （否则日志里的来源 IP 与按 IP 的额度都不可信）。完整说明见 [生产部署](docs/DEPLOYMENT.md)，
+> 数据清理清单见 [backend/README.md](backend/README.md#生产环境注意事项) 与 [backend/AGENTS.md](backend/AGENTS.md)。
 
 ## 验证命令
 
@@ -101,6 +103,7 @@ npm run build
 
 ## 文档导航
 
+- 生产部署（真实客户端 IP、反向代理 / CDN、上线清单）：[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
 - 后端总览与运行说明：[backend/README.md](backend/README.md)
 - 后台模块与接口契约：[backend/docs/ADMIN.md](backend/docs/ADMIN.md)
 - 架构、中间件、日志、事务、响应结构、测试：[backend/docs](backend/docs)

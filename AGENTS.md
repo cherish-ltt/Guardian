@@ -21,6 +21,8 @@
     用 `working-directory` 指向 `backend/` 与 `frontend/`。
   - `.pre-commit-config.yaml`：文件检查、密钥泄漏检测、ast-grep 规则与 Rust 钩子。
 - 生产部署前必须处理后端 README 的「生产环境注意事项」与 `backend/AGENTS.md` 第 10.11 节列出的
-  演示数据与默认口令。
+  演示数据与默认口令，并按 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) 配置可信代理与网关。
+- 部署说明统一放在仓库根 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)，由根 README 的「文档导航」
+  链接；代理 / CDN 下的真实客户端 IP 获取与验证方法以该文档为准，其他文档只引用不复制。
 - 许可证：本仓库采用 `MIT OR Apache-2.0` 双许可；`frontend/` 派生自上游 `scaffold-vue`，
   沿用其 MIT 许可并保留版权声明（见 [frontend/LICENSE](frontend/LICENSE)）。
