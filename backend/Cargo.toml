@@ -50,6 +50,10 @@ tower-http = { version = "=0.7.1", features = [
 # 可信代理网段解析（客户端 IP 识别）
 ipnet = "=2.12.0"
 
+# User-Agent 解析（登录日志的浏览器与操作系统）
+# 规则表已随 crate 发布、无需任何 feature；构建期生成规则用的 generate feature 不启用。
+woothee = "=0.13.0"
+
 # 异步运行时与性能
 # 不用 "full"：按实际调用面逐项开启（macros 覆盖 main/test/select!，time 覆盖 timeout/sleep，
 # net 覆盖 TcpListener，signal 覆盖 ctrl_c/SIGTERM，rt-multi-thread 覆盖多线程运行时）。

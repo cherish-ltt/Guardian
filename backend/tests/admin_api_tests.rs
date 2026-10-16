@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 
 use support::{
     DEMO_PASSWORD, admin_token, delete_with_bearer, get, get_with_bearer, login, post_json,
-    post_json_with_bearer, put_json_with_bearer, send, setup_app,
+    post_json_with_bearer, put_json_with_bearer, send, setup_app, setup_app_with_trusted_proxies,
 };
 
 #[tokio::test]
@@ -1246,7 +1246,108 @@ async fn login_log_records_success_and_failure() {
     assert_eq!(rows[0]["username"], "admin");
     assert_eq!(rows[0]["status"], 1);
     assert_eq!(rows[0]["msg"], "登录成功");
-    assert_eq!(rows[0]["browser"], Value::Null);
+    assert_eq!(rows[0]["ip"], "127.0.0.1");
+    assert_eq!(rows[0]["location"], "本机");
+    assert_eq!(
+        rows[0]["browser"],
+        Value::Null,
+        "装置不带 User-Agent 时留空"
+    );
+    assert_eq!(rows[0]["os"], Value::Null);
+}
+
+/// 登录与退出都采集客户端来源：可信代理透传的真实 IP 覆盖对端地址，
+/// `User-Agent` 解析出浏览器与操作系统；伪造的转发头不再被采信。
+#[tokio::test]
+async fn login_log_records_trusted_client_source() {
+    let app = setup_app_with_trusted_proxies(vec!["127.0.0.1/32".parse().expect("构造网段")]).await;
+    let token = login_with_source(&app, FORWARDED_FOR).await;
+
+    let (status, logs) = send(
+        app.clone(),
+        get_with_bearer("/api/v1/monitor/login-logs?pageNum=1&pageSize=10", &token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "查询登录日志失败: {logs}");
+    let row = &logs["data"]["rows"][0];
+    assert_eq!(row["username"], "admin");
+    assert_eq!(row["msg"], "登录成功");
+    assert_eq!(row["ip"], "203.0.113.7", "可信代理透传的真实来源");
+    assert_eq!(row["location"], "内网");
+    assert_eq!(row["browser"], "Chrome");
+    assert_eq!(row["os"], "Windows 10");
+
+    // 退出登录同样带客户端来源；令牌会被撤销，用新会话重新查询。
+    let (status, _) = send(
+        app.clone(),
+        with_source(
+            post_json_with_bearer("/api/v1/auth/logout", &token, json!({})),
+            FORWARDED_FOR,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let fresh = login_with_source(&app, FORWARDED_FOR).await;
+    let (_, logs) = send(
+        app.clone(),
+        get_with_bearer("/api/v1/monitor/login-logs?pageNum=1&pageSize=10", &fresh),
+    )
+    .await;
+    let rows = logs["data"]["rows"].as_array().expect("登录日志");
+    let logout = rows
+        .iter()
+        .find(|row| row["msg"] == "退出登录")
+        .expect("退出登录日志");
+    assert_eq!(logout["ip"], "203.0.113.7");
+    assert_eq!(logout["browser"], "Chrome");
+    assert_eq!(logout["os"], "Windows 10");
+}
+
+/// 可信代理透传的来源地址，测试里由 `X-Forwarded-For` 表示。
+const FORWARDED_FOR: &str = "203.0.113.7";
+const CHROME_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) \
+     Chrome/141.0.0.0 Safari/537.36";
+
+/// 补上可信代理透传的来源与浏览器标识。
+fn with_source(
+    mut request: axum::http::Request<axum::body::Body>,
+    forwarded_for: &str,
+) -> axum::http::Request<axum::body::Body> {
+    request.headers_mut().insert(
+        "x-forwarded-for",
+        forwarded_for.parse().expect("构造请求头"),
+    );
+    request.headers_mut().insert(
+        axum::http::header::USER_AGENT,
+        CHROME_USER_AGENT.parse().expect("构造请求头"),
+    );
+
+    request
+}
+
+/// 走正确验证码 + 可信代理头的登录：用于断言日志里的客户端来源。
+async fn login_with_source(app: &axum::Router, forwarded_for: &str) -> String {
+    let (_, captcha) = send(app.clone(), get("/api/v1/auth/captcha")).await;
+    let request = with_source(
+        post_json(
+            "/api/v1/auth/login",
+            json!({
+                "username": "admin",
+                "password": DEMO_PASSWORD,
+                "captcha": captcha["data"]["code"],
+                "captchaUuid": captcha["data"]["uuid"],
+            }),
+        ),
+        forwarded_for,
+    );
+    let (status, body) = send(app.clone(), request).await;
+    assert_eq!(status, StatusCode::OK, "登录失败: {body}");
+
+    body["data"]["token"]
+        .as_str()
+        .expect("登录令牌")
+        .to_string()
 }
 
 /// 三个此前没有用例的导出端点：表头、附件名与过滤参数都要与 Spring 版对齐。

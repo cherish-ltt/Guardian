@@ -11,7 +11,9 @@ use http_body_util::BodyExt;
 use serde_json::Value;
 use tracing::{error, warn};
 
-use crate::{container::Container, domain::models::audit_log::OperationLogEntry};
+use crate::{
+    container::Container, domain::models::audit_log::OperationLogEntry, middleware::client_ip,
+};
 
 /// 需要留痕的写操作：路径按 `nest("/api/v1")` 之后的段匹配，`:id` 匹配任意一段。
 const AUDIT_ROUTES: [(Method, &[&str], &str, &str); 31] = [
@@ -159,7 +161,7 @@ pub async fn record_operation(
     let method = request.method().to_string();
     let url = request.uri().path().to_string();
     let operator = operator_of(&container, request.headers());
-    let ip = client_ip(request.headers());
+    let ip = client_ip::source_of(request.extensions(), request.headers()).ip;
     let limit = container.config.middleware.max_body_bytes;
     let (request, params) = buffered_request(request, limit, &url).await;
 
@@ -256,26 +258,6 @@ fn operator_of(container: &Container, headers: &HeaderMap) -> Option<String> {
         .map(|claims| claims.username)
 }
 
-/// 客户端 IP：与 Spring 版一致地优先取代理头。
-fn client_ip(headers: &HeaderMap) -> Option<String> {
-    let forwarded = headers
-        .get("x-forwarded-for")
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.split(',').next())
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
-    if forwarded.is_some() {
-        return forwarded.map(str::to_string);
-    }
-
-    headers
-        .get("x-real-ip")
-        .and_then(|value| value.to_str().ok())
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_string)
-}
-
 /// 请求体先做敏感字段脱敏，再按 4000 字符截断。
 fn masked_params(body: &[u8]) -> Option<String> {
     if body.is_empty() {
@@ -346,7 +328,7 @@ mod tests {
     use axum::http::Method;
     use serde_json::json;
 
-    use super::{audit_action, client_ip, masked_params};
+    use super::{audit_action, masked_params};
 
     #[test]
     fn audit_routes_match_by_method_and_segments() {
@@ -399,20 +381,5 @@ mod tests {
     #[test]
     fn empty_body_has_no_params() {
         assert_eq!(masked_params(b""), None);
-    }
-
-    #[test]
-    fn client_ip_prefers_forwarded_headers() {
-        let mut headers = axum::http::HeaderMap::new();
-        headers.insert("x-real-ip", "10.0.0.9".parse().expect("头值"));
-        assert_eq!(client_ip(&headers).as_deref(), Some("10.0.0.9"));
-
-        headers.insert(
-            "x-forwarded-for",
-            "10.0.0.1, 10.0.0.2".parse().expect("头值"),
-        );
-        assert_eq!(client_ip(&headers).as_deref(), Some("10.0.0.1"));
-
-        assert_eq!(client_ip(&axum::http::HeaderMap::new()), None);
     }
 }

@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 
 use support::{
     admin_token, delete_with_bearer, get, get_with_bearer, login, post_json, post_json_with_bearer,
-    send, send_raw, setup_app,
+    send, send_raw, setup_app, setup_app_with_trusted_proxies,
 };
 
 fn with_forwarded_for(
@@ -311,8 +311,8 @@ async fn login_stats_heatmap_and_exports() {
     let login_csv = String::from_utf8(login_csv).expect("CSV");
     assert!(login_csv.starts_with("登录账号,IP,地点,浏览器,系统,状态,描述,登录时间\n"));
     assert!(
-        login_csv.contains("admin,,,,"),
-        "浏览器与系统留空: {login_csv}"
+        login_csv.contains("admin,127.0.0.1,本机,,,成功,登录成功,"),
+        "来源 IP 与地点已采集，测试请求不带 User-Agent 时浏览器与系统留空: {login_csv}"
     );
 
     let (_, _, oper_csv) = send_raw(
@@ -505,8 +505,8 @@ async fn oper_log_export_contains_recorded_rows() {
         "请求参数按 CSV 规则转义后原样落盘: {row}"
     );
     assert!(
-        row.contains(",admin,,,,"),
-        "操作人列已记录，部门 / IP / 地点在无转发头时留空: {row}"
+        row.contains(",admin,,127.0.0.1,本机,"),
+        "操作人已记录；部门留空，IP 与地点取保护层解析出的真实对端: {row}"
     );
     assert!(row.contains(",成功,"), "结果列为成功: {row}");
 }
@@ -595,51 +595,64 @@ async fn oper_timeline_rejects_a_malformed_date() {
     }
 }
 
-/// 转发头里的客户端地址原样留痕，并按是否本机归入「本机 / 内网」。
+/// 留痕里的客户端地址取保护层的可信解析结果：伪造的转发头不被采信，
+/// 只有显式配置为可信代理的对端送来的 `X-Forwarded-For` 才会按真实来源记录。
 #[tokio::test]
-async fn forwarded_client_ip_is_recorded_with_its_location() {
+async fn recorded_client_ip_follows_the_trusted_proxy_chain() {
     let app = setup_app().await;
     let token = admin_token(&app).await;
 
-    let mut request = post_json_with_bearer(
+    let mut forged = post_json_with_bearer(
         "/api/v1/system/posts",
         &token,
-        json!({ "postCode": "ip_probe", "postName": "IP 探针" }),
+        json!({ "postCode": "forged_probe", "postName": "伪造探针" }),
     );
-    request
+    forged
         .headers_mut()
         .insert("x-forwarded-for", "10.10.10.10".parse().expect("头值"));
-    let (status, _) = send(app.clone(), request).await;
+    forged
+        .headers_mut()
+        .insert("x-real-ip", "10.10.10.11".parse().expect("头值"));
+    let (status, _) = send(app.clone(), forged).await;
     assert_eq!(status, StatusCode::OK);
 
     let (status, logs) = send(
         app.clone(),
-        get_with_bearer("/api/v1/monitor/oper-logs?keyword=ip_probe", &token),
+        get_with_bearer("/api/v1/monitor/oper-logs?keyword=forged_probe", &token),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
     let row = &logs["data"]["rows"][0];
-    assert_eq!(row["ip"], "10.10.10.10");
-    assert_eq!(row["location"], "内网");
+    assert_eq!(row["ip"], "127.0.0.1", "不可信对端的转发头不能改写来源");
+    assert_eq!(row["location"], "本机");
 
-    // 本机地址（默认装置不带转发头时由回环地址推断）记为「本机」。
-    let mut request = post_json_with_bearer(
+    // 同一条请求在配置了可信代理后按转发头里的真实来源记录。
+    let trusted =
+        setup_app_with_trusted_proxies(vec!["127.0.0.1/32".parse().expect("构造网段")]).await;
+    let trusted_token = admin_token(&trusted).await;
+
+    let mut proxied = post_json_with_bearer(
         "/api/v1/system/posts",
-        &token,
-        json!({ "postCode": "loopback_probe", "postName": "回环探针" }),
+        &trusted_token,
+        json!({ "postCode": "proxied_probe", "postName": "代理探针" }),
     );
-    request
+    proxied
         .headers_mut()
-        .insert("x-forwarded-for", "127.0.0.1".parse().expect("头值"));
-    let (status, _) = send(app.clone(), request).await;
+        .insert("x-forwarded-for", "10.10.10.10".parse().expect("头值"));
+    let (status, _) = send(trusted.clone(), proxied).await;
     assert_eq!(status, StatusCode::OK);
 
     let (_, logs) = send(
-        app.clone(),
-        get_with_bearer("/api/v1/monitor/oper-logs?keyword=loopback_probe", &token),
+        trusted.clone(),
+        get_with_bearer(
+            "/api/v1/monitor/oper-logs?keyword=proxied_probe",
+            &trusted_token,
+        ),
     )
     .await;
-    assert_eq!(logs["data"]["rows"][0]["location"], "本机");
+    let row = &logs["data"]["rows"][0];
+    assert_eq!(row["ip"], "10.10.10.10");
+    assert_eq!(row["location"], "内网");
 }
 
 /// 工作台汇总统计的是已落库的操作量：写一次后当天与近 24 小时都能看到。

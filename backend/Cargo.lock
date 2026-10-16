@@ -874,6 +874,7 @@ dependencies = [
  "utoipa",
  "utoipa-swagger-ui",
  "uuid",
+ "woothee",
  "zip 9.0.3",
 ]
 
@@ -2971,6 +2972,16 @@ dependencies = [
  "serde_json",
  "unicode-xid",
  "wasmparser",
+]
+
+[[package]]
+name = "woothee"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "896174c6a4779d4d7d4523dd27aef7d46609eda2497e370f6c998325c6bf6971"
+dependencies = [
+ "lazy_static",
+ "regex",
 ]
 
 [[package]]

@@ -4,7 +4,7 @@
 //! [`crate::infrastructure::config::MiddlewareConfig`]，这里不出现任何业务逻辑。
 
 pub mod audit;
-mod client_ip;
+pub(crate) mod client_ip;
 mod client_limits;
 pub(crate) mod diagnostics;
 mod error_response;

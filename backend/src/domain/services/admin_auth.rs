@@ -3,8 +3,8 @@ use async_trait::async_trait;
 use crate::domain::{
     error::AppError,
     models::identity::{
-        CaptchaChallenge, ChangePasswordCommand, CurrentUserInfo, DataScope, LoginCommand,
-        LoginResult, RouteNode,
+        CaptchaChallenge, ChangePasswordCommand, ClientSource, CurrentUserInfo, DataScope,
+        LoginCommand, LoginResult, RouteNode,
     },
 };
 
@@ -19,9 +19,18 @@ pub trait AdminAuthUseCase: Send + Sync {
 
     async fn captcha(&self) -> Result<CaptchaChallenge, AppError>;
 
-    async fn login(&self, command: LoginCommand) -> Result<LoginResult, AppError>;
+    async fn login(
+        &self,
+        command: LoginCommand,
+        source: &ClientSource,
+    ) -> Result<LoginResult, AppError>;
 
-    async fn logout(&self, token: &str, username: &str) -> Result<(), AppError>;
+    async fn logout(
+        &self,
+        token: &str,
+        username: &str,
+        source: &ClientSource,
+    ) -> Result<(), AppError>;
 
     async fn current_user(&self, username: &str) -> Result<CurrentUserInfo, AppError>;
 

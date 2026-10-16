@@ -6,9 +6,12 @@ use sea_orm::DatabaseConnection;
 use crate::{
     domain::{
         error::AppError,
-        models::identity::{
-            AuthUserRow, CaptchaChallenge, ChangePasswordCommand, CurrentUserInfo, DataScope,
-            LoginCommand, LoginResult, MenuRow, RouteNode,
+        models::{
+            audit_log::LoginLogEntry,
+            identity::{
+                AuthUserRow, CaptchaChallenge, ChangePasswordCommand, ClientSource,
+                CurrentUserInfo, DataScope, LoginCommand, LoginResult, MenuRow, RouteNode,
+            },
         },
         services::admin_auth::AdminAuthUseCase,
     },
@@ -44,6 +47,27 @@ impl AdminAuthService {
             jwt_service,
             auth_store,
         }
+    }
+
+    /// 写一条登录日志：来源信息由调用方从请求上下文带入。
+    async fn record_login(
+        &self,
+        username: &str,
+        status: i64,
+        message: &str,
+        source: &ClientSource,
+    ) -> Result<(), AppError> {
+        SeaOrmAdminAuthRepository
+            .insert_login_log(
+                &self.database,
+                &LoginLogEntry {
+                    username: username.to_string(),
+                    status,
+                    message: message.to_string(),
+                    source: source.clone(),
+                },
+            )
+            .await
     }
 
     /// 账号快照；不存在或已停用一律按会话失效处理。
@@ -118,28 +142,29 @@ impl AdminAuthUseCase for AdminAuthService {
         Ok(CaptchaChallenge { uuid, code })
     }
 
-    async fn login(&self, command: LoginCommand) -> Result<LoginResult, AppError> {
+    async fn login(
+        &self,
+        command: LoginCommand,
+        source: &ClientSource,
+    ) -> Result<LoginResult, AppError> {
         verify_captcha(self.auth_store.as_ref(), &command).await?;
 
         let Some(user) = SeaOrmAdminAuthRepository
             .find_user_by_username(&self.database, &command.username)
             .await?
         else {
-            SeaOrmAdminAuthRepository
-                .insert_login_log(&self.database, &command.username, 0, "账号或密码错误")
+            self.record_login(&command.username, 0, "账号或密码错误", source)
                 .await?;
             return Err(AppError::business("账号或密码错误"));
         };
 
         if !password::verify_password(&command.password, &user.password)? {
-            SeaOrmAdminAuthRepository
-                .insert_login_log(&self.database, &command.username, 0, "账号或密码错误")
+            self.record_login(&command.username, 0, "账号或密码错误", source)
                 .await?;
             return Err(AppError::business("账号或密码错误"));
         }
         if user.status != 1 {
-            SeaOrmAdminAuthRepository
-                .insert_login_log(&self.database, &command.username, 0, "账号已停用")
+            self.record_login(&command.username, 0, "账号已停用", source)
                 .await?;
             return Err(AppError::business("账号已停用"));
         }
@@ -157,8 +182,7 @@ impl AdminAuthUseCase for AdminAuthService {
             )
             .await?;
 
-        SeaOrmAdminAuthRepository
-            .insert_login_log(&self.database, &user.username, 1, "登录成功")
+        self.record_login(&user.username, 1, "登录成功", source)
             .await?;
         SeaOrmAdminAuthRepository
             .touch_last_login(&self.database, user.id)
@@ -170,11 +194,14 @@ impl AdminAuthUseCase for AdminAuthService {
         })
     }
 
-    async fn logout(&self, token: &str, username: &str) -> Result<(), AppError> {
+    async fn logout(
+        &self,
+        token: &str,
+        username: &str,
+        source: &ClientSource,
+    ) -> Result<(), AppError> {
         self.auth_store.revoke_token(token).await?;
-        SeaOrmAdminAuthRepository
-            .insert_login_log(&self.database, username, 1, "退出登录")
-            .await?;
+        self.record_login(username, 1, "退出登录", source).await?;
 
         Ok(())
     }

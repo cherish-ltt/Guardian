@@ -10,7 +10,10 @@ use crate::{
     api::{
         done,
         dto::auth::{AccessTokenResponse, CurrentUserResponse, DevLoginRequest},
-        extractors::{admin_user::AdminUser, api_json::ApiJson, current_user::CurrentUser},
+        extractors::{
+            admin_user::AdminUser, api_json::ApiJson, client_source::ClientSource,
+            current_user::CurrentUser,
+        },
         ok,
     },
     container::Container,
@@ -72,9 +75,13 @@ pub async fn captcha(
 ))]
 pub async fn login(
     State(container): State<Arc<Container>>,
+    source: ClientSource,
     ApiJson(command): ApiJson<LoginCommand>,
 ) -> Result<ApiResponse<LoginResult>, AppError> {
-    let result = container.admin_auth_service.login(command).await?;
+    let result = container
+        .admin_auth_service
+        .login(command, &source.0)
+        .await?;
 
     Ok(ok(result))
 }
@@ -92,10 +99,11 @@ pub async fn login(
 pub async fn logout(
     State(container): State<Arc<Container>>,
     user: AdminUser,
+    source: ClientSource,
 ) -> Result<ApiResponse<()>, AppError> {
     container
         .admin_auth_service
-        .logout(user.token(), user.username())
+        .logout(user.token(), user.username(), &source.0)
         .await?;
 
     Ok(done())

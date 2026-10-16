@@ -2,13 +2,18 @@ use async_trait::async_trait;
 use sea_orm::{ConnectionTrait, QueryResult};
 
 use crate::{
-    domain::models::identity::{AuthUserRow, MenuRow},
+    domain::models::{
+        audit_log::LoginLogEntry,
+        identity::{AuthUserRow, MenuRow},
+    },
     error::AppError,
     infrastructure::repositories::sql::{
         execute, int, int_or_zero, query_all, query_opt, text, text_or_none,
     },
     util::time,
 };
+
+use super::audit_log::location_of;
 
 /// 登录鉴权与数据权限所需的读操作。
 ///
@@ -46,13 +51,7 @@ pub trait AdminAuthRepository: Send + Sync {
     where
         C: ConnectionTrait;
 
-    async fn insert_login_log<C>(
-        &self,
-        db: &C,
-        username: &str,
-        status: i64,
-        message: &str,
-    ) -> Result<(), AppError>
+    async fn insert_login_log<C>(&self, db: &C, entry: &LoginLogEntry) -> Result<(), AppError>
     where
         C: ConnectionTrait;
 
@@ -211,23 +210,22 @@ impl AdminAuthRepository for SeaOrmAdminAuthRepository {
         Ok(rows.iter().map(map_menu_row).collect())
     }
 
-    async fn insert_login_log<C>(
-        &self,
-        db: &C,
-        username: &str,
-        status: i64,
-        message: &str,
-    ) -> Result<(), AppError>
+    async fn insert_login_log<C>(&self, db: &C, entry: &LoginLogEntry) -> Result<(), AppError>
     where
         C: ConnectionTrait,
     {
         execute(
             db,
-            "INSERT INTO sys_login_log (username, status, msg, login_time) VALUES (?, ?, ?, ?)",
+            "INSERT INTO sys_login_log (username, ip, location, browser, os, status, msg, login_time) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             vec![
-                username.into(),
-                status.into(),
-                message.into(),
+                entry.username.clone().into(),
+                entry.source.ip.clone().into(),
+                location_of(entry.source.ip.as_deref()).into(),
+                entry.source.browser.clone().into(),
+                entry.source.os.clone().into(),
+                entry.status.into(),
+                entry.message.clone().into(),
                 time::now().into(),
             ],
         )

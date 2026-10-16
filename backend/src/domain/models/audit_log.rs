@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use crate::domain::models::pagination::PageQuery;
+use crate::domain::models::{identity::ClientSource, pagination::PageQuery};
 
 /// 操作日志列表查询。
 #[derive(Debug, Clone, Default)]
@@ -49,6 +49,15 @@ pub struct LoginLogRow {
     pub status: i64,
     pub msg: Option<String>,
     pub login_time: Option<String>,
+}
+
+/// 一次登录 / 退出的留痕，字段与 `sys_login_log` 对齐。
+#[derive(Debug, Clone)]
+pub struct LoginLogEntry {
+    pub username: String,
+    pub status: i64,
+    pub message: String,
+    pub source: ClientSource,
 }
 
 /// 一次写操作留痕，字段与 Spring 版 `OperationLogEntry` 对齐。

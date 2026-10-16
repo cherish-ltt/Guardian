@@ -22,6 +22,7 @@ use guardian_backend::{
     },
 };
 use http_body_util::BodyExt;
+use ipnet::IpNet;
 use serde_json::{Value, json};
 use tower::ServiceExt;
 use tracing_appender::rolling::Rotation;
@@ -33,6 +34,11 @@ const TEST_JWT_SECRET: &str = "admin-api-test-secret-long-enough";
 pub const DEMO_PASSWORD: &str = "admin123456";
 
 pub async fn setup_app() -> Router {
+    setup_app_with_trusted_proxies(Vec::new()).await
+}
+
+/// 可信代理链只在验证「网关透传的真实客户端 IP 会被采信」时显式配置。
+pub async fn setup_app_with_trusted_proxies(trusted_proxies: Vec<IpNet>) -> Router {
     let database_url = format!(
         "sqlite://{}?mode=rwc",
         std::env::temp_dir()
@@ -90,7 +96,7 @@ pub async fn setup_app() -> Router {
             rate_limit_period_secs: 1,
             hsts_enabled: false,
             cors_allowed_origins: Vec::new(),
-            trusted_proxies: Vec::new(),
+            trusted_proxies,
             client_max_concurrency: 32,
             client_rate_limit_requests: 1024,
             client_rate_limit_period_secs: 1,

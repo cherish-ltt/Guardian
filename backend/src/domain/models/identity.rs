@@ -89,6 +89,17 @@ pub struct LoginCommand {
     pub captcha_uuid: Option<String>,
 }
 
+/// 一次登录 / 退出请求的客户端来源，用于写入 `sys_login_log`。
+///
+/// `ip` 是保护层按可信代理解析出的真实对端，不是请求头里的原值；
+/// `location` 由仓储在写入时按 `ip` 推导，不在这里计算。
+#[derive(Debug, Clone, Default)]
+pub struct ClientSource {
+    pub ip: Option<String>,
+    pub browser: Option<String>,
+    pub os: Option<String>,
+}
+
 /// 登录时生成的验证码：`code` 直接回显给登录页显示（与 Spring 版一致）。
 #[derive(Debug, Clone, Serialize)]
 pub struct CaptchaChallenge {
