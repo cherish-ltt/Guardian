@@ -71,7 +71,7 @@ cargo llvm-cov --features docs --summary-only
 
 `AGENTS.md` 第 10.1 节要求**行覆盖率 ≥ 80%**：全局口径，不按文件考核；
 命令与 CI 的测试口径保持一致（同样带 `--features docs`，否则 `docs` 门控的代码不在统计范围内）。
-当前实测：**行 97.40% / 函数 93.71% / region 95.55%**（247 个用例，`cargo-llvm-cov 0.9.1`）。
+当前实测：**行 95.55% / 函数 93.69% / region 97.28%**（274 个用例，`cargo-llvm-cov 0.9.1`）。
 这只是当时的快照，改动后需重新测量，不要把数字当常量。
 
 下面两处不计入覆盖率目标，也无需为它们写测试：
@@ -80,6 +80,7 @@ cargo llvm-cov --features docs --summary-only
 | --- | --- |
 | `src/main.rs` | 二进制入口：进程启动、信号监听与优雅退出，单测进程覆盖不到（要覆盖必须拉起真实进程与端口）。 |
 | `src/infrastructure/services/redis_store.rs` | 生产用的 `RedisAuthStore` 需要外部 Redis 实例；集成测试统一用 `MemoryAuthStore`，不让测试依赖外部服务。 |
+| `vendor/ip2region/` | 从上游复制的第三方查询客户端（见该目录 `README.md`）；覆盖率命令只统计本包，且它的行为由上游保证。 |
 
 除这两处外，剩余未覆盖行只有两类，都不值得为覆盖率補断言：
 

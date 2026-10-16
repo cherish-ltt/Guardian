@@ -132,7 +132,8 @@ curl -s -H 'X-Forwarded-For: 1.2.3.4' https://admin.example.com/api/v1/system/he
 curl -s --max-time 3 http://127.0.0.1:8080/api/v1/system/health -o /dev/null -w '%{http_code}\n'
 ```
 
-再用管理后台核对落库结果：`系统监控 → 登录日志` 的「来源」列应显示客户端 IP 与「本机 / 内网」，
+再用管理后台核对落库结果：`系统监控 → 登录日志` 的「来源」列应显示客户端 IP 与
+「本机 / 内网 / 外网」（本地回环 / 私网与链路本地 / 其余），
 「客户端」列显示浏览器与操作系统；`操作日志` 的 IP 列同理。两者都取保护层的解析结果，
 只要日志里对了，额度划分与留痕就是对的。
 
@@ -153,9 +154,40 @@ curl -s --max-time 3 http://127.0.0.1:8080/api/v1/system/health -o /dev/null -w 
 | `MIDDLEWARE_CORS_ALLOWED_ORIGINS` | 前后端不同源时必须显式列出来源；留空表示不下发任何 CORS 头 |
 | `MIDDLEWARE_HSTS_ENABLED` | 默认跟随 `APP_ENV`（production 默认开启）；只在全站 HTTPS 时开启 |
 | `LOG_OUT_DIR` / `LOG_MAX_LOG_FILES` | 日志目录与保留文件数，按磁盘容量规划 |
+| `IP_LOCATION_DB_PATH` | 离线 IP 地名库路径，见下一节；留空则日志地点只区分本机 / 内网 / 外网 |
 
 按来源 IP 的额度、全局限流与背压都是**进程级**实现：多实例部署时每个实例各有一套额度，
 分布式限流需要网关或共享存储承担。SQLite 是单机文件库，不要当成跨机器共享数据库。
+
+## 离线 IP 地名库
+
+登录日志与操作日志的 `location` 列分两级解析：
+
+1. **本地网段**：回环记「本机」，RFC1918 私网、链路本地与 IPv6 ULA 记「内网」，不查库。
+2. **其余地址**：查 ip2region 的离线库，命中时写入**库里的原始串**，如
+   `中国|广东省|茂名市|电信|CN`、`United States|California|0|Google LLC|US`；
+   未收录或落在保留地址段（库返回 `Reserved|...`）时记「外网」。
+
+库文件不随仓库分发（v4 约 10.6 MiB，且上游每周更新），部署时手动下载：
+
+```bash
+# 目录自定，与 .env 的 IP_LOCATION_DB_PATH 保持一致
+curl -fL -o /var/lib/guardian/ip2region_v4.xdb \
+  https://raw.githubusercontent.com/lionsoul2014/ip2region/master/data/ip2region_v4.xdb
+ls -l /var/lib/guardian/ip2region_v4.xdb   # 约 11 MB
+```
+
+```env
+IP_LOCATION_DB_PATH=/var/lib/guardian/ip2region_v4.xdb
+```
+
+- 解析实现是 vendored 的官方 Rust 客户端（`backend/vendor/ip2region`，锁在提交 `1bf6cab`）；
+  只支持 IPv4，IPv6 来源仍按本地网段与「外网」判定。
+- **路径留空**：不查地名，地点只有本机 / 内网 / 外网，不需要任何额外文件。
+- **配了却不可用**（文件不存在、不是合法 xdb）：启动直接失败，不会静默降级。
+- **更新库**：下载新文件覆盖后重启进程。查询按需读文件（只缓存索引），替换文件不重启会读到
+  不一致的内容。库更新频繁，建议随版本发布或定期任务进行，并保留上一版以备回滚。
+- `location` 存的是库里的完整原始串（含 ISP 与 ISO 码），不裁剪字段。
 
 ## 启动与进程管理
 
@@ -224,6 +256,7 @@ npm run build      # 产出 dist/
 - [ ] Redis 可达、已设密码；会话与验证码正常
 - [ ] `MIDDLEWARE_TRUSTED_PROXIES` 按形态填对（有代理必填，且不能用 `*`）
 - [ ] `SERVER_HOST` 绑本机或内网；直连入口已由防火墙 / 安全组收紧
+- [ ] `IP_LOCATION_DB_PATH` 已指向真实 xdb（或有意留空），登录一次确认 `location` 写的是地名 / 本机 / 内网
 - [ ] 用「验证真实 IP 是否生效」的三条请求确认来源 IP 与留痕正确
 - [ ] 前端 `dist/` 已托管，SPA 回退与 `/api/v1` 转发正确，跨域来源已按需配置
 - [ ] 用 release 二进制启动，健康 / 就绪探针已接

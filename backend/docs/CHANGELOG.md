@@ -17,7 +17,8 @@
 
 - **登录日志采集客户端来源**：每次登录尝试与退出都写入 `sys_login_log` 的 `ip` / `location` /
   `browser` / `os`。IP 取保护层按可信代理链解析出的真实对端（与操作日志同源，不再采信请求头原值），
-  地点沿用「本机 / 内网」，浏览器与操作系统由新增依赖 `woothee` 从 `User-Agent` 解析、识别不出时留空。
+  地点按「本机 / 内网 / 外网」三档判定（回环、RFC1918 私网与链路本地、其余），
+  浏览器与操作系统由新增依赖 `woothee` 从 `User-Agent` 解析、识别不出时留空。
   登录 / 退出用例签名改为收 `&ClientSource`，控制器通过新提取器
   (`src/api/extractors/client_source.rs`) 取得来源。
 - **生产部署文档**：新增 [docs/DEPLOYMENT.md](../../docs/DEPLOYMENT.md)，覆盖直连 / Nginx /
@@ -38,6 +39,12 @@
 
 ### 变更
 
+- **日志地点改为分级解析**：`location` 不再只有「本机 / 内网」两档。回环记「本机」，RFC1918 私网、
+  链路本地与 IPv6 ULA 记「内网」，其余地址查可选的离线地名库（ip2region xdb，`IP_LOCATION_DB_PATH`），
+  命中写入库里的原始串（如 `中国|广东省|茂名市|电信|CN`），未命中记「外网」。
+  库文件不随仓库分发，未配置时地点只有三档，配置了却加载不了会启动失败。
+  解析实现 vendored 在 `vendor/ip2region`（官方 Rust 客户端，锁提交 `1bf6cab`，去掉会拖入 clap 等
+  约 70 个包的 `maker` 依赖）。
 - **留痕来源改为可信解析**：`sys_oper_log.oper_ip` 与 `sys_login_log.ip` 都改用保护层解析出的
   真实对端，不再直接取 `X-Forwarded-For` / `X-Real-IP`（与 Spring 版的差异已记入
   [后台管理模块](ADMIN.md)）；因此部署在代理后必须正确配置 `MIDDLEWARE_TRUSTED_PROXIES`。
@@ -64,6 +71,8 @@
   `tests/middleware_log_tests.rs` 补低噪声日志、路由模板、query 不泄漏与池占满时的
   `db.ready` 中断诊断；`tests/config_tests.rs` 补可信代理与客户端参数分支；
   集成测试统一注入 `ConnectInfo`。
+- 新增 `tests/config_tests.rs` 的 `IP_LOCATION_DB_PATH` 分支与 `src/infrastructure/ip_location.rs`
+  的单测（本地网段、公网回退、保留地址段、库不可用时报错）。
 - 适配 `docs/MIDDLEWARE.md`（栈顺序、配置表、部署与生产边界）、`docs/LOGGING.md`
   （低噪声请求诊断）、`docs/ADMIN.md`（登录日志字段来源与差异表）、`docs/TESTING.md`、
   根 `README.md` 与 `backend/README.md`（部署文档入口）、`AGENTS.md`（新增 10.14 / 10.15 /

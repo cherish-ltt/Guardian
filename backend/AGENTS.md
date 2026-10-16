@@ -559,7 +559,8 @@ msrv = "1.99.0"
 
 - `sys_login_log` 的 `ip` / `location` / `browser` / `os` 必须采集：`ip` 取保护层按可信代理链解析出的
   真实对端（`client_ip::source_of`，与操作日志同源），**不得**直接读请求头原值；
-  `location` 复用 `location_of`（本机 / 内网，不做地理库解析）；`browser` / `os` 由
+  `location` 由 `IpLocation::resolve` 给出：回环「本机」、RFC1918 私网 / 链路本地 / IPv6 ULA
+  「内网」（不查库），其余查离线 xdb 并写入库里原始串，未命中写「外网」；`browser` / `os` 由
   `src/util/user_agent.rs` 解析 `User-Agent`，识别不出时留空。
 - 登录 / 退出用例的签名收 `&ClientSource`（`src/domain/models/identity.rs`），
   控制器通过 `src/api/extractors/client_source.rs` 提取，不自己读头或扩展。
@@ -567,6 +568,10 @@ msrv = "1.99.0"
 - 禁止把 `User-Agent` 原样或版本号写入日志列；`Column` 名称级的解析结果在
   `tests/admin_api_tests.rs` 与 `tests/monitor_api_tests.rs` 各有一条断言，
   调整采集字段或解析规则时同步这两处。
+- 地名库是**可选**的：`IP_LOCATION_DB_PATH` 留空时不查库（地点只有三档），配置了却加载不了
+  必须启动失败，不得静默降级。库只加载 IPv4，新增 IPv6 支持要同时换库文件并调整
+  `IpLocation::resolve`。修改解析口径要同步 `docs/ADMIN.md` 的字段表、
+  `docs/DEPLOYMENT.md` 的「离线 IP 地名库」与 `src/infrastructure/ip_location.rs` 的单测。
 
 ### 10.17 生产部署文档
 
@@ -579,3 +584,15 @@ msrv = "1.99.0"
   与「验证真实 IP 是否生效」两节。
 - 生产清单（示例密钥、默认口令、演示数据）仍以 `README.md` 的「生产环境注意事项」为准，
   部署文档只引用、不复制。
+
+### 10.18 vendor 第三方代码
+
+- `vendor/` 下是从上游复制进来的第三方实现，目前只有 `vendor/ip2region`（登录 / 操作日志的
+  离线 IP 地名）。它们的来源提交、许可与本仓库的差异记在各自的 `README.md`，不得只留代码不留出处。
+- 优先用 crates.io 的 `=x.y.z` 依赖，vendor 只在依赖不可得或会拖入无关依赖树时才用。
+  `ip2region` 官方 Rust 客户端未发布到 crates.io，且把生成工具 `maker` 当运行时依赖
+  （`clap` / `chrono` / `itertools` 等约 70 个包），因此只 vendor 查询侧并自带最小头部解析。
+- `Cargo.toml` 引用 vendor 依赖时同时写 `version = "=x.y.z"` 与 `path`，保持与其他依赖一致的
+  锁版本口径；升级按 vendor 目录 `README.md` 的差异表重新套用上游文件。
+- vendor 代码纳入本仓库的格式检查（`cargo fmt --all`）与编译，但不适用本仓库的
+  `#![warn(...)]` lint 与覆盖率目标；改动 vendor 代码时不要顺手改它的实现逻辑。

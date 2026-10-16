@@ -137,7 +137,7 @@ src/middleware/audit.rs                       写操作留痕
 | --- | --- |
 | `username` / `status` / `msg` | 业务结果：密码错误、账号停用（成功登录前的失败也记录，验证码失败不写） |
 | `ip` | 保护层解析出的真实对端 IP（可信代理命中时取 `X-Forwarded-For` 最右侧的不可信地址） |
-| `location` | 按 `ip` 推导，「本机 / 内网」，与操作日志同一套（`location_of`），不做地理库解析 |
+| `location` | 按 `ip` 推导：回环「本机」、私网与链路本地「内网」；其余查离线地名库（`vendor/ip2region`），命中写库里的原始串，未命中写「外网」 |
 | `browser` / `os` | 请求 `User-Agent` 经 `src/util/user_agent.rs`（woothee 规则表）解析出的名称，识别不出时留空 |
 
 `src/api/extractors/client_source.rs` 把来源收成一个提取器：控制器只需声明参数，
@@ -187,6 +187,7 @@ src/middleware/audit.rs                       写操作留痕
 | 时间字段 | `DATETIME` | `TEXT` 本地时间字符串 | SQLite 无原生日期类型 |
 | 留痕来源 IP | 操作日志按 `x-forwarded-for` → `x-real-ip` 取；登录日志不写 | 两者都取保护层按可信代理解出的真实对端（未命中可信代理时忽略转发头） | 转发头可被调用方伪造，日志里的来源必须可追溯；部署时需配置 `MIDDLEWARE_TRUSTED_PROXIES`，见 [生产部署](../../docs/DEPLOYMENT.md) |
 | 登录日志客户端 | 只写账号与结果 | 另写 IP、地点、浏览器、操作系统 | 排查需要知道「谁从哪里用什么客户端登录」；`User-Agent` 用 woothee 规则表解析，版本号不写入 |
+| 日志地点 | 无（只有 IP） | 「本机 / 内网 / 外网」加离线地名（如 `中国|广东省|茂名市|电信|CN`） | Spring 版不解析归属地，后台日志页只能看 IP；本地网段与保留地址段不查库，库文件与配置见 [生产部署](../../docs/DEPLOYMENT.md) |
 
 ## 测试
 
