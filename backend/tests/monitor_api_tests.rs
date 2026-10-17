@@ -385,7 +385,7 @@ async fn dashboard_summary_reports_cards_trends_and_activities() {
     assert_eq!(by_key("users")["sub"], "当前启用账号");
     assert_eq!(by_key("users")["tone"], "ok");
     assert_eq!(by_key("users")["up"], true);
-    assert_eq!(by_key("menus")["value"], 38);
+    assert_eq!(by_key("menus")["value"], 39);
     assert_eq!(by_key("menus")["sub"], "目录 / 菜单 / 按钮");
     assert_eq!(by_key("depts")["value"], 11);
     assert_eq!(by_key("online")["value"], 1, "刚刚登录了一个账号");

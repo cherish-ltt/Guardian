@@ -35,6 +35,27 @@ pub struct LoginResult {
     pub expires_in: i64,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(untagged)]
+pub enum LoginOutcome {
+    Authenticated(LoginResult),
+    Challenge {
+        #[serde(rename = "twoFactorRequired")]
+        two_factor_required: bool,
+        challenge: String,
+        #[serde(rename = "expiresIn")]
+        expires_in: u64,
+    },
+}
+
+#[cfg_attr(feature = "docs", derive(ToSchema))]
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct VerifyLoginCommand {
+    pub challenge: String,
+    pub second_factor: String,
+}
+
 /// 路由树节点，字段名与 Spring 版 `RouteVO` 一致。
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

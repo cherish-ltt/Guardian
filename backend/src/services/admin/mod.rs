@@ -25,13 +25,19 @@ pub struct AdminService {
     database: DatabaseConnection,
     /// 新增用户未传口令时的默认口令，来自 `.env` 的 `SEED_ADMIN_PASSWORD`。
     default_password: String,
+    cache: std::sync::Arc<super::hot_cache::HotCache>,
 }
 
 impl AdminService {
-    pub fn new(database: DatabaseConnection, default_password: String) -> Self {
+    pub fn new(
+        database: DatabaseConnection,
+        default_password: String,
+        cache: std::sync::Arc<super::hot_cache::HotCache>,
+    ) -> Self {
         Self {
             database,
             default_password,
+            cache,
         }
     }
 

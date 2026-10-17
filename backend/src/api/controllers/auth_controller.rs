@@ -20,8 +20,8 @@ use crate::{
     domain::{
         error::AppError,
         models::identity::{
-            CaptchaChallenge, ChangePasswordCommand, CurrentUserInfo, LoginCommand, LoginResult,
-            RouteNode,
+            CaptchaChallenge, ChangePasswordCommand, CurrentUserInfo, LoginCommand, LoginOutcome,
+            LoginResult, RouteNode, VerifyLoginCommand,
         },
     },
     response::ApiResponse,
@@ -34,6 +34,7 @@ pub fn router() -> Router<Arc<Container>> {
     let router = Router::new()
         .route("/auth/captcha", get(captcha))
         .route("/auth/login", post(login))
+        .route("/auth/login/2fa", post(verify_login))
         .route("/auth/logout", post(logout))
         .route("/auth/me", get(me))
         .route("/auth/routes", get(routes))
@@ -77,13 +78,29 @@ pub async fn login(
     State(container): State<Arc<Container>>,
     source: ClientSource,
     ApiJson(command): ApiJson<LoginCommand>,
-) -> Result<ApiResponse<LoginResult>, AppError> {
+) -> Result<ApiResponse<LoginOutcome>, AppError> {
     let result = container
         .admin_auth_service
         .login(command, &source.0)
         .await?;
 
     Ok(ok(result))
+}
+
+#[cfg_attr(feature = "docs", utoipa::path(
+    post, path = "/api/v1/auth/login/2fa", tag = "Auth",
+    request_body = VerifyLoginCommand,
+    responses((status = 200, description = "Second factor verified"), (status = 400, description = "Invalid or expired proof"))
+))]
+pub async fn verify_login(
+    State(container): State<Arc<Container>>,
+    source: ClientSource,
+    ApiJson(command): ApiJson<VerifyLoginCommand>,
+) -> Result<ApiResponse<LoginResult>, AppError> {
+    Ok(ok(container
+        .admin_auth_service
+        .verify_login(command, &source.0)
+        .await?))
 }
 
 #[cfg_attr(feature = "docs", utoipa::path(

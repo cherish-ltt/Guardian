@@ -19,16 +19,20 @@ use super::users::EXPORT_LIMIT;
 #[async_trait]
 impl ConfigAdminUseCase for AdminService {
     async fn list_configs(&self, query: &KeywordQuery) -> Result<PageResult<ConfigRow>, AppError> {
-        let page = Page::from_query(Some(&query.page));
-        let keyword = query.keyword.as_deref();
-        let total = SeaOrmConfigRepository
-            .count_configs(&self.database, keyword)
-            .await?;
-        let rows = SeaOrmConfigRepository
-            .list_configs(&self.database, keyword, page)
-            .await?;
+        self.cache
+            .get_or_load(&format!("list_configs:{query:?}"), || async {
+                let page = Page::from_query(Some(&query.page));
+                let keyword = query.keyword.as_deref();
+                let total = SeaOrmConfigRepository
+                    .count_configs(&self.database, keyword)
+                    .await?;
+                let rows = SeaOrmConfigRepository
+                    .list_configs(&self.database, keyword, page)
+                    .await?;
 
-        Ok(PageResult::new(rows, total, page))
+                Ok(PageResult::new(rows, total, page))
+            })
+            .await
     }
 
     async fn export_configs(&self, keyword: Option<&str>) -> Result<String, AppError> {
@@ -67,6 +71,7 @@ impl ConfigAdminUseCase for AdminService {
         command: ConfigWriteCommand,
         operator: &str,
     ) -> Result<IdResponse, AppError> {
+        let _cache_write = self.cache.begin_write().await;
         let name = required(command.name.clone(), "参数名称不能为空")?;
         let key = required(command.key.clone(), "参数键名不能为空")?;
         let value = required(command.value.clone(), "参数键值不能为空")?;
@@ -99,6 +104,7 @@ impl ConfigAdminUseCase for AdminService {
         command: ConfigWriteCommand,
         operator: &str,
     ) -> Result<(), AppError> {
+        let _cache_write = self.cache.begin_write().await;
         let command = ConfigWriteCommand {
             name: trim_to_null(command.name.clone()),
             value: trim_to_null(command.value.clone()),
@@ -117,6 +123,7 @@ impl ConfigAdminUseCase for AdminService {
     }
 
     async fn delete_config(&self, id: i64) -> Result<(), AppError> {
+        let _cache_write = self.cache.begin_write().await;
         if SeaOrmConfigRepository
             .delete_config(&self.database, id)
             .await?

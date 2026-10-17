@@ -10,7 +10,8 @@ use crate::{
             audit_log::LoginLogEntry,
             identity::{
                 AuthUserRow, CaptchaChallenge, ChangePasswordCommand, ClientSource,
-                CurrentUserInfo, DataScope, LoginCommand, LoginResult, MenuRow, RouteNode,
+                CurrentUserInfo, DataScope, LoginCommand, LoginOutcome, LoginResult, MenuRow,
+                RouteNode, VerifyLoginCommand,
             },
         },
         services::admin_auth::AdminAuthUseCase,
@@ -36,6 +37,7 @@ pub struct AdminAuthService {
     jwt_service: Arc<JwtService>,
     auth_store: Arc<dyn AuthStore>,
     ip_location: Arc<IpLocation>,
+    account_service: Arc<super::account::AccountService>,
 }
 
 impl AdminAuthService {
@@ -44,13 +46,46 @@ impl AdminAuthService {
         jwt_service: Arc<JwtService>,
         auth_store: Arc<dyn AuthStore>,
         ip_location: Arc<IpLocation>,
+        account_service: Arc<super::account::AccountService>,
     ) -> Self {
         Self {
             database,
             jwt_service,
             auth_store,
             ip_location,
+            account_service,
         }
+    }
+
+    async fn finish_login(
+        &self,
+        user: AuthUserRow,
+        version: i64,
+        source: &ClientSource,
+    ) -> Result<LoginResult, AppError> {
+        let roles = self.role_codes(user.id).await?;
+        let token = self
+            .jwt_service
+            .issue_versioned_token(&user.id.to_string(), &user.username, &roles, version)
+            .map_err(AppError::from)?;
+        self.auth_store
+            .save_token(
+                &token.access_token,
+                &user.username,
+                token.expires_in_seconds.unsigned_abs(),
+            )
+            .await?;
+
+        self.record_login(&user.username, 1, "登录成功", source)
+            .await?;
+        SeaOrmAdminAuthRepository
+            .touch_last_login(&self.database, user.id)
+            .await?;
+
+        Ok(LoginResult {
+            token: token.access_token,
+            expires_in: token.expires_in_seconds,
+        })
     }
 
     /// 写一条登录日志：来源信息由调用方从请求上下文带入。
@@ -136,7 +171,16 @@ impl AdminAuthUseCase for AdminAuthService {
             _ => return Err(session_expired()),
         }
 
-        self.current_user(&claims.username).await
+        let user = self.current_user(&claims.username).await?;
+        let state = crate::infrastructure::repositories::account::AccountRepository::security(
+            &self.database,
+            user.user_id,
+        )
+        .await?;
+        if claims.auth_version != state.auth_version {
+            return Err(session_expired());
+        }
+        Ok(user)
     }
 
     async fn captcha(&self) -> Result<CaptchaChallenge, AppError> {
@@ -151,7 +195,7 @@ impl AdminAuthUseCase for AdminAuthService {
         &self,
         command: LoginCommand,
         source: &ClientSource,
-    ) -> Result<LoginResult, AppError> {
+    ) -> Result<LoginOutcome, AppError> {
         verify_captcha(self.auth_store.as_ref(), &command).await?;
 
         let Some(user) = SeaOrmAdminAuthRepository
@@ -174,29 +218,42 @@ impl AdminAuthUseCase for AdminAuthService {
             return Err(AppError::business("账号已停用"));
         }
 
-        let roles = self.role_codes(user.id).await?;
-        let token = self
-            .jwt_service
-            .issue_access_token(&user.id.to_string(), &user.username, &roles)
-            .map_err(AppError::from)?;
-        self.auth_store
-            .save_token(
-                &token.access_token,
-                &user.username,
-                token.expires_in_seconds.unsigned_abs(),
+        match self.account_service.begin_login(&user).await? {
+            super::account::login::PasswordStep::Complete(version) => Ok(
+                LoginOutcome::Authenticated(self.finish_login(user, version, source).await?),
+            ),
+            super::account::login::PasswordStep::Challenge(challenge) => {
+                Ok(LoginOutcome::Challenge {
+                    two_factor_required: true,
+                    challenge,
+                    expires_in: 300,
+                })
+            },
+        }
+    }
+
+    async fn verify_login(
+        &self,
+        command: VerifyLoginCommand,
+        source: &ClientSource,
+    ) -> Result<LoginResult, AppError> {
+        let hash = crate::infrastructure::services::two_factor::recovery_hash(&command.challenge);
+        let owner =
+            crate::infrastructure::repositories::account::AccountRepository::challenge_owner(
+                &self.database,
+                &hash,
             )
             .await?;
-
-        self.record_login(&user.username, 1, "登录成功", source)
-            .await?;
-        SeaOrmAdminAuthRepository
-            .touch_last_login(&self.database, user.id)
-            .await?;
-
-        Ok(LoginResult {
-            token: token.access_token,
-            expires_in: token.expires_in_seconds,
-        })
+        match self.account_service.complete_login(command).await {
+            Ok((user, version)) => self.finish_login(user, version, source).await,
+            Err(error) => {
+                if let Some(username) = owner {
+                    self.record_login(&username, 0, "二次验证失败", source)
+                        .await?;
+                }
+                Err(error)
+            },
+        }
     }
 
     async fn logout(

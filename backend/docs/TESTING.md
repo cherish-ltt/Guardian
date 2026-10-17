@@ -71,7 +71,7 @@ cargo llvm-cov --features docs --summary-only
 
 `AGENTS.md` 第 10.1 节要求**行覆盖率 ≥ 80%**：全局口径，不按文件考核；
 命令与 CI 的测试口径保持一致（同样带 `--features docs`，否则 `docs` 门控的代码不在统计范围内）。
-当前实测：**行 95.55% / 函数 93.69% / region 97.28%**（274 个用例，`cargo-llvm-cov 0.9.1`）。
+当前实测：**行 94.69% / 函数 92.39% / region 96.80%**（289 个用例，其中 1 个需真实 Redis 默认忽略；`cargo-llvm-cov 0.9.1`）。
 这只是当时的快照，改动后需重新测量，不要把数字当常量。
 
 下面两处不计入覆盖率目标，也无需为它们写测试：
@@ -98,10 +98,15 @@ cargo llvm-cov --features docs --summary-only
 
 | 文件 | 覆盖范围 |
 | --- | --- |
-| `tests/contract_tests.rs` | 全部 83 个 `(方法, 路径)` 的鉴权与错误语义矩阵：74 个受保护端点缺令牌一律 401、64 个权限码端点用零权限账号一律 403、9 个公开端点免令牌；404 / 405 / 400 的统一文案 |
+| `tests/contract_tests.rs` | 全部 91 个 `(方法, 路径)` 的鉴权与错误语义矩阵：77 个受保护端点缺令牌一律 401、65 个权限码端点用零权限账号一律 403、10 个公开端点免令牌；404 / 405 / 400 的统一文案 |
 | `tests/admin_api_tests.rs` | 认证全流程（含登录 / 退出日志的客户端来源与浏览器采集）、用户 / 角色 / 菜单 / 部门 / 岗位 / 字典 / 参数的 CRUD 与校验文案、导出、403 与数据范围、404 / 405 文案 |
 | `tests/monitor_api_tests.rs` | 写操作留痕的内容（含可信代理下的来源 IP）与脱敏、操作 / 登录日志的列表与统计、时间线、热力图、导出、删除与清空、工作台聚合 |
 | `tests/generator_api_tests.rs` | 候选表与导入幂等、字段元数据、7 个生成文件的内容、ZIP 条目、留痕动作 |
+| `tests/account_api_tests.rs` | 本人资料字段白名单、2FA 绑定/启用/关闭/恢复码、动态码重放、恢复码并发单次消费、会话撤销、日志脱敏、人工重置的权限与密码校验、失败限次 |
+| `tests/account_security_tests.rs` | 待绑定密钥密文存储与过期、错误动态码不启用、`0003` 权限迁移只授予一次且不恢复已撤销授权、非超管不能重置超管 |
+| `tests/account_fault_tests.rs` | Redis 会话清理失败时仍返回已提交的恢复码、旧令牌被会话版本拒绝；业务缓存故障时已认证读请求降级 SQLite，认证存储故障仍返回 503 |
+| `tests/login_challenge_tests.rs` | 两步登录：第一步不签发 JWT、挑战一次性、过期/密码变更/失败限次均失效、并发提交只成功一次 |
+| `tests/cache_tests.rs` | 并发未命中只回源一次、写屏障阻止旧值回填、缓存故障降级与回源上限 503、空值缓存与错误不缓存、键数上限；真实 Redis 的读写 / TTL / 换代用例默认 `#[ignore]` |
 
 `tests/contract_tests.rs` 的三张端点表与 `src/api/controllers` 的路由注册一一对应：
 新增或删除端点时必须同步这三张表，否则 `endpoint_tables_cover_every_registered_route`

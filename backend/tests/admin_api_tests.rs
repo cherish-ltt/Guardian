@@ -479,7 +479,7 @@ async fn role_flow_covers_menus_graph_and_guards() {
     .await;
     assert_eq!(
         menus["data"]["menuIds"].as_array().expect("菜单 ID").len(),
-        38
+        39
     );
 
     let (status, created) = send(
@@ -572,7 +572,7 @@ async fn role_flow_covers_menus_graph_and_guards() {
     );
     assert_eq!(
         graph["data"]["menus"].as_array().expect("菜单节点").len(),
-        38
+        39
     );
     assert_eq!(graph["data"]["userRoles"], json!([[1, 1], [2, 2], [3, 3]]));
 }

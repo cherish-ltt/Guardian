@@ -14,11 +14,15 @@ use crate::{
 #[async_trait]
 impl DeptAdminUseCase for AdminService {
     async fn list_depts(&self, query: &StatusQuery) -> Result<Vec<DeptNode>, AppError> {
-        let rows = SeaOrmDeptRepository
-            .list_depts(&self.database, query.keyword.as_deref(), query.status)
-            .await?;
+        self.cache
+            .get_or_load(&format!("list_depts:{query:?}"), || async {
+                let rows = SeaOrmDeptRepository
+                    .list_depts(&self.database, query.keyword.as_deref(), query.status)
+                    .await?;
 
-        Ok(dept_tree(rows))
+                Ok(dept_tree(rows))
+            })
+            .await
     }
 
     async fn export_depts(
@@ -54,6 +58,7 @@ impl DeptAdminUseCase for AdminService {
         command: DeptWriteCommand,
         operator: &str,
     ) -> Result<IdResponse, AppError> {
+        let _cache_write = self.cache.begin_write().await;
         let name = required(command.name.clone(), "部门名称不能为空")?;
         let parent_id = command.parent_id.unwrap_or(0);
         let ancestors = self.ancestors_for(parent_id).await?;
@@ -78,6 +83,7 @@ impl DeptAdminUseCase for AdminService {
         command: DeptWriteCommand,
         operator: &str,
     ) -> Result<(), AppError> {
+        let _cache_write = self.cache.begin_write().await;
         // 请求未带 parentId 时不调整上级链，带了才重新计算。
         let ancestors = match command.parent_id {
             Some(parent_id) => Some(self.ancestors_for(parent_id).await?),
@@ -108,6 +114,7 @@ impl DeptAdminUseCase for AdminService {
     }
 
     async fn delete_dept(&self, id: i64, operator: &str) -> Result<(), AppError> {
+        let _cache_write = self.cache.begin_write().await;
         if SeaOrmDeptRepository
             .count_dept_children(&self.database, id)
             .await?

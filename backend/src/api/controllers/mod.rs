@@ -1,3 +1,4 @@
+pub mod account_controller;
 pub mod admin;
 pub mod auth_controller;
 pub mod dashboard_controller;

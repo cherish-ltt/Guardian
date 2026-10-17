@@ -25,16 +25,20 @@ impl DictAdminUseCase for AdminService {
         &self,
         query: &StatusQuery,
     ) -> Result<PageResult<DictTypeRow>, AppError> {
-        let page = Page::from_query(Some(&query.page));
-        let keyword = query.keyword.as_deref();
-        let total = SeaOrmDictRepository
-            .count_dict_types(&self.database, keyword, query.status)
-            .await?;
-        let rows = SeaOrmDictRepository
-            .list_dict_types(&self.database, keyword, query.status, page)
-            .await?;
+        self.cache
+            .get_or_load(&format!("list_dict_types:{query:?}"), || async {
+                let page = Page::from_query(Some(&query.page));
+                let keyword = query.keyword.as_deref();
+                let total = SeaOrmDictRepository
+                    .count_dict_types(&self.database, keyword, query.status)
+                    .await?;
+                let rows = SeaOrmDictRepository
+                    .list_dict_types(&self.database, keyword, query.status, page)
+                    .await?;
 
-        Ok(PageResult::new(rows, total, page))
+                Ok(PageResult::new(rows, total, page))
+            })
+            .await
     }
 
     async fn export_dict_types(
@@ -69,6 +73,7 @@ impl DictAdminUseCase for AdminService {
         command: DictTypeWriteCommand,
         operator: &str,
     ) -> Result<IdResponse, AppError> {
+        let _cache_write = self.cache.begin_write().await;
         let dict_name = required(command.dict_name.clone(), "字典名称不能为空")?;
         let dict_type = required(command.dict_type.clone(), "字典类型不能为空")?;
         if SeaOrmDictRepository
@@ -98,6 +103,7 @@ impl DictAdminUseCase for AdminService {
         command: DictTypeWriteCommand,
         operator: &str,
     ) -> Result<(), AppError> {
+        let _cache_write = self.cache.begin_write().await;
         let command = DictTypeWriteCommand {
             dict_name: trim_to_null(command.dict_name.clone()),
             ..command
@@ -114,6 +120,7 @@ impl DictAdminUseCase for AdminService {
     }
 
     async fn delete_dict_type(&self, id: i64) -> Result<(), AppError> {
+        let _cache_write = self.cache.begin_write().await;
         self.in_transaction(|transaction| {
             Box::pin(async move {
                 let Some(dict_type) = SeaOrmDictRepository.dict_type_code(transaction, id).await?
@@ -138,14 +145,22 @@ impl DictAdminUseCase for AdminService {
     }
 
     async fn list_dict_data(&self, dict_type: &str) -> Result<Vec<DictDataRow>, AppError> {
-        SeaOrmDictRepository
-            .list_dict_data(&self.database, dict_type)
+        self.cache
+            .get_or_load(&format!("list_dict_data:{dict_type}"), || async {
+                SeaOrmDictRepository
+                    .list_dict_data(&self.database, dict_type)
+                    .await
+            })
             .await
     }
 
     async fn dict_options(&self, dict_type: &str) -> Result<Vec<DictOption>, AppError> {
-        SeaOrmDictRepository
-            .list_dict_options(&self.database, dict_type)
+        self.cache
+            .get_or_load(&format!("dict_options:{dict_type}"), || async {
+                SeaOrmDictRepository
+                    .list_dict_options(&self.database, dict_type)
+                    .await
+            })
             .await
     }
 
@@ -154,6 +169,7 @@ impl DictAdminUseCase for AdminService {
         command: DictDataWriteCommand,
         operator: &str,
     ) -> Result<IdResponse, AppError> {
+        let _cache_write = self.cache.begin_write().await;
         let dict_type = required(command.dict_type.clone(), "字典类型不能为空")?;
         let label = required(command.label.clone(), "字典标签不能为空")?;
         let value = required(command.value.clone(), "字典值不能为空")?;
@@ -180,6 +196,7 @@ impl DictAdminUseCase for AdminService {
         command: DictDataWriteCommand,
         operator: &str,
     ) -> Result<(), AppError> {
+        let _cache_write = self.cache.begin_write().await;
         let command = DictDataWriteCommand {
             dict_type: trim_to_null(command.dict_type.clone()),
             label: trim_to_null(command.label.clone()),
@@ -198,6 +215,7 @@ impl DictAdminUseCase for AdminService {
     }
 
     async fn delete_dict_data(&self, id: i64) -> Result<(), AppError> {
+        let _cache_write = self.cache.begin_write().await;
         if SeaOrmDictRepository
             .delete_dict_data(&self.database, id)
             .await?

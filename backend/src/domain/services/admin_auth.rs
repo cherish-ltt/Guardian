@@ -4,7 +4,7 @@ use crate::domain::{
     error::AppError,
     models::identity::{
         CaptchaChallenge, ChangePasswordCommand, ClientSource, CurrentUserInfo, DataScope,
-        LoginCommand, LoginResult, RouteNode,
+        LoginCommand, LoginOutcome, LoginResult, RouteNode, VerifyLoginCommand,
     },
 };
 
@@ -22,6 +22,12 @@ pub trait AdminAuthUseCase: Send + Sync {
     async fn login(
         &self,
         command: LoginCommand,
+        source: &ClientSource,
+    ) -> Result<LoginOutcome, AppError>;
+
+    async fn verify_login(
+        &self,
+        command: VerifyLoginCommand,
         source: &ClientSource,
     ) -> Result<LoginResult, AppError>;
 

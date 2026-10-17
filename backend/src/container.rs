@@ -18,6 +18,7 @@ use crate::{
         repositories::transaction::SeaOrmTransferRepository,
         services::{
             auth_store::{AuthStore, MemoryAuthStore},
+            cache_store::{CacheStore, MemoryCacheStore, RedisCacheStore},
             jwt::JwtService,
             redis_store::RedisAuthStore,
         },
@@ -29,7 +30,13 @@ use crate::{
     },
 };
 
+use crate::{
+    domain::services::account::AccountUseCase,
+    infrastructure::services::two_factor::TwoFactorCrypto, services::account::AccountService,
+};
+
 pub struct Container {
+    pub account_service: Arc<dyn AccountUseCase>,
     pub config: Arc<AppConfig>,
     pub database: DatabaseConnection,
     /// 令牌签发与校验：审计中间件用它解析操作人，避免每写一条日志都查库。
@@ -56,13 +63,22 @@ impl Container {
     pub async fn bootstrap(config: AppConfig) -> Result<Self> {
         let store: Arc<dyn AuthStore> = Arc::new(RedisAuthStore::connect(&config.redis).await?);
 
-        Self::bootstrap_with_auth_store(config, store).await
+        let cache = Arc::new(RedisCacheStore::connect(&config.redis).await?);
+        Self::bootstrap_with_stores(config, store, cache).await
     }
 
     /// 指定会话存储的装配：集成测试用内存实现，避免依赖外部 Redis。
     pub async fn bootstrap_with_auth_store(
         config: AppConfig,
         auth_store: Arc<dyn AuthStore>,
+    ) -> Result<Self> {
+        Self::bootstrap_with_stores(config, auth_store, Arc::new(MemoryCacheStore::default())).await
+    }
+
+    pub async fn bootstrap_with_stores(
+        config: AppConfig,
+        auth_store: Arc<dyn AuthStore>,
+        cache_store: Arc<dyn CacheStore>,
     ) -> Result<Self> {
         let config = Arc::new(config);
         let database = connect_database(&config.database).await?;
@@ -78,15 +94,26 @@ impl Container {
             database.clone(),
             Arc::new(SeaOrmTransferRepository),
         ));
+        let crypto = Arc::new(TwoFactorCrypto::new(config.two_factor_key.as_deref())?);
+        let account_service = Arc::new(AccountService::new(
+            database.clone(),
+            crypto,
+            auth_store.clone(),
+        ));
         let admin_auth_service: Arc<dyn AdminAuthUseCase> = Arc::new(AdminAuthService::new(
             database.clone(),
             jwt_service.clone(),
             auth_store,
             ip_location.clone(),
+            account_service.clone(),
         ));
         let admin_service: Arc<dyn AdminUseCase> = Arc::new(AdminService::new(
             database.clone(),
             config.seed.admin_password.clone(),
+            Arc::new(crate::services::hot_cache::HotCache::new(
+                cache_store,
+                config.cache.clone(),
+            )),
         ));
         let monitor_service: Arc<dyn MonitorUseCase> =
             Arc::new(MonitorService::new(database.clone()));
@@ -98,6 +125,7 @@ impl Container {
             Arc::new(AuditService::new(database.clone()));
 
         Ok(Self {
+            account_service,
             config,
             database,
             jwt_service,

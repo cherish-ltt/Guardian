@@ -16,7 +16,38 @@ use crate::{
 };
 
 /// 需要留痕的写操作：路径按 `nest("/api/v1")` 之后的段匹配，`:id` 匹配任意一段。
-const AUDIT_ROUTES: [(Method, &[&str], &str, &str); 31] = [
+const AUDIT_ROUTES: [(Method, &[&str], &str, &str); 37] = [
+    (Method::PUT, &["auth", "profile"], "个人资料", "修改资料"),
+    (
+        Method::POST,
+        &["auth", "2fa", "setup"],
+        "账号安全",
+        "开始绑定2FA",
+    ),
+    (
+        Method::POST,
+        &["auth", "2fa", "enable"],
+        "账号安全",
+        "启用2FA",
+    ),
+    (
+        Method::POST,
+        &["auth", "2fa", "disable"],
+        "账号安全",
+        "关闭2FA",
+    ),
+    (
+        Method::POST,
+        &["auth", "2fa", "recovery-codes"],
+        "账号安全",
+        "更新恢复码",
+    ),
+    (
+        Method::POST,
+        &["system", "users", ":id", "2fa", "reset"],
+        "用户管理",
+        "重置2FA",
+    ),
     (Method::PUT, &["auth", "password"], "账号安全", "修改密码"),
     (Method::POST, &["system", "users"], "用户管理", "新增"),
     (Method::PUT, &["system", "users", ":id"], "用户管理", "修改"),
@@ -271,7 +302,7 @@ fn masked_params(body: &[u8]) -> Option<String> {
             mask_sensitive(&mut value);
             value.to_string()
         },
-        Err(_) => String::from_utf8_lossy(body).to_string(),
+        Err(_) => "[invalid JSON omitted]".to_string(),
     };
 
     Some(OperationLogEntry::truncate(Some(text)).unwrap_or_default())
@@ -300,9 +331,16 @@ fn mask_sensitive(value: &mut Value) {
 fn is_sensitive(field: &str) -> bool {
     let lowered = field.to_lowercase();
 
-    ["password", "token", "secret", "authorization"]
-        .iter()
-        .any(|keyword| lowered.contains(keyword))
+    [
+        "password",
+        "token",
+        "secret",
+        "authorization",
+        "secondfactor",
+        "recovery",
+    ]
+    .iter()
+    .any(|keyword| lowered.contains(keyword))
 }
 
 /// 读取失败响应的 `message`，并把响应体放回响应里。

@@ -20,6 +20,7 @@ pub mod sys_role_menu;
 pub mod sys_user;
 pub mod sys_user_post;
 pub mod sys_user_role;
+pub mod sys_user_security;
 pub mod transfer_account;
 pub mod transfer_audit;
 pub mod transfer_record;

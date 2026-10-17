@@ -39,6 +39,10 @@ pub async fn setup_app() -> Router {
 
 /// 可信代理链只在验证「网关透传的真实客户端 IP 会被采信」时显式配置。
 pub async fn setup_app_with_trusted_proxies(trusted_proxies: Vec<IpNet>) -> Router {
+    create_app(setup_container(trusted_proxies).await)
+}
+
+pub async fn setup_container(trusted_proxies: Vec<IpNet>) -> Arc<Container> {
     let database_url = format!(
         "sqlite://{}?mode=rwc",
         std::env::temp_dir()
@@ -105,13 +109,15 @@ pub async fn setup_app_with_trusted_proxies(trusted_proxies: Vec<IpNet>) -> Rout
             slow_request_ms: 1000,
         },
         ip_location_db_path: None,
+        cache: Default::default(),
+        two_factor_key: Some("BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=".into()),
     };
 
     let container = Container::bootstrap_with_auth_store(config, Container::memory_auth_store())
         .await
         .expect("容器装配成功");
 
-    create_app(Arc::new(container))
+    Arc::new(container)
 }
 
 pub async fn send(app: Router, mut request: Request<Body>) -> (StatusCode, Value) {

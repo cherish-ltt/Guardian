@@ -8,6 +8,7 @@
 //! 适配器都是无状态的单元结构体，由 `services` 在调用点直接使用；
 //! 需要替换实现时替换该结构体即可，`container.rs` 只负责装配数据库连接与用例实现。
 
+pub mod account;
 pub mod admin_auth;
 pub mod audit_log;
 pub mod config;

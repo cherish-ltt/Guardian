@@ -71,6 +71,60 @@ fn rotation_debug(rotation: &tracing_appender::rolling::Rotation) -> String {
 }
 
 #[test]
+fn security_and_cache_config_validation() {
+    with_env(
+        &[
+            ("JWT_SECRET", Some(CUSTOM_SECRET)),
+            ("TWO_FACTOR_KEY", None),
+        ],
+        || {
+            let config = AppConfig::from_env().unwrap();
+            assert!(config.two_factor_key.is_none());
+            assert_eq!(config.cache.max_loads, 4);
+        },
+    );
+    for key in [
+        "CACHE_TTL_SECS",
+        "CACHE_NEGATIVE_TTL_SECS",
+        "CACHE_TIMEOUT_MS",
+        "CACHE_MAX_LOADS",
+        "CACHE_MAX_ENTRIES",
+        "CACHE_MAX_VALUE_BYTES",
+    ] {
+        with_env(
+            &[("JWT_SECRET", Some(CUSTOM_SECRET)), (key, Some("0"))],
+            || assert!(AppConfig::from_env().is_err()),
+        );
+    }
+    with_env(
+        &[
+            ("JWT_SECRET", Some(CUSTOM_SECRET)),
+            ("TWO_FACTOR_KEY", Some("invalid")),
+        ],
+        || assert!(AppConfig::from_env().is_err()),
+    );
+    with_env(
+        &[
+            ("JWT_SECRET", Some(CUSTOM_SECRET)),
+            (
+                "TWO_FACTOR_KEY",
+                Some("BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc="),
+            ),
+            ("CACHE_TTL_SECS", Some("20")),
+            ("CACHE_NEGATIVE_TTL_SECS", Some("5")),
+            ("CACHE_MAX_LOADS", Some("2")),
+        ],
+        || {
+            let config = AppConfig::from_env().unwrap();
+            assert!(config.two_factor_key.is_some());
+            assert_eq!(config.cache.ttl_secs, 20);
+            assert_eq!(config.cache.negative_ttl_secs, 5);
+            assert_eq!(config.cache.max_loads, 2);
+        },
+    );
+}
+
+#[test]
 fn valid_config_loads_with_defaults() {
     with_env(
         &[

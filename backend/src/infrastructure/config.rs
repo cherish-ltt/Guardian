@@ -18,11 +18,36 @@ pub struct AppConfig {
     pub database: DatabaseConfig,
     pub jwt: JwtConfig,
     pub redis: RedisConfig,
+    pub two_factor_key: Option<String>,
+    pub cache: CacheConfig,
     pub seed: SeedConfig,
     pub logging: LoggingConfig,
     pub middleware: MiddlewareConfig,
     /// 离线 IP 地名库（ip2region xdb）路径；留空则日志地点只区分本机 / 内网 / 外网。
     pub ip_location_db_path: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CacheConfig {
+    pub ttl_secs: u64,
+    pub negative_ttl_secs: u64,
+    pub timeout_ms: u64,
+    pub max_loads: usize,
+    pub max_entries: usize,
+    pub max_value_bytes: usize,
+}
+
+impl Default for CacheConfig {
+    fn default() -> Self {
+        Self {
+            ttl_secs: 300,
+            negative_ttl_secs: 15,
+            timeout_ms: 100,
+            max_loads: 4,
+            max_entries: 4096,
+            max_value_bytes: 262144,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -298,6 +323,11 @@ impl AppConfig {
             ));
         }
 
+        let two_factor_key = env::var("TWO_FACTOR_KEY")
+            .ok()
+            .filter(|value| !value.trim().is_empty());
+        super::services::two_factor::TwoFactorCrypto::new(two_factor_key.as_deref())?;
+
         let redis = RedisConfig {
             url: get_env_or("REDIS_URL", "redis://127.0.0.1:6379"),
             password: env::var("REDIS_PASSWORD")
@@ -307,6 +337,28 @@ impl AppConfig {
         let redis_scheme = redis.url.split_once("://").map(|(scheme, _)| scheme);
         if !matches!(redis_scheme, Some("redis" | "rediss")) {
             return Err(anyhow!("unsupported REDIS_URL: {}", redis.url));
+        }
+
+        let defaults = CacheConfig::default();
+        let cache = CacheConfig {
+            ttl_secs: parse_env_or("CACHE_TTL_SECS", defaults.ttl_secs)?,
+            negative_ttl_secs: parse_env_or("CACHE_NEGATIVE_TTL_SECS", defaults.negative_ttl_secs)?,
+            timeout_ms: parse_env_or("CACHE_TIMEOUT_MS", defaults.timeout_ms)?,
+            max_loads: parse_env_or("CACHE_MAX_LOADS", defaults.max_loads)?,
+            max_entries: parse_env_or("CACHE_MAX_ENTRIES", defaults.max_entries)?,
+            max_value_bytes: parse_env_or("CACHE_MAX_VALUE_BYTES", defaults.max_value_bytes)?,
+        };
+        if cache.ttl_secs == 0
+            || cache.ttl_secs > 86400
+            || cache.negative_ttl_secs == 0
+            || cache.negative_ttl_secs > cache.ttl_secs
+            || cache.timeout_ms == 0
+            || cache.max_loads == 0
+            || cache.max_loads > 64
+            || cache.max_entries == 0
+            || cache.max_value_bytes == 0
+        {
+            return Err(anyhow!("invalid business cache configuration"));
         }
 
         let max_log_files = parse_env_or("LOG_MAX_LOG_FILES", 60_usize)?;
@@ -432,6 +484,8 @@ impl AppConfig {
             database,
             jwt,
             redis,
+            two_factor_key,
+            cache,
             seed,
             logging,
             middleware,

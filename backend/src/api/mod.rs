@@ -11,6 +11,7 @@ use crate::{container::Container, response::ApiResponse};
 pub fn router() -> Router<Arc<Container>> {
     Router::new()
         .merge(controllers::auth_controller::router())
+        .merge(controllers::account_controller::router())
         .merge(controllers::admin::router())
         .merge(controllers::monitor_controller::router())
         .merge(controllers::dashboard_controller::router())

@@ -113,6 +113,9 @@ serde_json = "=1.0.154"
 # 鉴权与密码学
 argon2 = "=0.6.0"
 jsonwebtoken = { version = "=11", features = ["aws_lc_rs"] }
+aws-lc-rs = { version = "=1.18.0", default-features = false, features = ["alloc", "non-fips", "prebuilt-nasm"] }
+base64 = "=0.22.1"
+totp-rs = { version = "=6.0.0", default-features = false, features = ["std", "otpauth"] }
 
 # 可观测性
 tracing = "=0.1.44"

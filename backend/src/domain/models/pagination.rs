@@ -62,7 +62,7 @@ impl Page {
 }
 
 /// 分页响应，字段名与 Spring 版 `PageResult` 一致。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PageResult<T> {
     pub rows: Vec<T>,

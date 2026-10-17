@@ -145,6 +145,11 @@ const PERMISSION_ENDPOINTS: &[(&str, &str, &str)] = &[
     ("POST", "/api/v1/system/posts", "system:post:add"),
     ("POST", "/api/v1/system/roles", "system:role:add"),
     ("POST", "/api/v1/system/users", "system:user:add"),
+    (
+        "POST",
+        "/api/v1/system/users/1/2fa/reset",
+        "system:user:reset2fa",
+    ),
     ("POST", "/api/v1/tool/generator/import", "tool:gen:list"),
     (
         "POST",
@@ -176,6 +181,12 @@ const AUTH_ENDPOINTS: &[(&str, &str)] = &[
     ("GET", "/api/v1/system/dict/options/sys_normal_disable"),
     ("POST", "/api/v1/auth/logout"),
     ("PUT", "/api/v1/auth/password"),
+    ("GET", "/api/v1/auth/profile"),
+    ("PUT", "/api/v1/auth/profile"),
+    ("POST", "/api/v1/auth/2fa/setup"),
+    ("POST", "/api/v1/auth/2fa/enable"),
+    ("POST", "/api/v1/auth/2fa/disable"),
+    ("POST", "/api/v1/auth/2fa/recovery-codes"),
 ];
 
 /// 脚手架自带的接口：鉴权走 `CurrentUser` 提取器，401 文案与后台接口不同。
@@ -195,6 +206,7 @@ const PUBLIC_ENDPOINTS: &[(&str, &str)] = &[
     ("GET", "/api/v1/system/ready"),
     ("POST", "/api/v1/auth/dev-login"),
     ("POST", "/api/v1/auth/login"),
+    ("POST", "/api/v1/auth/login/2fa"),
     ("POST", "/api/v1/examples/echo"),
     ("POST", "/api/v1/transactions/dev-transfer"),
 ];
@@ -202,16 +214,16 @@ const PUBLIC_ENDPOINTS: &[(&str, &str)] = &[
 /// 带请求体的方法在鉴权失败前仍要通过 `ApiJson`，给一个空对象即可：
 /// 后台的写命令字段全部可选，`{}` 能反序列化成功。
 fn body_of(method: &str) -> Option<Value> {
-    matches!(method, "POST" | "PUT" | "PATCH").then(|| json!({}))
+    matches!(method, "POST" | "PUT" | "PATCH").then(|| json!({"password": "invalid-password"}))
 }
 
 /// 三张表必须覆盖 Router 上注册的全部端点，漏掉一个就说明表没跟上路由。
 #[test]
 fn endpoint_tables_cover_every_registered_route() {
-    assert_eq!(PERMISSION_ENDPOINTS.len(), 64);
-    assert_eq!(AUTH_ENDPOINTS.len(), 6);
+    assert_eq!(PERMISSION_ENDPOINTS.len(), 65);
+    assert_eq!(AUTH_ENDPOINTS.len(), 12);
     assert_eq!(SCAFFOLD_AUTH_ENDPOINTS.len(), 4);
-    assert_eq!(PUBLIC_ENDPOINTS.len(), 9);
+    assert_eq!(PUBLIC_ENDPOINTS.len(), 10);
 
     let mut all: Vec<(&str, &str)> = PERMISSION_ENDPOINTS
         .iter()
@@ -236,7 +248,7 @@ async fn protected_endpoints_without_token_are_rejected_with_401() {
         .map(|(method, path, _)| (*method, *path))
         .chain(AUTH_ENDPOINTS.iter().copied())
         .collect();
-    assert_eq!(protected.len(), 70);
+    assert_eq!(protected.len(), 77);
 
     for (method, path) in protected {
         let (status, body) = send(app.clone(), request(method, path, body_of(method), None)).await;

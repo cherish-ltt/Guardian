@@ -16,11 +16,15 @@ use crate::{
 #[async_trait]
 impl MenuAdminUseCase for AdminService {
     async fn list_menus(&self, query: &StatusQuery) -> Result<Vec<MenuNode>, AppError> {
-        let rows = SeaOrmMenuRepository
-            .list_menus(&self.database, query.keyword.as_deref(), query.status)
-            .await?;
+        self.cache
+            .get_or_load(&format!("list_menus:{query:?}"), || async {
+                let rows = SeaOrmMenuRepository
+                    .list_menus(&self.database, query.keyword.as_deref(), query.status)
+                    .await?;
 
-        Ok(menu_tree(rows))
+                Ok(menu_tree(rows))
+            })
+            .await
     }
 
     async fn export_menus(
@@ -67,6 +71,7 @@ impl MenuAdminUseCase for AdminService {
         command: MenuWriteCommand,
         operator: &str,
     ) -> Result<IdResponse, AppError> {
+        let _cache_write = self.cache.begin_write().await;
         let name = required(command.name.clone(), "菜单名称不能为空")?;
         let id = SeaOrmMenuRepository.next_menu_id(&self.database).await?;
         let command = MenuWriteCommand {
@@ -92,6 +97,7 @@ impl MenuAdminUseCase for AdminService {
         command: MenuWriteCommand,
         operator: &str,
     ) -> Result<(), AppError> {
+        let _cache_write = self.cache.begin_write().await;
         let command = MenuWriteCommand {
             name: trim_to_null(command.name.clone()),
             type_: trim_to_null(command.type_.clone()),
@@ -109,6 +115,7 @@ impl MenuAdminUseCase for AdminService {
     }
 
     async fn delete_menu(&self, id: i64, _operator: &str) -> Result<(), AppError> {
+        let _cache_write = self.cache.begin_write().await;
         if SeaOrmMenuRepository
             .count_menu_children(&self.database, id)
             .await?

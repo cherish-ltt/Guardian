@@ -38,11 +38,16 @@ impl UserAdminUseCase for AdminService {
         can_edit: bool,
         can_set_password: bool,
     ) -> Result<UserOptions, AppError> {
-        let depts = dept_option_tree(
-            SeaOrmDeptRepository
-                .list_dept_options(&self.database)
-                .await?,
-        );
+        let depts = self
+            .cache
+            .get_or_load("dept_options", || async {
+                Ok(dept_option_tree(
+                    SeaOrmDeptRepository
+                        .list_dept_options(&self.database)
+                        .await?,
+                ))
+            })
+            .await?;
         let roles = if can_edit {
             SeaOrmRoleRepository
                 .list_role_options(&self.database)
@@ -134,6 +139,7 @@ impl UserAdminUseCase for AdminService {
         command: UserWriteCommand,
         operator: &str,
     ) -> Result<IdResponse, AppError> {
+        let _cache_write = self.cache.begin_write().await;
         let username = required(command.username.clone(), "登录账号不能为空")?;
         let nickname = required(command.nickname.clone(), "用户昵称不能为空")?;
         if SeaOrmUserRepository
@@ -193,6 +199,7 @@ impl UserAdminUseCase for AdminService {
         command: UserWriteCommand,
         operator: &str,
     ) -> Result<(), AppError> {
+        let _cache_write = self.cache.begin_write().await;
         // 昵称为空字符串时按「不修改」处理，与 Spring 的 trimToNull 一致。
         let command = UserWriteCommand {
             nickname: trim_to_null(command.nickname.clone()),
@@ -237,6 +244,7 @@ impl UserAdminUseCase for AdminService {
         status: Option<i64>,
         operator: &str,
     ) -> Result<(), AppError> {
+        let _cache_write = self.cache.begin_write().await;
         let Some(status) = status.filter(|status| *status == 0 || *status == 1) else {
             return Err(AppError::business("用户状态只能为正常或停用"));
         };
@@ -279,6 +287,7 @@ impl UserAdminUseCase for AdminService {
     }
 
     async fn delete_user(&self, id: i64, operator: &str) -> Result<(), AppError> {
+        let _cache_write = self.cache.begin_write().await;
         if id == 1 {
             return Err(AppError::business("内置管理员不允许删除"));
         }

@@ -86,6 +86,7 @@ pub(crate) async fn observe(
 ) -> Response {
     let started = Instant::now();
     let is_head = request.method() == axum::http::Method::HEAD;
+    let is_auth = request.uri().path().starts_with("/api/v1/auth/");
     let diagnostics = Diagnostics::default();
     request.extensions_mut().insert(diagnostics.clone());
     request.extensions_mut().insert(Arrival(started));
@@ -136,6 +137,12 @@ pub(crate) async fn observe(
         };
         // 限流、背压与 panic 的响应由本层之外生成，内层注入不到，这里补上响应头。
         let mut response = trace::attach_header(response, &trace_id.0);
+        if is_auth {
+            response.headers_mut().insert(
+                axum::http::header::CACHE_CONTROL,
+                axum::http::HeaderValue::from_static("no-store"),
+            );
+        }
         if is_head {
             *response.body_mut() = axum::body::Body::empty();
         }

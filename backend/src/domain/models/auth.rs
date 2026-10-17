@@ -21,6 +21,10 @@ pub struct AccessClaims {
     pub roles: Vec<String>,
     pub iss: String,
     pub aud: String,
+    #[serde(default)]
+    pub auth_version: i64,
+    #[serde(default)]
+    pub jti: String,
     pub iat: usize,
     pub exp: usize,
 }

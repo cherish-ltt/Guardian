@@ -40,6 +40,16 @@ impl JwtService {
         username: &str,
         roles: &[String],
     ) -> Result<AccessToken> {
+        self.issue_versioned_token(user_id, username, roles, 0)
+    }
+
+    pub fn issue_versioned_token(
+        &self,
+        user_id: &str,
+        username: &str,
+        roles: &[String],
+        auth_version: i64,
+    ) -> Result<AccessToken> {
         let now = Utc::now();
         let expires_at = now + Duration::minutes(self.access_token_ttl_minutes);
         let claims = AccessClaims {
@@ -48,6 +58,8 @@ impl JwtService {
             roles: roles.to_vec(),
             iss: self.issuer.clone(),
             aud: self.audience.clone(),
+            auth_version,
+            jti: uuid::Uuid::now_v7().to_string(),
             iat: now.timestamp() as usize,
             exp: expires_at.timestamp() as usize,
         };

@@ -59,7 +59,7 @@ pub struct RoleRow {
     pub remark: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MenuNode {
     pub id: i64,
@@ -112,7 +112,7 @@ impl MenuFlatRow {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeptNode {
     pub id: i64,
@@ -158,7 +158,7 @@ impl DeptFlatRow {
 }
 
 /// 用户页下拉里只带这四项的部门节点（不含负责人联系方式）。
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeptOption {
     pub id: i64,
@@ -205,7 +205,7 @@ pub struct PostRow {
     pub user_count: i64,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DictTypeRow {
     pub id: i64,
@@ -216,7 +216,7 @@ pub struct DictTypeRow {
     pub remark: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DictDataRow {
     pub id: i64,
@@ -229,7 +229,7 @@ pub struct DictDataRow {
 }
 
 /// 业务字典下拉项：`def` 与 Spring 版一致地保持 0/1 数值。
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DictOption {
     pub label: String,
@@ -239,7 +239,7 @@ pub struct DictOption {
     pub status: i64,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConfigRow {
     pub id: i64,

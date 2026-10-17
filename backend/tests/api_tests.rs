@@ -94,6 +94,8 @@ async fn setup_app_with_cors_origins(cors_allowed_origins: Vec<String>) -> Route
             slow_request_ms: 1000,
         },
         ip_location_db_path: None,
+        cache: Default::default(),
+        two_factor_key: Some("BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=".into()),
     };
 
     // 会话用内存实现：集成测试不依赖外部 Redis。
