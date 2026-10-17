@@ -21,12 +21,13 @@ test('auth api maps login, current user, routes and logout endpoints', async () 
   }
   const api = createAuthApi(createHttpClient({ baseUrl: '/api/v1', tokenProvider: () => 'token', fetcher }))
 
-  const login = await api.login({ username: 'admin', password: 'admin123', captcha: '1234' })
+  const login = await api.login({ username: 'admin', password: 'admin123', captcha: '1234', captchaUuid: 'captcha-id' })
   const me = await api.me()
   const routes = await api.routes()
   await api.changePassword({ oldPassword: 'oldPwd123', newPassword: 'newPwd123' })
   await api.logout()
 
+  assert.ok('token' in login)
   assert.equal(login.token, 'jwt-token')
   assert.equal(me.username, 'admin')
   assert.deepEqual(routes.routes, [{ name: '工作台', path: '/dashboard' }])
@@ -37,6 +38,6 @@ test('auth api maps login, current user, routes and logout endpoints', async () 
     'PUT /api/v1/auth/password',
     'POST /api/v1/auth/logout',
   ])
-  assert.deepEqual(JSON.parse(calls[0].body ?? '{}'), { username: 'admin', password: 'admin123', captcha: '1234' })
+  assert.deepEqual(JSON.parse(calls[0].body ?? '{}'), { username: 'admin', password: 'admin123', captcha: '1234', captchaUuid: 'captcha-id' })
   assert.deepEqual(JSON.parse(calls[3].body ?? '{}'), { oldPassword: 'oldPwd123', newPassword: 'newPwd123' })
 })

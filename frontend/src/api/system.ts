@@ -187,6 +187,7 @@ export function createSystemApi(client: HttpClient) {
       options: () => client.get<UserOptions>('/system/users/options'),
       export: (query?: QueryParams) => client.download('/system/users/export', query),
       updateStatus: (id: number, status: number) => client.put<void>(`/system/users/${id}/status`, { status }),
+      resetTwoFactor: (id: number, password: string) => client.post<void>(`/system/users/${id}/2fa/reset`, { password }),
       resetPassword: (id: number, password: string) => client.put<void>(`/system/users/${id}/password`, { password }),
     },
     roles: {

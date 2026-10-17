@@ -6,12 +6,14 @@ import { APP } from '@/data'
 import AppShell from '@/components/layout/AppShell.vue'
 
 const staticRoutes: RouteRecordRaw[] = [
+  { path: '/login/2fa', name: 'login-2fa', component: () => import('@/views/LoginTwoFactor.vue'), meta: { public: true, title: '二次验证' } },
   { path: '/login', name: 'login', component: () => import('@/views/Login.vue'), meta: { public: true, title: '登录' } },
   {
     path: '/',
     name: 'root',
     component: AppShell,
     children: [
+      { path: 'profile', name: 'profile', component: () => import('@/views/Profile.vue'), meta: { title: '个人资料' } },
       { path: 'no-access', name: 'no-access', component: () => import('@/views/NoAccess.vue'), meta: { title: '暂未分配菜单' } },
       { path: ':pathMatch(.*)*', name: 'not-found', component: () => import('@/views/NotFound.vue'), meta: { title: '页面不存在' } },
     ],
@@ -67,7 +69,7 @@ async function ensureRoutes() {
 
 router.beforeEach(async (to) => {
   if (to.meta.public) {
-    return authed.value && to.name === 'login' ? { path: '/' } : true
+    return authed.value && (to.name === 'login' || to.name === 'login-2fa') ? { path: '/' } : true
   }
   if (!authed.value) {
     return { name: 'login', query: to.fullPath !== '/' ? { redirect: to.fullPath } : undefined }

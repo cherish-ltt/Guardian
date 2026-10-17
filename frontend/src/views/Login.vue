@@ -121,9 +121,14 @@ async function submit() {
   if (Object.keys(errors.value).length) return
   submitting.value = true
   try {
-    await login({ username: form.username.trim(), password: form.password, captcha: form.captcha.trim(), captchaUuid: captchaUuid.value }, remember.value)
-    await playSuccess()
+    const user = await login({ username: form.username.trim(), password: form.password, captcha: form.captcha.trim(), captchaUuid: captchaUuid.value }, remember.value)
     const redirect = typeof route.query.redirect === 'string' && route.query.redirect.startsWith('/') ? route.query.redirect : '/'
+    if (!user) {
+      form.password = ''
+      await router.replace({ name: 'login-2fa', query: { redirect } })
+      return
+    }
+    await playSuccess()
     const failure = await router.replace(redirect)
     // 进入外壳的导航被取消（如菜单加载期间会话过期）时仍停在登录页：恢复登录按钮
     if (failure || router.currentRoute.value.name === 'login') succeeded.value = false

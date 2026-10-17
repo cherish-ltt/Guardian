@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import Icon from '@/components/Icon.vue'
 import IconButton from '@/components/ui/IconButton.vue'
 import Avatar from '@/components/ui/Avatar.vue'
@@ -17,6 +17,7 @@ const emit = defineEmits<{
 }>()
 
 const route = useRoute()
+const router = useRouter()
 const chip = ref<HTMLElement | null>(null)
 const pop = ref<HTMLElement | null>(null)
 const menuOpen = ref(false)
@@ -109,6 +110,7 @@ onBeforeUnmount(() => closeMenu())
             <div style="font-weight: 680">{{ currentUser?.nickname }}</div>
             <div class="soft" style="font-size: 12px">@{{ currentUser?.username }}<template v-if="currentUser?.deptName"> · {{ currentUser.deptName }}</template></div>
           </div>
+          <button type="button" class="menu-item" role="menuitem" @click="closeMenu(); router.push({ name: 'profile' })"><Icon name="user" :size="16" />个人资料</button>
           <button type="button" class="menu-item" role="menuitem" @click="pick('password')"><Icon name="key" :size="16" />修改密码</button>
           <button type="button" class="menu-item" role="menuitem" @click="pick('appearance')"><Icon name="contrast" :size="16" />外观设置</button>
           <button type="button" class="menu-item is-danger" role="menuitem" @click="pick('logout')"><Icon name="logout" :size="16" />退出登录</button>

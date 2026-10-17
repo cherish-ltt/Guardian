@@ -1,6 +1,6 @@
 import { ref, type Component } from 'vue'
 import type { RouteRecordRaw } from 'vue-router'
-import { ApiError, authApi, authSession, type CurrentUser, type LoginRequest, type RouteItem } from '@/api'
+import { ApiError, authApi, authSession, type CurrentUser, type LoginRequest, type LoginResponse, type RouteItem } from '@/api'
 import { setPermissions } from '@/directives/permission'
 import type { NavGroup, NavLeaf } from '@/data'
 import { clearDictCache } from './dict'
@@ -17,6 +17,7 @@ export const currentUser = ref<CurrentUser | null>(authSession.user() as Current
 export const navGroups = ref<NavGroup[]>([])
 export const dynamicRoutes = ref<RouteRecordRaw[]>([])
 export const sessionVersion = ref(0)
+export const pendingLogin = ref<{ challenge: string; username: string; remember: boolean; expiresAt: number } | null>(null)
 /** 页面组件标识 → 当前账号可访问的路由路径（如 monitor/operlog/index → /monitor/operlog） */
 export const componentPaths = ref<Record<string, string>>({})
 
@@ -129,20 +130,43 @@ function remainingSeconds() {
   return Math.max(60, Math.round((authSession.expiresAt() - Date.now()) / 1000))
 }
 
+async function establishSession(response: LoginResponse, username: string, remember: boolean, version: number) {
+  authSession.save(response, { username, nickname: username }, remember)
+  const user = await authApi.me()
+  if (version !== sessionVersion.value) throw new Error('登录状态已变化，请重新登录')
+  authSession.save(response, user, remember)
+  currentUser.value = user
+  setPermissions(user.permissions ?? [])
+  authed.value = true
+  pendingLogin.value = null
+  return user
+}
+
 export async function login(credentials: LoginRequest, remember: boolean) {
   clearSession()
   const version = sessionVersion.value
   try {
-    const loginResponse = await authApi.login(credentials)
+    const response = await authApi.login(credentials)
     if (version !== sessionVersion.value) throw new Error('登录状态已变化，请重新登录')
-    authSession.save(loginResponse, { username: credentials.username, nickname: credentials.username }, remember)
-    const user = await authApi.me()
-    if (version !== sessionVersion.value) throw new Error('登录状态已变化，请重新登录')
-    authSession.save(loginResponse, user, remember)
-    currentUser.value = user
-    setPermissions(user.permissions ?? [])
-    authed.value = true
-    return user
+    if ('twoFactorRequired' in response) {
+      pendingLogin.value = { challenge: response.challenge, username: credentials.username, remember, expiresAt: Date.now() + response.expiresIn * 1000 }
+      return null
+    }
+    return await establishSession(response, credentials.username, remember, version)
+  } catch (error) {
+    if (version === sessionVersion.value) clearSession()
+    throw error
+  }
+}
+
+export async function verifyLogin(secondFactor: string) {
+  const pending = pendingLogin.value
+  if (!pending || pending.expiresAt <= Date.now()) throw new Error('验证已失效，请返回登录页重新登录')
+  const version = sessionVersion.value
+  const response = await authApi.verifyLogin({ challenge: pending.challenge, secondFactor })
+  if (version !== sessionVersion.value || pendingLogin.value !== pending) throw new Error('登录状态已变化，请重新登录')
+  try {
+    return await establishSession(response, pending.username, pending.remember, version)
   } catch (error) {
     if (version === sessionVersion.value) clearSession()
     throw error
@@ -150,6 +174,7 @@ export async function login(credentials: LoginRequest, remember: boolean) {
 }
 
 export function clearSession() {
+  pendingLogin.value = null
   sessionVersion.value += 1
   authed.value = false
   resetSessionRoutes?.()

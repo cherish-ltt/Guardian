@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { pathOf } from '@/composables/auth'
+import { pathOf, sessionVersion } from '@/composables/auth'
 import { Avatar, Field, HoverCard, Segmented, Select, StatusTag, Switch, Tag, TextInput, type Column } from '@/components/ui'
 import { DeptSelect, DeptTree, DictSelect, FormDialog, ListPage, PermissionButton } from '@/components/business'
 import BoardView, { type BoardColumn } from '@/components/business/BoardView.vue'
@@ -287,6 +287,23 @@ async function batchRemove(ids: (string | number)[]) {
     toastError(error, '批量删除失败')
   }
 }
+const twoFactorTarget = ref<UserRow | null>(null)
+const operatorPassword = ref('')
+const twoFactorBusy = ref(false)
+function openTwoFactorReset(row: UserRow) { twoFactorTarget.value = row; operatorPassword.value = '' }
+async function resetTwoFactor() {
+  if (!twoFactorTarget.value || twoFactorBusy.value || !operatorPassword.value) return
+  const version = sessionVersion.value
+  twoFactorBusy.value = true
+  try {
+    await systemApi.users.resetTwoFactor(twoFactorTarget.value.id, operatorPassword.value)
+    if (version !== sessionVersion.value) return
+    pushToast('2FA已重置，该用户的旧会话已失效', 'ok')
+    twoFactorTarget.value = null
+    operatorPassword.value = ''
+  } catch (error) { if (version === sessionVersion.value) toastError(error, '重置2FA失败') }
+  finally { twoFactorBusy.value = false }
+}
 </script>
 
 <template>
@@ -412,6 +429,7 @@ async function batchRemove(ids: (string | number)[]) {
         <PermissionButton perm="system:user:edit" icon-only icon="edit" label="编辑" @click="openEdit(row)" />
         <PermissionButton v-if="tracePath" perm="system:role:list" icon-only icon="shield" label="权限溯源" @click="openTrace(row)" />
         <PermissionButton perm="system:user:resetPwd" icon-only icon="key" label="重置密码" @click="openReset(row)" />
+        <PermissionButton perm="system:user:reset2fa" icon-only icon="shield" label="重置2FA" @click="openTwoFactorReset(row)" />
         <PermissionButton perm="system:user:remove" icon-only icon="trash" label="删除" danger @click="remove(row)" />
       </div>
     </template>
@@ -459,6 +477,9 @@ async function batchRemove(ids: (string | number)[]) {
       <Field label="新密码" required :error="resetError" hint="默认取自用户初始密码，请通知用户登录后修改" span>
         <TextInput v-model="resetPassword" :invalid="!!resetError" autocomplete="new-password" />
       </Field>
+    </FormDialog>
+    <FormDialog :open="Boolean(twoFactorTarget)" title="重置2FA" :sub="twoFactorTarget ? `关闭 @${twoFactorTarget.username} 的二次验证并撤销其全部会话` : ''" :saving="twoFactorBusy" submit-text="确认重置" @close="twoFactorTarget = null; operatorPassword = ''" @submit="resetTwoFactor">
+      <Field label="你的当前密码" required span><TextInput v-model="operatorPassword" type="password" autocomplete="current-password" /></Field>
     </FormDialog>
   </ListPage>
 </template>
