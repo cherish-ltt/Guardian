@@ -132,6 +132,16 @@ fn logs_are_flushed_on_fixed_interval() {
         logs.contains("batch_max_events=100") && logs.contains("batch_flush_interval_secs=1"),
         "启动配置日志应输出批量参数:\n{logs}"
     );
+    // 缓存参数同样以文件里的实际取值断言，避免只靠肉眼核对快照。
+    for row in [
+        "| [cache]",
+        format!("ttl_secs={}", config.cache.ttl_secs).as_str(),
+        format!("timeout_ms={}", config.cache.timeout_ms).as_str(),
+        format!("max_loads={}", config.cache.max_loads).as_str(),
+        format!("max_value_bytes={}", config.cache.max_value_bytes).as_str(),
+    ] {
+        assert!(logs.contains(row), "启动配置日志应输出 {row}:\n{logs}");
+    }
     // 版本号取自 Cargo.toml，断言用编译期同一来源比对，不硬编码字面量。
     assert!(
         logs.contains(&format!("version={}", env!("CARGO_PKG_VERSION"))),

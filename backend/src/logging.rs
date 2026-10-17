@@ -115,6 +115,7 @@ pub fn log_startup_config(config: &AppConfig) {
     let logger = &config.logging;
     let middleware = &config.middleware;
     let redis = &config.redis;
+    let cache = &config.cache;
     let server = &config.server;
 
     push_section(
@@ -174,6 +175,19 @@ pub fn log_startup_config(config: &AppConfig) {
                     .map(mask_secret)
                     .unwrap_or_else(|| "(not set)".to_string())
             ),
+        ],
+    );
+    push_section(
+        &mut lines,
+        &dashes,
+        "cache",
+        vec![
+            format!("ttl_secs={}", cache.ttl_secs),
+            format!("negative_ttl_secs={}", cache.negative_ttl_secs),
+            format!("timeout_ms={}", cache.timeout_ms),
+            format!("max_loads={}", cache.max_loads),
+            format!("max_entries={}", cache.max_entries),
+            format!("max_value_bytes={}", cache.max_value_bytes),
         ],
     );
     push_section(

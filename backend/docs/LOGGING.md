@@ -66,7 +66,7 @@ rg 'request diagnostic|route="/api/v1/transactions/\{id\}"' log/
 `cargo run` 启动时会把本次**实际生效**的配置以手绘 ASCII 列表框形式打印出来（`src/logging.rs` 的
 `log_startup_config`），并且同样写入日志文件，便于事后回溯进程启动那一刻用的参数：
 
-- 框内分为「application / server / database / jwt / redis / logging / middleware」七组（分组名与键均为英文），
+- 框内分为「application / server / database / jwt / redis / cache / logging / middleware」八组（分组名与键均为英文），
   字段直接取自 `AppConfig`，渲染为 `key=value` 形式；`application` 组的 `version` 是例外，
   取自 `Cargo.toml` 的 `version`（`env!("CARGO_PKG_VERSION")`），发版改 `Cargo.toml` 即自动生效；
 - `DATABASE_URL` 中的口令被替换为 `***`（`user:password@host` 与 `?password=` 两种写法都支持，
@@ -74,6 +74,10 @@ rg 'request diagnostic|route="/api/v1/transactions/\{id\}"' log/
   密钥不会被写进日志；
 - 打印时机在日志初始化之后、`Container::bootstrap` 之前（`src/main.rs`），
   因此数据库引导失败时也能看到配置快照。
+- `cache` 组输出基础数据缓存的实际生效值（`ttl_secs` / `negative_ttl_secs` / `timeout_ms` /
+  `max_loads` / `max_entries` / `max_value_bytes`）：缓存故障时优先核对这几个值，
+  尤其是 `max_loads` 过小会让回源直接返回 `503`、`timeout_ms` 过大则会放大 Redis 阻塞。
+  该组不含认证相关参数，`TWO_FACTOR_KEY` 只用于判断「是否已配置」，不输出任何密钥内容。
 
 `.env-example` 是入库的示例文件，其中的容量参数与 [中间件配置](MIDDLEWARE.md) 的默认值保持一致
 （`MIDDLEWARE_MAX_CONCURRENCY=256`、`MIDDLEWARE_BACKPRESSURE_QUEUE=256`、
