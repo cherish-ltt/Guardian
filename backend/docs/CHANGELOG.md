@@ -90,6 +90,10 @@
   提交后清理 Redis 旧令牌失败只记告警，旧令牌仍由版本校验拒绝，不影响返回一次性恢复码。
 - 审计脱敏新增 `secondFactor` / `recovery`，无效 JSON 不再原样写入留痕；`/api/v1/auth/*`
   响应统一带 `Cache-Control: no-store`。
+- **启动配置快照覆盖全部字段**：`log_startup_config` 新增 `[two_factor]`（只输出密钥是否已配置）、
+  `[cache]`、`[seed]`（口令脱敏 + 各账号用户名 / 昵称 / 邮箱 / 部门）与 `[ip_location]` 分节，
+  并在 `[middleware]` 补 `cors_allowed_origins`。`tests/logging_interval_tests.rs` 从 `AppConfig`
+  的 `Debug` 输出提取全部字段名逐个断言，新增字段漏打印会直接测试失败。
 - 新增依赖 `totp-rs`（`base32` / `constant_time_eq` 随 lock 引入），加密复用既有 `aws-lc-rs` 与 `base64`；
   `AppConfig` 新增 `two_factor_key` 与 `CacheConfig`（TTL、负缓存 TTL、IO 超时、回源上限、键数上限、
   单值上限），`.env-example`、`.env` 与 `tests/config_tests.rs` 同步。

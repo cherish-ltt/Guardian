@@ -66,18 +66,29 @@ rg 'request diagnostic|route="/api/v1/transactions/\{id\}"' log/
 `cargo run` 启动时会把本次**实际生效**的配置以手绘 ASCII 列表框形式打印出来（`src/logging.rs` 的
 `log_startup_config`），并且同样写入日志文件，便于事后回溯进程启动那一刻用的参数：
 
-- 框内分为「application / server / database / jwt / redis / cache / logging / middleware」八组（分组名与键均为英文），
-  字段直接取自 `AppConfig`，渲染为 `key=value` 形式；`application` 组的 `version` 是例外，
+- 框内按 `AppConfig` 的结构分成 11 组（分组名与键均为英文）：
+  `application` / `server` / `database` / `jwt` / `two_factor` / `redis` / `cache` / `seed` /
+  `ip_location` / `logging` / `middleware`，**覆盖 `AppConfig` 的全部字段**，
+  渲染为 `key=value` 形式；`application` 组的 `version` 是例外，
   取自 `Cargo.toml` 的 `version`（`env!("CARGO_PKG_VERSION")`），发版改 `Cargo.toml` 即自动生效；
+- **遗漏由测试守住**：`tests/logging_interval_tests.rs` 从 `AppConfig` 的 `Debug` 输出提取全部字段名，
+  逐个断言出现在日志里，并校验 11 个分节齐全。新增配置字段却忘了打印会直接测试失败，
+  不需要依赖人工比对。
 - `DATABASE_URL` 中的口令被替换为 `***`（`user:password@host` 与 `?password=` 两种写法都支持，
-  口令里含 `@` 或 `:` 也不会漏出），`JWT_SECRET` 只输出字符数（如 `secret=***(56 chars)`），
-  密钥不会被写进日志；
+  口令里含 `@` 或 `:` 也不会漏出），`JWT_SECRET` 与 `SEED_ADMIN_PASSWORD` 只输出字符数
+  （如 `secret=***(56 chars)`），密钥不会被写进日志；`two_factor` 组只输出
+  `two_factor_key=(configured)` 或 `(not set)`，用于快速判断认证器功能是否可用，不输出密钥内容；
 - 打印时机在日志初始化之后、`Container::bootstrap` 之前（`src/main.rs`），
   因此数据库引导失败时也能看到配置快照。
 - `cache` 组输出基础数据缓存的实际生效值（`ttl_secs` / `negative_ttl_secs` / `timeout_ms` /
   `max_loads` / `max_entries` / `max_value_bytes`）：缓存故障时优先核对这几个值，
   尤其是 `max_loads` 过小会让回源直接返回 `503`、`timeout_ms` 过大则会放大 Redis 阻塞。
-  该组不含认证相关参数，`TWO_FACTOR_KEY` 只用于判断「是否已配置」，不输出任何密钥内容。
+- `seed` 组输出 `admin_password=***(N chars)`、账号数量，以及每个账号的
+  `user[i].username` / `nickname` / `email` / `dept_id`：用于核对「这台机器实际播种了哪些账号」，
+  口令不落日志。`ip_location` 组输出 `ip_location_db_path` 的实际路径或 `(not set)`，
+  排查日志地点只有「外网」档位时先看这一行。
+- `middleware` 组还包含 `cors_allowed_origins` 与 `trusted_proxies`：跨域失败或来源 IP 记成代理地址时，
+  以这两行的实际值为准，不要只看 `.env`。
 
 `.env-example` 是入库的示例文件，其中的容量参数与 [中间件配置](MIDDLEWARE.md) 的默认值保持一致
 （`MIDDLEWARE_MAX_CONCURRENCY=256`、`MIDDLEWARE_BACKPRESSURE_QUEUE=256`、
