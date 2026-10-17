@@ -9,9 +9,10 @@
 > [AxumServiceScaffold](https://github.com/cherish-ltt/AxumServiceScaffold)。
 > 下方 `0.6.0` 及更早的条目属于上游项目的历史记录，版本号与本项目不连续。
 
-## [0.2.0] - 2026-10-16
+## [0.2.0] - 2026-10-17
 
-本次把上游 `v0.7.0`（客户端保护、低噪声诊断与版本可追溯）的功能原样同步进来。
+本次把上游 `v0.7.0`（客户端保护、低噪声诊断与版本可追溯）的功能原样同步进来，
+并在同一版本内补齐后台二次认证、个人资料页与基础数据缓存。
 
 ### 新增
 
@@ -36,6 +37,25 @@
 - **生产启动守卫**：`APP_ENV=production` 时拒绝 debug 构建（`AppConfig::validate_runtime`，
   `main` 与 `create_app` 双入口）；`HTTP` 监听改用 `into_make_service_with_connect_info`。
 - **阶段耗时标记**：事务示例与就绪检查的关键 IO 用 `middleware::measure("固定阶段名", future)` 包裹。
+- **本人资料与二次认证**：新增 `migrations/0003_user_security.sql`（`sys_user_security`：
+  加密有效 / 待确认 TOTP 密钥、恢复码哈希、会话版本、失败计数与封禁截止）与
+  `0004_login_challenge.sql`（一次性登录挑战）。可登录账号自愿启用认证器
+  （SHA1 / 6 位 / 30 秒），每次启用生成 10 枚一次性恢复码；密钥用独立 `TWO_FACTOR_KEY`
+  做 AES-256-GCM 加密并以账号 ID 作 AAD，数据库只有密文与哈希。
+- **登录拆为两步**：`POST /auth/login` 通过验证码与口令后，未启用 2FA 直接返回 JWT；
+  启用则只返回 300 秒一次性挑战（`twoFactorRequired` / `challenge`），**不签发半会话**；
+  `POST /auth/login/2fa` 校验动态码或恢复码后才签发 JWT 与会话。挑战只存 SHA256，
+  成功、被拒、过期、密码变更或 2FA 重置后立即失效；失败 5 次封禁安全验证 300 秒。
+- **本人资料接口**：`GET/PUT /auth/profile` 只允许改昵称、手机、邮箱（`deny_unknown_fields`，越界字段 400），
+  账号、部门、角色只读；配合前端新增的静态受保护页 `/profile`。
+- **人工重置 2FA**：新增独立权限码 `system:user:reset2fa`（迁移中一次性授予 `super_admin` 与
+  已有 `system:user:resetPwd` 的角色，之后独立分配），`POST /system/users/{id}/2fa/reset`
+  要求操作者输入本人密码，禁止重置自己与非超管重置超管。
+- **基础数据缓存**（`src/services/hot_cache.rs`、`src/infrastructure/services/cache_store.rs`）：
+  部门树、管理菜单树、用户选项中的部门、字典类型 / 数据 / 业务选项、参数列表走
+  API → Redis → SQLite。键含进程随机命名空间、数据代数与查询的 SHA256，TTL 加 0–20% 抖动，
+  空结果短缓存、错误不缓存，键数与单值大小有上限；64 个分片锁合并并发未命中，
+  回源并发由 semaphore 限制、超量返回 503。用户权限、`/auth/routes` 定制菜单、统计聚合与导出不缓存。
 
 ### 变更
 
@@ -60,6 +80,19 @@
 - `traceId` 改为由请求观测层解析一次并放进请求上下文，`x-trace-id` 响应头覆盖包括限流、
   背压与 panic 在内的全部响应；响应体 `traceId` 仍由压缩层之内的注入层改写，异常点已记入
   [统一响应结构](RESPONSE.md)。
+- **缓存一致性写法**：基础数据写操作先取得写屏障并递增代数，屏障覆盖数据库修改；
+  读锁覆盖读缓存、回源与回填，避免并发旧读回填。因此单实例内「API 修改成功后的后续请求」
+  不读旧值；旧键靠 TTL 清理，不依赖删除 Redis 成功。多实例或在线直接改库不在保证范围内。
+- **缓存故障降级**：Redis 业务缓存超时 / 错误 / 坏数据触发短暂熔断，在会话认证已通过的前提下
+  回源 SQLite；认证、验证码与会话仍强制经过 `AuthStore`，Redis 整体不可用时不会绕过校验。
+- **会话版本**：`AccessClaims` 增加带默认值的 `auth_version` 与 `jti`（UUID，避免同秒签发相同 JWT），
+  认证时比对数据库版本；启用 / 关闭 2FA、更新恢复码与人工重置都会递增版本。
+  提交后清理 Redis 旧令牌失败只记告警，旧令牌仍由版本校验拒绝，不影响返回一次性恢复码。
+- 审计脱敏新增 `secondFactor` / `recovery`，无效 JSON 不再原样写入留痕；`/api/v1/auth/*`
+  响应统一带 `Cache-Control: no-store`。
+- 新增依赖 `totp-rs`（`base32` / `constant_time_eq` 随 lock 引入），加密复用既有 `aws-lc-rs` 与 `base64`；
+  `AppConfig` 新增 `two_factor_key` 与 `CacheConfig`（TTL、负缓存 TTL、IO 超时、回源上限、键数上限、
+  单值上限），`.env-example`、`.env` 与 `tests/config_tests.rs` 同步。
 - 版本号提升到 `0.2.0`（`Cargo.toml` / `Cargo.lock` / OpenAPI 版本示例）。
 
 ### 测试与文档
@@ -73,10 +106,20 @@
   集成测试统一注入 `ConnectInfo`。
 - 新增 `tests/config_tests.rs` 的 `IP_LOCATION_DB_PATH` 分支与 `src/infrastructure/ip_location.rs`
   的单测（本地网段、公网回退、保留地址段、库不可用时报错）。
+- 新增 `tests/account_api_tests.rs`（资料白名单、2FA 生命周期、动态码重放、恢复码并发单次消费、
+  会话撤销与日志脱敏、人工重置权限与密码校验、失败限次）、`tests/account_security_tests.rs`
+  （密文存储与绑定过期、错误动态码不启用、`0003` 权限迁移只授予一次）、
+  `tests/account_fault_tests.rs`（Redis 清理失败仍返回恢复码、旧令牌被版本拒绝、缓存故障降级）、
+  `tests/login_challenge_tests.rs`（第一步无 JWT、挑战一次性、过期 / 密码变更 / 限次、并发只成功一次）
+  与 `tests/cache_tests.rs`（并发未命中只回源一次、写屏障、降级与 503、空值缓存、真实 Redis 用例默认忽略）。
+- `tests/contract_tests.rs` 端点矩阵扩到 91 条（新增 `POST /auth/login/2fa` 等公开与登录态端点），
+  `tests/admin_api_tests.rs` 的菜单计数随新增按钮同步。
 - 适配 `docs/MIDDLEWARE.md`（栈顺序、配置表、部署与生产边界）、`docs/LOGGING.md`
   （低噪声请求诊断）、`docs/ADMIN.md`（登录日志字段来源与差异表）、`docs/TESTING.md`、
   根 `README.md` 与 `backend/README.md`（部署文档入口）、`AGENTS.md`（新增 10.14 / 10.15 /
-  10.16 / 10.17）。
+  10.16 / 10.17）；`docs/ADMIN.md` 补两步登录契约、本人接口、重置权限与缓存一致性边界，
+  `docs/DEPLOYMENT.md` 补 `TWO_FACTOR_KEY` 配置 / 备份 / 唯一管理员丢失第二因素的线下恢复与
+  缓存降级参数，`docs/TESTING.md` 更新端点计数、用例清单与覆盖率快照。
 
 ## [0.1.0] - 2026-10-14
 
