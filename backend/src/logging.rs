@@ -116,6 +116,7 @@ pub fn log_startup_config(config: &AppConfig) {
     let middleware = &config.middleware;
     let redis = &config.redis;
     let cache = &config.cache;
+    let seed = &config.seed;
     let server = &config.server;
 
     push_section(
@@ -164,6 +165,19 @@ pub fn log_startup_config(config: &AppConfig) {
     push_section(
         &mut lines,
         &dashes,
+        "two_factor",
+        vec![format!(
+            "two_factor_key={}",
+            if config.two_factor_key.is_some() {
+                "(configured)"
+            } else {
+                "(not set)"
+            }
+        )],
+    );
+    push_section(
+        &mut lines,
+        &dashes,
         "redis",
         vec![
             format!("url={}", redis.url),
@@ -189,6 +203,33 @@ pub fn log_startup_config(config: &AppConfig) {
             format!("max_entries={}", cache.max_entries),
             format!("max_value_bytes={}", cache.max_value_bytes),
         ],
+    );
+    push_section(&mut lines, &dashes, "seed", {
+        let mut rows = vec![
+            format!("admin_password={}", mask_secret(&seed.admin_password)),
+            format!("users={}", seed.users.len()),
+        ];
+        for (index, user) in seed.users.iter().enumerate() {
+            let position = index + 1;
+            rows.push(format!("user[{position}].username={}", user.username));
+            rows.push(format!("user[{position}].nickname={}", user.nickname));
+            rows.push(format!("user[{position}].email={}", user.email));
+            rows.push(format!("user[{position}].dept_id={}", user.dept_id));
+        }
+        rows
+    });
+    push_section(
+        &mut lines,
+        &dashes,
+        "ip_location",
+        vec![format!(
+            "ip_location_db_path={}",
+            config
+                .ip_location_db_path
+                .as_ref()
+                .map(|path| path.display().to_string())
+                .unwrap_or_else(|| "(not set)".to_string())
+        )],
     );
     push_section(
         &mut lines,
@@ -226,6 +267,7 @@ pub fn log_startup_config(config: &AppConfig) {
                 middleware.rate_limit_period_secs
             ),
             format!("hsts_enabled={}", middleware.hsts_enabled),
+            format!("cors_allowed_origins={:?}", middleware.cors_allowed_origins),
             format!("trusted_proxies={:?}", middleware.trusted_proxies),
             format!(
                 "client_max_concurrency={}",
