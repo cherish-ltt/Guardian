@@ -6,7 +6,8 @@ Guardian 后台管理系统的前端：Vue 3 + TypeScript + Vite + Vue Router + 
 前端来自上游项目 [wbr664393425-lgtm/scaffold-master](https://github.com/wbr664393425-lgtm/scaffold-master)
 的 `scaffold-vue` 模块，沿用其 MIT 许可（见 [LICENSE](LICENSE)）。相对上游只做了与后端配套的改动：
 默认 API 前缀由 `/api` 改为 `/api/v1`、接口契约测试常量同步调整、
-`localStorage` 键前缀由 `scaffold.` 改为 `guardian.`，页面、组件、路由与 composable 的业务逻辑未改动。
+`localStorage` 键前缀由 `scaffold.` 改为 `guardian.`；新增本人资料与安全设置、登录第二因素和独立权限管理员重置入口，
+其他管理页面沿用原有组件与 composable。
 
 ## 开发
 
@@ -31,6 +32,16 @@ npm run build
 默认管理员为 `admin` / `admin123456`（账号与口令由后端 `.env` 的 `SEED_USERS` / `SEED_ADMIN_PASSWORD` 播种），
 验证码必须使用当前页面显示的字符。非管理员菜单来自角色授权；
 无菜单账号显示明确的权限分配提示。
+
+## 个人资料与二次验证
+
+顶栏「个人资料」进入 `/profile`，所有登录账号可访问（不要求菜单授权）。昵称、手机、邮箱可编辑；
+账号、部门、角色只读。修改密码复用既有弹窗。认证器绑定支持本地生成二维码或手动密钥，确认动态码后才启用；
+生成的恢复码仅保留本页内存，保存后重新登录。登录框只收账号、密码、验证码：账号启用 2FA 时，密码验证通过后会跳转独立页
+`/login/2fa` 输入动态码或未使用恢复码，验证成功才建立会话；挑战只存在内存，刷新即作废。
+
+用户管理的「重置2FA」按钮由 `system:user:reset2fa` 权限控制，需输入操作者密码，不使用重置密码权限替代。
+后端密钥配置与恢复流程见 [生产部署](../docs/DEPLOYMENT.md#二次认证密钥与恢复)。
 
 ## 目录
 
@@ -66,7 +77,17 @@ npm run build
 
 ## 浏览器回归
 
-已有 Python Playwright 与 Chromium、前后端均启动时，可运行：
+资料/2FA 浏览器回归（独立测试库；脚本创建并删除无菜单权限用户）：
+
+```bash
+npm install --no-save --package-lock=false @playwright/test@1.64.1
+npx playwright install chromium
+GUARDIAN_TEST_URL=http://localhost:5173 node scripts/account-regression.mjs
+```
+
+需要未启用 2FA 的测试管理员，密码可用 `GUARDIAN_TEST_PASSWORD` 覆盖；验证资料保存、绑定、两步登录（登录框保持三项、跳转独立验证页）、恢复码登录/更新/关闭和移动端布局。
+
+已有 Python Playwright 与 Chromium、前后端均启动时，可运行原有会话回归：
 
 ```bash
 python3 scripts/session-regression.py

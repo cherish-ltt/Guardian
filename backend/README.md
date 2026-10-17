@@ -3,7 +3,7 @@
   <p>axum + sea-orm · DDD 洋葱架构 · SQLite + Redis</p>
 </div>
 
-Guardian 的后端服务：提供登录会话（验证码 + JWT + Redis 撤销）、系统管理（用户 / 角色 / 菜单 / 部门 /
+Guardian 的后端服务：提供登录会话（验证码 + 可选认证器 2FA + JWT + Redis 撤销）、本人资料与恢复码、系统管理（用户 / 角色 / 菜单 / 部门 /
 岗位 / 字典 / 参数）、操作与登录日志、工作台聚合与代码生成，配套前端见 [../frontend](../frontend)。
 
 代码模板来自 [cherish-ltt/AxumServiceScaffold](https://github.com/cherish-ltt/AxumServiceScaffold)：
@@ -23,7 +23,7 @@ src/
 ├── util/              CSV、口令哈希、时间格式化
 ├── container.rs       依赖装配中心
 └── main.rs            启动入口
-migrations/            sqlx 版本化迁移（0001 转账示例表、0002 系统表 17 张）
+migrations/            sqlx 版本化迁移（0001 转账示例表、0002 系统表 17 张、0003 账号安全表与重置权限）
 tests/                 单元测试与 oneshot 黑盒契约测试
 docs/                  架构、中间件、日志、事务、响应、测试、后台模块文档
 ```
@@ -36,7 +36,8 @@ docs/                  架构、中间件、日志、事务、响应、测试、
 | 异步运行时 | `tokio`（`macros` / `net` / `rt-multi-thread` / `signal` / `time`，不用 `full`） |
 | ORM 与迁移 | `sea-orm` + `sqlx`（SQLite，`sqlx::migrate!` 执行 `migrations/`；只支持 SQLite，不启用 TLS） |
 | 鉴权 | `jsonwebtoken`（`aws_lc_rs` 后端）、`argon2` 口令哈希 |
-| 会话与验证码 | `redis`（connection-manager 自动重连） |
+| 会话、验证码与基础数据缓存 | `redis`（connection-manager 自动重连） |
+| 二次认证 | `totp-rs`、`aws-lc-rs`（AES-256-GCM 密钥加密）、随机恢复码哈希 |
 | 接口文档 | `utoipa` + `swagger-ui`，由可选 feature `docs` 门控（不进 release） |
 | 序列化与日志 | `serde` / `serde_json`、`tracing` + `tracing-subscriber` |
 | 其它 | `uuid`（traceId 与主键）、`zip`（代码生成下载）、`anyhow`、`thiserror`、`ip2region`（离线 IP 地名，vendored 在 `vendor/ip2region`） |
@@ -78,7 +79,7 @@ docs/                  架构、中间件、日志、事务、响应、测试、
 - **总超时含排队**：从进入保护层到响应头生成（含全局排队）计时，超时取消请求并释放额度。
 - **低噪声诊断**：每请求一条访问日志；慢请求、超时与业务 5xx 才输出阶段汇总
   （排队、数据库阶段耗时、是否被中断），不记录 query 与请求体。
-- **审计留痕**：按「请求方法 + 路径段模式」匹配 31 条规则，记录模块、动作、操作人、耗时与
+- **审计留痕**：按「请求方法 + 路径段模式」匹配 37 条规则，记录模块、动作、操作人、耗时与
   请求体（敏感字段脱敏），写入失败不影响业务响应。
 - **容量参数**：全部集中在 `.env`（超时、Body 上限、并发、背压队列、全局与单 IP 限流额度、
   可信代理、慢请求阈值、CORS 白名单），调参见 [中间件栈与配置](docs/MIDDLEWARE.md)。
@@ -99,6 +100,16 @@ SQL 侧用 `strftime` / `julianday` / `substr` 等价 MySQL 的 `NOW()` / `CURDA
 与 `MemoryAuthStore`（测试）。登录要求 JWT 与 Redis 会话令牌同时有效，登出即删除令牌、
 旧令牌立刻失效；改密码会撤销该账号的全部会话。Redis 连接在启动时建立
 （`connection-manager` 自动重连），不可用会直接启动失败。
+
+## 个人资料、2FA 与基础缓存
+
+所有账号可在个人资料页编辑昵称/手机/邮箱、改密，自愿绑定认证器。登录启用 2FA 的账号需动态码或恢复码；
+安全设置变更撤销所有旧会话。管理员人工重置使用独立 `system:user:reset2fa` 权限。
+部署前配置独立 `TWO_FACTOR_KEY`，默认留空不能绑定；密钥备份与应急恢复见 [生产部署](../docs/DEPLOYMENT.md#二次认证密钥与恢复)。
+
+字典、参数、部门树及管理菜单使用 Redis cache-aside，单实例写屏障保证 API 修改成功后后续请求读取新值；
+空值短缓存、TTL 抖动、并发合并和有界回源保护 SQLite。认证、用户权限及统计不走业务缓存。
+具体接口、故障及多实例边界见 [后台管理模块](docs/ADMIN.md#基础数据缓存)。
 
 ## 快速开始
 
@@ -181,7 +192,7 @@ SEED_USERS=ops_admin:运维管理员:ops@example.com:2
 
 建议保留的默认数据（清掉会导致页面无法正常使用）：
 
-- `sys_menu` 的 38 条目录 / 菜单 / 按钮记录：前端动态路由与按钮权限码都来自这里；
+- `sys_menu` 的 39 条目录 / 菜单 / 按钮记录（含重置 2FA 权限）：前端动态路由与按钮权限码都来自这里；
   若要自定义菜单，请在此基础上增删，不要整表清空。
 - `sys_role` 中的内置超级管理员角色（`super_admin`）及其菜单授权：`AdminUser` 提取器对
   `super_admin` 直接放行，该角色被删除后需要自行保证权限闭环。
