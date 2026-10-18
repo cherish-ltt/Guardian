@@ -18,7 +18,10 @@ use crate::{
     },
     infrastructure::{
         ip_location::IpLocation,
-        repositories::admin_auth::{AdminAuthRepository, SeaOrmAdminAuthRepository},
+        repositories::{
+            admin_auth::{AdminAuthRepository, SeaOrmAdminAuthRepository},
+            config::{ConfigRepository, SeaOrmConfigRepository},
+        },
         services::{auth_store::AuthStore, jwt::JwtService},
     },
     util::password,
@@ -30,6 +33,9 @@ pub const SUPER_ADMIN: &str = "super_admin";
 /// 验证码字符集：去掉了容易混淆的 I / O / 0 / 1，与 Spring 版一致。
 const CAPTCHA_CHARS: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const CAPTCHA_LENGTH: usize = 4;
+
+/// 登录验证码开关参数键；缺省视为开启。
+const CAPTCHA_ENABLED_KEY: &str = "sys.account.captchaEnabled";
 
 /// 后台会话的用例实现：账号来自数据库，会话放在 Redis。
 pub struct AdminAuthService {
@@ -156,6 +162,15 @@ impl AdminAuthService {
             .route_menus(&self.database, user.id)
             .await
     }
+
+    /// 验证码开关：参数缺失时按开启处理，不能因为读不到参数而放宽登录。
+    async fn captcha_enabled(&self) -> Result<bool, AppError> {
+        let value = SeaOrmConfigRepository
+            .config_value(&self.database, CAPTCHA_ENABLED_KEY)
+            .await?;
+
+        Ok(!matches!(value.as_deref(), Some("false")))
+    }
 }
 
 #[async_trait]
@@ -184,11 +199,23 @@ impl AdminAuthUseCase for AdminAuthService {
     }
 
     async fn captcha(&self) -> Result<CaptchaChallenge, AppError> {
+        if !self.captcha_enabled().await? {
+            return Ok(CaptchaChallenge {
+                enabled: false,
+                uuid: String::new(),
+                code: String::new(),
+            });
+        }
+
         let uuid = uuid::Uuid::now_v7().simple().to_string();
         let code = random_captcha_code();
         self.auth_store.save_captcha(&uuid, &code).await?;
 
-        Ok(CaptchaChallenge { uuid, code })
+        Ok(CaptchaChallenge {
+            enabled: true,
+            uuid,
+            code,
+        })
     }
 
     async fn login(
@@ -196,7 +223,9 @@ impl AdminAuthUseCase for AdminAuthService {
         command: LoginCommand,
         source: &ClientSource,
     ) -> Result<LoginOutcome, AppError> {
-        verify_captcha(self.auth_store.as_ref(), &command).await?;
+        if self.captcha_enabled().await? {
+            verify_captcha(self.auth_store.as_ref(), &command).await?;
+        }
 
         let Some(user) = SeaOrmAdminAuthRepository
             .find_user_by_username(&self.database, &command.username)

@@ -201,6 +201,7 @@ const STATEMENTS: [(&str, &str); 8] = [
         "INSERT OR IGNORE INTO sys_config (id, config_name, config_key, config_value, config_type, builtin, remark, create_by, update_by)
          VALUES
              (1, '用户管理-账号初始密码', 'sys.user.initPassword', 'Yy@123456', 'Y', 1, '初始化密码', 'system', 'system'),
+             (2, '账号自助-验证码开关', 'sys.account.captchaEnabled', 'true', 'N', 0, '是否开启登录验证码', 'system', 'system'),
              (3, '主框架-默认外观', 'sys.index.appearance', 'light', 'N', 0, '可选 light / dark / auto', 'system', 'system');",
     ),
 ];
@@ -320,7 +321,7 @@ mod tests {
         assert_eq!(count(&database, "sys_user_post").await, 3);
         assert_eq!(count(&database, "sys_dict_type").await, 3);
         assert_eq!(count(&database, "sys_dict_data").await, 7);
-        assert_eq!(count(&database, "sys_config").await, 2);
+        assert_eq!(count(&database, "sys_config").await, 3);
         assert_eq!(
             count(&database, "sys_role_menu").await,
             count(&database, "sys_menu").await

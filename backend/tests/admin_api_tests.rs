@@ -103,6 +103,90 @@ async fn captcha_login_and_session_lifecycle() {
     assert_eq!(body["message"], "未认证或登录已过期");
 }
 
+/// 验证码开关默认开启：`enabled` 为 true，登录必须带验证码。
+#[tokio::test]
+async fn captcha_is_enabled_by_default() {
+    let app = setup_app().await;
+
+    let (status, captcha) = send(app.clone(), get("/api/v1/auth/captcha")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(captcha["data"]["enabled"], true);
+    assert_eq!(
+        captcha["data"]["code"].as_str().expect("验证码明文").len(),
+        4
+    );
+
+    let (status, body) = send(
+        app.clone(),
+        post_json(
+            "/api/v1/auth/login",
+            json!({ "username": "admin", "password": DEMO_PASSWORD }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["message"], "验证码错误或已过期");
+}
+
+/// 后台把参数改成 false 后：`/auth/captcha` 不再生成验证码，登录也不校验。
+#[tokio::test]
+async fn disabled_captcha_skips_verification() {
+    let app = setup_app().await;
+    let token = admin_token(&app).await;
+
+    let (status, page) = send(
+        app.clone(),
+        get_with_bearer("/api/v1/system/configs?keyword=captchaEnabled", &token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(page["data"]["total"], 1, "验证码开关应作为可改参数存在");
+    let row = &page["data"]["rows"][0];
+    assert_eq!(row["key"], "sys.account.captchaEnabled");
+    assert_eq!(row["builtin"], false, "内置参数不可改，与开关语义冲突");
+    let id = row["id"].as_i64().expect("参数 ID");
+
+    let (status, _) = send(
+        app.clone(),
+        put_json_with_bearer(
+            &format!("/api/v1/system/configs/{id}"),
+            &token,
+            json!({ "value": "false" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, captcha) = send(app.clone(), get("/api/v1/auth/captcha")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(captcha["data"]["enabled"], false);
+    assert_eq!(captcha["data"]["uuid"], "");
+    assert_eq!(captcha["data"]["code"], "");
+
+    let (status, body) = send(
+        app.clone(),
+        post_json(
+            "/api/v1/auth/login",
+            json!({ "username": "admin", "password": DEMO_PASSWORD }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "关闭后不带验证码应能登录: {body}");
+    assert!(body["data"]["token"].is_string());
+
+    // 密码仍要校验：开关只放宽验证码，不放宽口令。
+    let (status, body) = send(
+        app.clone(),
+        post_json(
+            "/api/v1/auth/login",
+            json!({ "username": "admin", "password": "wrong-password" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["message"], "账号或密码错误");
+}
+
 #[tokio::test]
 async fn missing_invalid_and_revoked_credentials_are_rejected() {
     let app = setup_app().await;
@@ -949,12 +1033,18 @@ async fn config_flow_and_export() {
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(page["data"]["total"], 2);
+    assert_eq!(page["data"]["total"], 3);
     let rows = page["data"]["rows"].as_array().expect("参数行");
     assert!(rows.iter().any(|row| row["key"] == "sys.user.initPassword"
         && row["value"] == "Yy@123456"
         && row["builtin"] == true
         && row["type"] == "Y"));
+    assert!(
+        rows.iter()
+            .any(|row| row["key"] == "sys.account.captchaEnabled"
+                && row["value"] == "true"
+                && row["builtin"] == false)
+    );
 
     let (status, created) = send(
         app.clone(),

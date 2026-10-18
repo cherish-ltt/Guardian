@@ -26,7 +26,7 @@ src/middleware/audit.rs                       写操作留痕
 
 | 方法 | 路径 | 权限 | 说明 |
 | --- | --- | --- | --- |
-| GET | `/auth/captcha` | 公开 | 4 位验证码，明文回显给登录页，Redis TTL 300s |
+| GET | `/auth/captcha` | 公开 | 4 位验证码，明文回显给登录页，Redis TTL 300s；参数 `sys.account.captchaEnabled=false` 时返回 `enabled=false` 且不生成验证码 |
 | POST | `/auth/login` | 公开 | 校验码 → 口令 → 账号状态；未启用 2FA 直接返回 JWT 与 `expiresIn`，启用则返回一次性挑战 |
 | POST | `/auth/login/2fa` | 公开 | 用挑战 + 动态码/恢复码完成登录，签发 JWT 与会话 |
 | POST | `/auth/logout` | 登录态 | 删除 Redis 会话令牌，令牌随后失效 |
@@ -159,7 +159,7 @@ src/middleware/audit.rs                       写操作留痕
 - `DATETIME` 存 `TEXT`（`YYYY-MM-DD HH:MM:SS` 本地时间），字典序比较等价时间先后；
   查询用 `strftime` / `julianday` / `substr(x, 1, 16)` 等价 `NOW()` / `CURDATE()` / `DATE_FORMAT()`。
 - 种子数据在 `src/infrastructure/databases/seed.rs`：11 个部门、9 个岗位、6 个角色、
-  3 个用户及其角色 / 岗位关联、38 条菜单、3 类字典与 7 条字典项、2 条参数配置
+  3 个用户及其角色 / 岗位关联、38 条菜单、3 类字典与 7 条字典项、3 条参数配置
   （启动后 `sys_menu` 实际是 39 条：`0003_user_security.sql` 另追加「重置2FA」按钮）；
   全部 `INSERT OR IGNORE`，可重复启动。**不含**任何 `sys_oper_log` / `sys_login_log` 示例行（与 Spring 一致）。
 - 种子账号与口令都来自 `.env`：`SEED_USERS`（`用户名:昵称:邮箱:部门ID`，逗号分隔）决定播种哪些账号，
@@ -252,7 +252,7 @@ Redis 超时/错误/坏数据触发短暂熔断，回源 SQLite；故障时不�
 | --- | --- | --- | --- |
 | 个人资料与 2FA | 本轮环境未提供参考目录，未核实上游对应契约 | 按本文新增本人接口、第二因素与独立重置权限 | 本次明确需求，非声称逐字兼容 |
 | 基础数据缓存 | 本轮未核实上游缓存策略 | 单实例写屏障/换代、有界回源及空值缓存 | 本次明确的一致性及故障约束 |
-| 验证码开关 | `sys.account.captchaEnabled` 参数控制是否校验验证码 | 无该参数，登录恒校验验证码 | 该参数在 Spring 版之外无人读取，留着就是假开关；需要关闭时直接改代码而不是改参数 |
+| 验证码开关 | `sys.account.captchaEnabled` 参数控制是否校验验证码 | 同名参数，`builtin=0` 可在参数页直接开关 | 关闭后 `/auth/captcha` 返回 `enabled=false` 且不写 Redis，登录不再校验验证码 |
 | 路由前缀 | `/api` | `/api/v1` | 与骨架既有前缀统一；前端只需改 `http.ts` 默认前缀 |
 | 路径参数 | `@PathVariable Long id` | `{dict_type}` 共用同名参数 | axum 要求同一位置参数同名，GET 传类型、PUT / DELETE 传主键 |
 | 响应体 | `{code, message, data, traceId}` | 同前 + `timestamp` | `timestamp` 是骨架既有字段，前端不读 |

@@ -122,8 +122,12 @@ pub struct ClientSource {
 }
 
 /// 登录时生成的验证码：`code` 直接回显给登录页显示（与 Spring 版一致）。
+///
+/// `enabled` 为 `false` 时（`sys.account.captchaEnabled` 被关闭）不生成验证码，
+/// `uuid` 与 `code` 为空串，登录页据此隐藏输入框。
 #[derive(Debug, Clone, Serialize)]
 pub struct CaptchaChallenge {
+    pub enabled: bool,
     pub uuid: String,
     pub code: String,
 }
