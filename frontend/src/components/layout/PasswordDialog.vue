@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import FormDialog from '@/components/business/FormDialog.vue'
+import { FormDialog } from '@/components/business'
 import Field from '@/components/ui/Field.vue'
 import TextInput from '@/components/ui/TextInput.vue'
 import { authApi } from '@/api'

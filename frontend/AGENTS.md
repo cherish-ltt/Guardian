@@ -10,8 +10,8 @@ Guardian 前端的开发规范。取自上游 `scaffold-master` 的 `scaffold-vu
 | `src/api` | 统一 HTTP、会话存储、认证、系统管理与生成器接口 |
 | `src/router/index.ts` | 静态入口、动态菜单路由、登录守卫与会话失效跳转 |
 | `src/composables` | 列表、字典 / 部门缓存、外观、动效、权限与确认框 |
-| `src/components/ui` | 基础控件，不含业务语义 |
-| `src/components/business` | 列表页、搜索表单、表单弹窗、权限按钮与业务选择器 |
+| `src/components/ui` | 基础控件，不含业务语义；统一从 `index.ts` 引入 |
+| `src/components/business` | 列表页、搜索表单、表单弹窗、权限按钮与业务选择器；统一从 `index.ts` 引入 |
 | `src/components/layout` | 外壳、侧栏、顶栏、命令搜索与弹窗 |
 | `src/views` | 页面，一个菜单对应一个页面 |
 | `src/data` | 品牌常量与导航分组 |
@@ -23,6 +23,9 @@ Guardian 前端的开发规范。取自上游 `scaffold-master` 的 `scaffold-vu
   错误文案只取 `message`；401 触发统一会话清理，页面不得自行处理令牌。
 - **权限动作使用 `PermissionButton`**，页面不得自己解析权限码。
 - **新列表复用 `ListPage` 与列表 composable，新表单复用 `FormDialog`**，不新造同类组件。
+- **组件一律从目录的 `index.ts` 引入**：`@/components/ui` 与 `@/components/business` 的 `index.ts`
+  必须导出目录下全部 `.vue`，页面不得按 `@/components/business/Xxx.vue` 直引；
+  新增组件时同一次改动里补导出。
 - **新页面注册流程**：在 `src/composables/auth.ts` 的 `COMPONENT_MAP` 注册，再到菜单管理里配置
   路径、组件标识与权限码。
 - **退出与 401 只走统一会话清理**：不得在页面直接改认证存储或路由就绪标记；

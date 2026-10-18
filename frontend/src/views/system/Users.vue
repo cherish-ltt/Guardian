@@ -3,8 +3,10 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { pathOf, sessionVersion } from '@/composables/auth'
 import { Avatar, Field, HoverCard, Segmented, Select, StatusTag, Switch, Tag, TextInput, type Column } from '@/components/ui'
-import { DeptSelect, DeptTree, DictSelect, FormDialog, ListPage, PermissionButton } from '@/components/business'
-import BoardView, { type BoardColumn } from '@/components/business/BoardView.vue'
+import {
+  BoardView, DeptSelect, DeptTree, DictSelect, FormDialog, ListPage, PermissionButton,
+  type BoardColumn,
+} from '@/components/business'
 import { systemApi, type UserRow } from '@/api'
 import { useListPage } from '@/composables/list'
 import { useViewMode } from '@/composables/view'

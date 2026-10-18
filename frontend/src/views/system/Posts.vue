@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { reactive, ref, watch } from 'vue'
 import { Field, Segmented, StatusTag, Switch, TextInput, type Column } from '@/components/ui'
-import { DictSelect, FormDialog, ListPage, PermissionButton } from '@/components/business'
-import PostLadder from '@/components/business/PostLadder.vue'
+import { DictSelect, FormDialog, ListPage, PermissionButton, PostLadder } from '@/components/business'
 import { systemApi } from '@/api'
 import { useListPage } from '@/composables/list'
 import { useViewMode } from '@/composables/view'

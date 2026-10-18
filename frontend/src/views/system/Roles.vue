@@ -3,9 +3,10 @@ import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Icon from '@/components/Icon.vue'
 import { Button, Drawer, Field, Segmented, Select, StatusTag, Switch, Tag, TextInput, type Column } from '@/components/ui'
-import { DictSelect, FormDialog, ListPage, PermissionButton, PermissionTree } from '@/components/business'
-import PermissionMatrix, { type MatrixRole } from '@/components/business/PermissionMatrix.vue'
-import PermissionTrace from '@/components/business/PermissionTrace.vue'
+import {
+  DictSelect, FormDialog, ListPage, PermissionButton, PermissionMatrix, PermissionTrace, PermissionTree,
+  type MatrixRole,
+} from '@/components/business'
 import { invalidatePermissionGraph } from '@/composables/permissionGraph'
 import { systemApi } from '@/api'
 import { useListPage } from '@/composables/list'

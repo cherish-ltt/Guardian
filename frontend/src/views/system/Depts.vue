@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { Avatar, Field, Segmented, SpecPlate, StatusTag, Switch, TextInput, type Column } from '@/components/ui'
-import { DeptSelect, DictSelect, FormDialog, ListPage, PermissionButton, UserSelect } from '@/components/business'
-import OrgCanvas from '@/components/business/OrgCanvas.vue'
+import { DeptSelect, DictSelect, FormDialog, ListPage, OrgCanvas, PermissionButton, UserSelect } from '@/components/business'
 import { systemApi, type UserRow } from '@/api'
 import { useViewMode } from '@/composables/view'
 import { hasPermission } from '@/directives/permission'
