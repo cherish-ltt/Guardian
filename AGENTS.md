@@ -24,8 +24,11 @@
   - 工作流都必须放在仓库根目录（GitHub 只识别根下的 `.github/workflows/`），
     用 `working-directory` 指向 `backend/` 与 `frontend/`。
   - `.pre-commit-config.yaml`：文件检查、密钥泄漏检测、ast-grep 规则与 Rust 钩子。
+- 版本号前后端必须同时递增：`backend/Cargo.toml` 与 `frontend/package.json`（连同
+  `frontend/package-lock.json`）一起改到同一个 `X.Y.Z`，**即使本次只有一端有改动**也要一起改，
+  不允许两端版本号出现分叉。
 - 版本发布说明统一放在仓库根 [docs/version](docs/version) 下的 `vX.Y.Z.md`
-  （如 [docs/version/v0.3.0.md](docs/version/v0.3.0.md)）：
+  （如 [docs/version/v0.4.0.md](docs/version/v0.4.0.md)）：
   - 内容按「后端」「前端」两节分别罗列本次变动，没有改动的部分保留小节标题并写「无」；
   - `release.yml` 会读 `docs/version/<tag>.md` 作为 Release 正文，文件缺失时发布失败；
   - 新增版本时必须先补该文件再打 tag，并同步 [backend/docs/CHANGELOG.md](backend/docs/CHANGELOG.md)。
