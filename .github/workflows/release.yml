@@ -65,11 +65,16 @@ jobs:
       - name: Package backend
         run: |
           set -euo pipefail
-          mkdir -p dist
-          # release 二进制 + 迁移目录 + 环境变量模板，解压即可部署
-          tar -C backend -czf \
+          mkdir -p dist/stage
+          # 解压即可部署：二进制放根位置，与 migrations、环境变量模板并列
+          cp backend/target/release/guardian-backend dist/stage/
+          cp backend/.env-example dist/stage/
+          cp -r backend/migrations dist/stage/
+          tar -C dist/stage -czf \
             "dist/guardian-backend-${GITHUB_REF_NAME}-linux-${{ matrix.arch }}.tar.gz" \
-            target/release/guardian-backend migrations .env-example
+            guardian-backend migrations .env-example
+          rm -rf dist/stage
+          tar -tzf "dist/guardian-backend-${GITHUB_REF_NAME}-linux-${{ matrix.arch }}.tar.gz"
           ls -l dist
 
       - name: Upload backend artifact
