@@ -159,7 +159,8 @@ src/middleware/audit.rs                       写操作留痕
 - `DATETIME` 存 `TEXT`（`YYYY-MM-DD HH:MM:SS` 本地时间），字典序比较等价时间先后；
   查询用 `strftime` / `julianday` / `substr(x, 1, 16)` 等价 `NOW()` / `CURDATE()` / `DATE_FORMAT()`。
 - 种子数据在 `src/infrastructure/databases/seed.rs`：11 个部门、9 个岗位、6 个角色、
-  3 个用户及其角色 / 岗位关联、38 条菜单、3 类字典与 7 条字典项、2 条参数配置；
+  3 个用户及其角色 / 岗位关联、38 条菜单、3 类字典与 7 条字典项、2 条参数配置
+  （启动后 `sys_menu` 实际是 39 条：`0003_user_security.sql` 另追加「重置2FA」按钮）；
   全部 `INSERT OR IGNORE`，可重复启动。**不含**任何 `sys_oper_log` / `sys_login_log` 示例行（与 Spring 一致）。
 - 种子账号与口令都来自 `.env`：`SEED_USERS`（`用户名:昵称:邮箱:部门ID`，逗号分隔）决定播种哪些账号，
   `SEED_ADMIN_PASSWORD`（默认 `admin123456`）是它们的初始口令，也是新增用户未传口令时的默认值；
