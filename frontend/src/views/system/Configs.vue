@@ -199,7 +199,7 @@ async function remove(row: ConfigRow) {
 </script>
 
 <template>
-  <ListPage title="参数配置" desc="以键值对维护系统运行参数，如账号初始密码、验证码开关等。" table-title="参数列表" :list="list" :columns="columns" :min-width="900" :alt-view="view === 'panel'">
+  <ListPage title="参数配置" desc="以键值对维护系统运行参数，如账号初始密码、默认外观等。" table-title="参数列表" :list="list" :columns="columns" :min-width="900" :alt-view="view === 'panel'">
     <template #alt>
       <div class="settings">
         <aside class="settings-nav m-surface">

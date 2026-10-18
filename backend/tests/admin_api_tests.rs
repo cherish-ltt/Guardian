@@ -949,7 +949,7 @@ async fn config_flow_and_export() {
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(page["data"]["total"], 3);
+    assert_eq!(page["data"]["total"], 2);
     let rows = page["data"]["rows"].as_array().expect("参数行");
     assert!(rows.iter().any(|row| row["key"] == "sys.user.initPassword"
         && row["value"] == "Yy@123456"
