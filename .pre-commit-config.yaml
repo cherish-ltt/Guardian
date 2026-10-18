@@ -53,7 +53,8 @@ repos:
   # 说明：
   #   - Gitleaks 已进入仅安全补丁维护阶段，Betterleaks 为其官方继任者
   #   - 由 Gitleaks 原作者 Zach Rice 及原班人马维护
-  #   - 完全兼容原有的 .gitleaks.toml 配置和 .gitleaksignore 文件
+  #   - 兼容 Gitleaks 的 .gitleaks.toml / .gitleaksignore；本仓库没有这两个文件，
+  #     因此实际生效的是内置默认规则集（如需忽略项，先加配置文件再写排除规则）
   #   - 检测 800+ 种密钥类型，支持 Expr 过滤、密钥有效性验证等高级功能
   #   - 改用 local + system，直接调用本机 PATH 中的 betterleaks，
   #     避免 prek 下载 Go 工具链并重新编译安装
