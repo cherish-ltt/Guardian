@@ -1,7 +1,7 @@
 name: Release
 
 # 版本发布：打 tag 触发构建，产物挂到对应的 GitHub Release。
-# 发布说明取自 docs/<tag>.md（如 docs/v0.3.0.md），由该文件分前后端罗列变动。
+# 发布说明取自 docs/version/<tag>.md（如 docs/version/v0.3.0.md），按前后端分节罗列变动。
 on:
   push:
     tags:
@@ -11,15 +11,17 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    name: Build and publish
-    runs-on: ubuntu-latest
+  notes:
+    name: Resolve release notes
+    runs-on: ubuntu-24.04
+    outputs:
+      file: ${{ steps.resolve.outputs.file }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Resolve release notes
-        id: notes
+        id: resolve
         run: |
           # 发布说明按 tag 名取文件：v0.3.0 -> docs/version/v0.3.0.md
           notes_file="docs/version/${GITHUB_REF_NAME}.md"
@@ -29,6 +31,23 @@ jobs:
           fi
           echo "file=$notes_file" >> "$GITHUB_OUTPUT"
 
+  backend:
+    name: Build backend (${{ matrix.arch }})
+    needs: notes
+    strategy:
+      # 一个架构失败时另一个仍要跑完，便于判断是架构特有问题还是共性问题
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x86_64
+          - runner: ubuntu-24.04-arm
+            arch: aarch64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
@@ -36,10 +55,37 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: backend
+          key: ${{ matrix.arch }}
 
+      # 每个架构在原生 runner 上编译，不做交叉编译
       - name: Build backend release binary
         working-directory: backend
         run: cargo build --release --locked
+
+      - name: Package backend
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          # release 二进制 + 迁移目录 + 环境变量模板，解压即可部署
+          tar -C backend -czf \
+            "dist/guardian-backend-${GITHUB_REF_NAME}-linux-${{ matrix.arch }}.tar.gz" \
+            target/release/guardian-backend migrations .env-example
+          ls -l dist
+
+      - name: Upload backend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-${{ matrix.arch }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  frontend:
+    name: Build frontend
+    needs: notes
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -48,28 +94,51 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
+      # 前端产物与 CPU 架构无关，只构建一份
       - name: Build frontend bundle
         working-directory: frontend
         run: |
           npm ci
           npm run build
 
-      - name: Package artifacts
+      - name: Package frontend
         run: |
           set -euo pipefail
           mkdir -p dist
-          # 后端：release 二进制 + 迁移目录 + 环境变量模板，解压即可部署
-          tar -C backend -czf "dist/guardian-backend-${GITHUB_REF_NAME}-linux-x86_64.tar.gz" \
-            target/release/guardian-backend migrations .env-example
-          # 前端：构建产物
           tar -C frontend -czf "dist/guardian-frontend-${GITHUB_REF_NAME}.tar.gz" dist
           ls -l dist
+
+      - name: Upload frontend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  publish:
+    name: Publish release
+    needs: [notes, backend, frontend]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      # 环境变量模板随本 tag 的源码一起附到下载页，与二进制包内的副本同源
+      - name: Attach env template
+        run: cp backend/.env-example "dist/env-example-${GITHUB_REF_NAME}"
 
       - name: Publish release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          ls -l dist
           gh release create "$GITHUB_REF_NAME" \
             --title "$GITHUB_REF_NAME" \
-            --notes-file "${{ steps.notes.outputs.file }}" \
+            --notes-file "${{ needs.notes.outputs.file }}" \
             dist/*
