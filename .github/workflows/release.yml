@@ -39,7 +39,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # gnu 目标在原生 runner 上直接编译，不交叉编译
+          # 四个目标都在对应架构的原生 runner 上编译，不做交叉编译
           - runner: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
             arch: x86_64
@@ -50,13 +50,12 @@ jobs:
             arch: aarch64
             libc: gnu
             musl: false
-          # musl 目标静态链接：x86_64 在原生 runner 上直接编，aarch64 需要交叉工具链
           - runner: ubuntu-24.04
             target: x86_64-unknown-linux-musl
             arch: x86_64
             libc: musl
             musl: true
-          - runner: ubuntu-24.04
+          - runner: ubuntu-24.04-arm
             target: aarch64-unknown-linux-musl
             arch: aarch64
             libc: musl
@@ -71,26 +70,14 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      # musl 静态链接需要对应的 musl C 工具链（aws-lc-rs 与 sqlx 都含 C 代码）。
-      # 上游 apt 只有 x86_64 的 musl-tools；aarch64 的 musl gcc 由 musl.cc 的预编译包提供，
-      # 不能用 aarch64-linux-gnu-gcc 充数：那是 glibc 工具链，链接 musl 目标会缺 stat64 等符号。
-      - name: Install musl toolchain (x86_64)
-        if: matrix.musl && matrix.arch == 'x86_64'
+      # musl 静态链接需要 musl 的 C 工具链（aws-lc-rs 与 sqlx 都含 C 代码）。
+      # musl-tools 在 noble 的 amd64 与 arm64 都有，两个架构都用 apt 装，不引入外部下载。
+      - name: Install musl toolchain
+        if: matrix.musl
         run: |
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y musl-tools
-
-      - name: Install musl toolchain (aarch64)
-        if: matrix.musl && matrix.arch == 'aarch64'
-        run: |
-          set -euo pipefail
-          curl -sfL -o /tmp/aarch64-linux-musl-cross.tgz \
-            https://musl.cc/aarch64-linux-musl-cross.tgz
-          sudo tar -xzf /tmp/aarch64-linux-musl-cross.tgz -C /opt
-          echo "/opt/aarch64-linux-musl-cross/bin" >> "$GITHUB_PATH"
-          echo "CC_aarch64_unknown_linux_musl=aarch64-linux-musl-gcc" >> "$GITHUB_ENV"
-          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-musl-gcc" >> "$GITHUB_ENV"
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2

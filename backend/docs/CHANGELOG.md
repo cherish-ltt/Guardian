@@ -26,8 +26,9 @@
 
 ### 构建
 
-- `aarch64-unknown-linux-musl` 用 musl.cc 的预编译工具链交叉编译；
-  不能用 `aarch64-linux-gnu-gcc` 充当 musl 链接器（glibc 工具链，会因缺 `stat64` 等符号链接失败）。
+- 四个目标都在对应架构的原生 runner 上编译，musl 目标的 C 工具链来自 apt 的 `musl-tools`
+  （noble 的 amd64 与 arm64 都有）；不能用 `aarch64-linux-gnu-gcc` 充当 musl 链接器
+  （glibc 工具链，会因缺 `stat64` 等符号链接失败）。
 
 ## [0.4.0] - 2026-10-18
 

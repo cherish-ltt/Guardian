@@ -20,7 +20,8 @@
   - `.github/workflows/release.yml`：推送 `v*.*.*` tag 时构建前后端产物并发布 GitHub Release。
     后端二进制按「架构 × libc」出四个包：`x86_64-linux-gnu`、`aarch64-linux-gnu`、
     `x86_64-linux-musl`、`aarch64-linux-musl`（gnu 动态链接 glibc，musl 静态链接）；
-    gnu 目标在原生 runner 上编译，aarch64-musl 用 musl.cc 的预编译工具链交叉编译；
+    四个目标都在对应架构的原生 runner 上编译（x86_64 用 `ubuntu-24.04`，aarch64 用
+    `ubuntu-24.04-arm`），musl 目标的 C 工具链来自 apt 的 `musl-tools`，不引入外部下载；
     前端产物与架构无关只构建一份；下载页另附本 tag 的 `.env-example`
     （文件名带版本，如 `env-example-v0.4.1`）。
   - 工作流都必须放在仓库根目录（GitHub 只识别根下的 `.github/workflows/`），
