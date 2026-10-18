@@ -66,13 +66,12 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist/stage
-          # 解压即可部署：二进制放根位置，与 migrations、环境变量模板并列
+          # 只打二进制与环境变量模板：迁移 SQL 由 sqlx::migrate! 在编译期嵌入，运行时不再读目录
           cp backend/target/release/guardian-backend dist/stage/
           cp backend/.env-example dist/stage/
-          cp -r backend/migrations dist/stage/
           tar -C dist/stage -czf \
             "dist/guardian-backend-${GITHUB_REF_NAME}-linux-${{ matrix.arch }}.tar.gz" \
-            guardian-backend migrations .env-example
+            guardian-backend .env-example
           rm -rf dist/stage
           tar -tzf "dist/guardian-backend-${GITHUB_REF_NAME}-linux-${{ matrix.arch }}.tar.gz"
           ls -l dist
