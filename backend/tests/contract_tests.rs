@@ -305,7 +305,15 @@ fn segments_match(declared: &str, registered: &str) -> bool {
 /// axum 0.8 的 `Router` 没有公开的路由枚举接口，`Debug` 是唯一能看到实际注册内容的
 /// 途径。格式变了就解析不出来，此时函数直接 panic，不会静默返回空集让断言空转。
 fn registered_routes() -> Vec<(String, String)> {
-    use std::collections::HashMap;
+    use std::collections::BTreeMap;
+
+    /// 同一条路由的 Debug 片段会分散在多个 `RouteId(n)` 里（路径在 node 段、
+    /// 方法在 routes 段），因此按 RouteId 汇总后再拆成 `(方法, 路径)`。
+    #[derive(Default)]
+    struct RouteEntry {
+        path: Option<String>,
+        verbs: Vec<String>,
+    }
 
     let debug = format!("{:?}", guardian_backend::api::router());
     // 兜底路由（`/` 与 `/{*...}`）不属于业务契约，且 RouteId 会与真实路由重号。
@@ -314,15 +322,15 @@ fn registered_routes() -> Vec<(String, String)> {
         .next()
         .expect("Debug 输出包含 fallback_router 之前的部分");
 
-    let mut paths: HashMap<u32, String> = HashMap::new();
-    let mut methods: HashMap<u32, Vec<String>> = HashMap::new();
+    let mut entries: BTreeMap<u32, RouteEntry> = BTreeMap::new();
     for chunk in main.split("RouteId(").skip(1) {
         let (id, rest) = chunk.split_once("): ").expect("RouteId 后紧跟 `): `");
         let id: u32 = id.trim().parse().expect("RouteId 内的数字");
+        let entry = entries.entry(id).or_default();
 
         if let Some(quoted) = rest.strip_prefix('"') {
             let (path, _) = quoted.split_once('"').expect("路径字符串以引号结束");
-            paths.insert(id, path.to_string());
+            entry.path = Some(path.to_string());
             continue;
         }
         let Some(index) = rest.find("allow_header: Bytes(b\"") else {
@@ -331,22 +339,20 @@ fn registered_routes() -> Vec<(String, String)> {
         let tail = &rest[index + "allow_header: Bytes(b\"".len()..];
         let (allow, _) = tail.split_once('"').expect("allow_header 以引号结束");
         // `GET` 会自动带上 `HEAD`，它不是单独注册的业务方法。
-        let verbs = allow
+        entry.verbs = allow
             .split(',')
             .filter(|verb| !verb.is_empty() && *verb != "HEAD")
             .map(str::to_string)
             .collect();
-        methods.insert(id, verbs);
     }
 
-    assert!(!paths.is_empty(), "未能从 Router 的 Debug 输出解析出路径");
+    assert!(!entries.is_empty(), "未能从 Router 的 Debug 输出解析出路由");
+
     let mut endpoints = Vec::new();
-    for (id, path) in paths {
-        let verbs = methods
-            .get(&id)
-            .unwrap_or_else(|| panic!("路由 {path} 缺少方法列表"));
-        assert!(!verbs.is_empty(), "路由 {path} 没有任何方法");
-        for verb in verbs {
+    for entry in entries.values() {
+        let path = entry.path.as_deref().expect("每条路由都应有路径");
+        assert!(!entry.verbs.is_empty(), "路由 {path} 没有任何方法");
+        for verb in &entry.verbs {
             endpoints.push((verb.clone(), format!("/api/v1{path}")));
         }
     }
