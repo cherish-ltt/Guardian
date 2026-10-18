@@ -7,10 +7,16 @@ on:
       - "frontend/**.ts"
       - "frontend/**.vue"
       - "frontend/**.json"
+      # 样式层没有编译期检查，改错只能在页面上发现
+      - "frontend/src/styles/**.css"
+      # 回归脚本不参与构建，但它是文档里给的可执行入口
+      - "frontend/scripts/**"
       - "frontend/package.json"
       - "frontend/package-lock.json"
       - "frontend/index.html"
       - "frontend/vite.config.ts"
+      - "frontend/tsconfig.json"
+      - "frontend/README.md"
       - ".github/workflows/frontend.yml"
   pull_request:
     branches: [ "main", "master" ]
@@ -18,10 +24,16 @@ on:
       - "frontend/**.ts"
       - "frontend/**.vue"
       - "frontend/**.json"
+      # 样式层没有编译期检查，改错只能在页面上发现
+      - "frontend/src/styles/**.css"
+      # 回归脚本不参与构建，但它是文档里给的可执行入口
+      - "frontend/scripts/**"
       - "frontend/package.json"
       - "frontend/package-lock.json"
       - "frontend/index.html"
       - "frontend/vite.config.ts"
+      - "frontend/tsconfig.json"
+      - "frontend/README.md"
       - ".github/workflows/frontend.yml"
 
 concurrency:
