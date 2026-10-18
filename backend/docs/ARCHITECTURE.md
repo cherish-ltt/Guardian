@@ -60,56 +60,77 @@ src
 src
 ├─ api
 │  ├─ controllers
-│  │  ├─ auth_controller.rs
-│  │  ├─ example_controller.rs
-│  │  ├─ system_controller.rs
-│  │  └─ transaction_controller.rs
+│  │  ├─ admin                   # 后台管理：7 个资源 + 模块汇总
+│  │  │  ├─ users.rs  roles.rs  menus.rs  depts.rs  posts.rs
+│  │  │  ├─ dicts.rs  configs.rs
+│  │  │  └─ mod.rs
+│  │  ├─ auth_controller.rs      # 登录、验证码、路由、改密
+│  │  ├─ account_controller.rs   # 本人资料与 2FA
+│  │  ├─ monitor_controller.rs   # 操作 / 登录日志
+│  │  ├─ dashboard_controller.rs
+│  │  ├─ generator_controller.rs
+│  │  ├─ system_controller.rs    # 健康检查
+│  │  ├─ example_controller.rs   # 骨架示例
+│  │  ├─ transaction_controller.rs
+│  │  └─ mod.rs
 │  ├─ dto
-│  │  ├─ auth.rs
-│  │  ├─ example.rs
-│  │  ├─ system.rs
-│  │  └─ transaction.rs
+│  │  ├─ admin.rs  auth.rs  example.rs  system.rs  transaction.rs
+│  │  └─ mod.rs
 │  ├─ extractors
-│  │  └─ current_user.rs
-│  └─ mod.rs
+│  │  ├─ admin_user.rs           # 后台令牌 + 权限码
+│  │  ├─ current_user.rs         # 骨架令牌
+│  │  ├─ api_json.rs             # 请求体反序列化失败转 400
+│  │  ├─ client_source.rs        # 可信代理链下的真实来源
+│  │  └─ mod.rs
+│  └─ mod.rs                     # 合并 9 个 controller 路由
 ├─ domain
-│  ├─ models
-│  │  ├─ auth.rs
-│  │  ├─ example.rs
-│  │  ├─ system.rs
-│  │  └─ transaction.rs
+│  ├─ models                   # 13 个模型文件：identity、system、system_admin、
+│  │                          # account、audit_log、monitor、dashboard、generator、
+│  │                          # auth、example、transaction、pagination、mod
 │  ├─ services
-│  │  ├─ auth.rs
-│  │  ├─ example.rs
-│  │  ├─ system.rs
-│  │  └─ transaction.rs
+│  │  ├─ admin                 # 10 个后台用例：users/roles/menus/depts/posts/
+│  │  │                        # dicts/configs/logs/graph/mod
+│  │  ├─ admin_auth.rs  account.rs  audit.rs  auth.rs  dashboard.rs
+│  │  ├─ generator.rs  monitor.rs  system.rs  example.rs  transaction.rs
+│  │  └─ mod.rs
 │  ├─ constants.rs
 │  ├─ error.rs
+│  ├─ mod.rs
 │  └─ repositories
-│     └─ mod.rs            # 仅说明边界，仓储接口在 infrastructure
-├─ entities
-│  ├─ transfer_account.rs
-│  ├─ transfer_audit.rs
-│  ├─ transfer_record.rs
+│     └─ mod.rs                 # 仅说明边界，仓储接口在 infrastructure
+├─ entities                     # SeaORM 实体，每表一个文件（sys_* / gen_* / transfer_*）
 │  └─ mod.rs
 ├─ infrastructure
 │  ├─ databases
-│  │  ├─ mod.rs
-│  │  └─ schema.rs         # 老库补列/补索引/幂等种子（建表在 migrations/）
-│  ├─ repositories
-│  │  ├─ mod.rs
-│  │  └─ transaction.rs    # 转账仓储接口 + SeaORM 实现
+│  │  ├─ mod.rs                 # 连接、迁移、播种入口
+│  │  ├─ schema.rs              # 老库补列/补索引/幂等种子（建表在 migrations/）
+│  │  └─ seed.rs                # 后台演示数据
+│  ├─ repositories              # 仓储：接口 + SeaORM 实现
+│  │  └─ mod.rs
 │  ├─ services
-│  │  └─ jwt.rs
-│  ├─ config.rs
+│  │  ├─ auth_store.rs          # 会话与验证码存储接口（Redis / 内存）
+│  │  ├─ cache_store.rs  redis_store.rs  two_factor.rs  jwt.rs
+│  │  └─ mod.rs
+│  ├─ ip_location.rs            # 离线归属地查询
+│  ├─ config.rs                 # AppConfig::from_env 与全部启动校验
 │  └─ mod.rs
-├─ services
-│  ├─ auth.rs
-│  ├─ example.rs
-│  ├─ system.rs
-│  └─ transaction.rs       # 事务边界所在层
+├─ middleware
+│  ├─ stack.rs                  # 中间件栈装配顺序
+│  ├─ trace.rs  diagnostics.rs  error_response.rs
+│  ├─ audit.rs                  # 写操作留痕与 AUDIT_ROUTES
+│  ├─ client_ip.rs  client_limits.rs
+│  └─ mod.rs
+├─ services                     # 用例实现层，事务边界所在层
+│  ├─ account                  # login / profile / security
+│  ├─ admin                    # 与 domain/services/admin 一一对应
+│  ├─ admin_auth.rs  audit.rs  auth.rs  dashboard.rs  example.rs
+│  ├─ generator.rs  monitor.rs  system.rs  transaction.rs
+│  ├─ hot_cache.rs             # 基础数据缓存与写屏障
+│  ├─ support.rs
+│  └─ mod.rs
 ├─ util
-│  └─ password.rs
+│  ├─ csv.rs  password.rs  time.rs  user_agent.rs
+│  └─ mod.rs
 ├─ container.rs
 ├─ create_app.rs
 ├─ docs.rs
@@ -119,6 +140,8 @@ src
 ├─ main.rs
 └─ response.rs
 ```
+
+迁移文件在 `migrations/`（`0001`–`0004`），不在 `src` 下。
 
 ## 每层负责什么
 
