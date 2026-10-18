@@ -291,7 +291,8 @@ npm run build      # 产出 dist/
 - 备份对象是 SQLite 库文件及独立保管的 `TWO_FACTOR_KEY`；Redis 存验证码、会话和可重建业务缓存，可丢弃但会使用户重新登录。
   停服或用 `sqlite3 .backup` 做一致性备份，不要直接拷贝正在写入的库文件。
 - 上线前必须按 [生产环境注意事项](../backend/README.md#生产环境注意事项) 替换示例密钥与默认口令、
-  清理演示数据；`docs/CHANGELOG.md` 与 `backend/AGENTS.md` 记录了口令与种子数据的来源。
+  清理演示数据；[backend/docs/CHANGELOG.md](../backend/docs/CHANGELOG.md) 与 `backend/AGENTS.md`
+  记录了口令与种子数据的来源。
 - 数据库文件不要入版本库；表结构与种子数据由启动流程自动维护。
 
 ## 上线检查清单

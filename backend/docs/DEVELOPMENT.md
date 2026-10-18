@@ -49,4 +49,4 @@ let ok = verify_password("S3cure-Password!", &hashed)?;
    `cargo check --release --features docs`、`cargo test --features docs`。
 
 依赖与 feature 的收紧规则（含 `axum` / `sea-orm` 关默认集、SQLite 不启用 TLS 等）
-见 [AGENTS.md](AGENTS.md) 第 10.12 节。
+见 [AGENTS.md](../AGENTS.md) 第 10.12 节。
