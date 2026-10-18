@@ -3,8 +3,9 @@ import type { HttpClient } from './http'
 export interface LoginRequest {
   username: string
   password: string
-  captcha: string
-  captchaUuid: string
+  /** 参数 sys.account.captchaEnabled 关闭时后端不要求，对应 LoginCommand 里的 Option */
+  captcha?: string
+  captchaUuid?: string
 }
 
 export interface Profile {
@@ -23,6 +24,8 @@ export interface Enrollment { secret: string; otpauthUrl: string; expiresIn: num
 export interface RecoveryCodes { recoveryCodes: string[] }
 
 export interface CaptchaResponse {
+  /** 参数 sys.account.captchaEnabled 为 false 时为 false，此时 uuid / code 为空串 */
+  enabled: boolean
   uuid: string
   code: string
 }

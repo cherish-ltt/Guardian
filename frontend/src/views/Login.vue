@@ -24,6 +24,8 @@ const formError = ref('')
 const captchaCode = ref('')
 const captchaUuid = ref('')
 const captchaLoading = ref(false)
+/* 开关关闭时后端不生成验证码，登录页同步隐藏输入框，也不再做非空校验 */
+const captchaEnabled = ref(true)
 const root = ref<HTMLElement | null>(null)
 const card = ref<HTMLElement | null>(null)
 const succeeded = ref(false)
@@ -99,9 +101,11 @@ async function refreshCaptcha() {
   captchaLoading.value = true
   try {
     const res = await authApi.captcha()
+    captchaEnabled.value = res.enabled
     captchaUuid.value = res.uuid
     captchaCode.value = res.code
   } catch {
+    captchaEnabled.value = true
     captchaUuid.value = ''
     captchaCode.value = ''
     formError.value = '无法连接服务，请确认后端已启动'
@@ -116,12 +120,17 @@ async function submit() {
   errors.value = validate(form, {
     username: [required('请输入账号')],
     password: [required('请输入密码')],
-    captcha: [required('请输入验证码')],
+    ...(captchaEnabled.value ? { captcha: [required('请输入验证码')] } : {}),
   })
   if (Object.keys(errors.value).length) return
   submitting.value = true
   try {
-    const user = await login({ username: form.username.trim(), password: form.password, captcha: form.captcha.trim(), captchaUuid: captchaUuid.value }, remember.value)
+    const credentials = { username: form.username.trim(), password: form.password }
+    // 开关关闭时不传验证码字段，避免把空串当成本次提交的凭据
+    const user = await login(
+      captchaEnabled.value ? { ...credentials, captcha: form.captcha.trim(), captchaUuid: captchaUuid.value } : credentials,
+      remember.value,
+    )
     const redirect = typeof route.query.redirect === 'string' && route.query.redirect.startsWith('/') ? route.query.redirect : '/'
     if (!user) {
       form.password = ''
@@ -279,7 +288,7 @@ onBeforeUnmount(() => {
             <Field label="密码" :error="errors.password">
               <TextInput v-model="form.password" type="password" icon="lock" placeholder="请输入密码" autocomplete="current-password" :invalid="!!errors.password" />
             </Field>
-            <Field label="验证码" :error="errors.captcha">
+            <Field v-if="captchaEnabled" label="验证码" :error="errors.captcha">
               <div class="captcha-row">
                 <TextInput v-model="form.captcha" icon="shield" placeholder="请输入右侧字符" :maxlength="6" autocomplete="off" :invalid="!!errors.captcha" />
                 <button type="button" class="captcha-box m-groove" :disabled="captchaLoading" aria-label="看不清，换一张" title="看不清，换一张" @click="refreshCaptcha">
