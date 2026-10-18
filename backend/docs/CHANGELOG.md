@@ -9,6 +9,32 @@
 > [AxumServiceScaffold](https://github.com/cherish-ltt/AxumServiceScaffold)。
 > 下方 `0.6.0` 及更早的条目属于上游项目的历史记录，版本号与本项目不连续。
 
+## [0.3.0] - 2026-10-18
+
+本次把登录验证码开关做成真正生效的功能，并统一前后端版本号。
+分前后端的发布说明见 [docs/v0.3.0.md](../../docs/v0.3.0.md)。
+
+### 新增
+
+- **登录验证码开关**：`sys.account.captchaEnabled` 重新种入 `sys_config`（`builtin = 0`，
+  可在「参数配置」页直接开关）。关闭时 `GET /api/v1/auth/captcha` 返回 `enabled = false`
+  且不生成验证码、不写 Redis，`POST /api/v1/auth/login` 跳过验证码校验；
+  参数缺失时按开启处理，不会因读不到参数而放宽登录。`CaptchaChallenge` 相应增加
+  `enabled` 字段，登录页据此隐藏验证码输入框。
+
+### 变更
+
+- **版本号统一到 `0.3.0`**：`backend/Cargo.toml`、`frontend/package.json`、根 README 徽章
+  与 `src/api/dto/system.rs` 的 OpenAPI 示例同步。
+
+### 测试
+
+- `tests/admin_api_tests.rs` 新增 `captcha_is_enabled_by_default` 与
+  `disabled_captcha_skips_verification`，后者同时断言关闭后口令仍被校验；
+  `config_flow_and_export` 的参数总数断言改为 3 条。
+- 前端 `src/api/__tests__/auth.test.ts` 新增关闭态用例，断言 `captcha()` 返回值与
+  登录请求体不包含验证码字段。
+
 ## [0.2.0] - 2026-10-17
 
 本次把上游 `v0.7.0`（客户端保护、低噪声诊断与版本可追溯）的功能原样同步进来，

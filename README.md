@@ -9,7 +9,7 @@
     <img src="https://img.shields.io/badge/rust-1.99.0+-orange.svg" alt="rust"/>
   </a>
   <a href="https://github.com/cherish-ltt/Guardian">
-    <img src="https://img.shields.io/badge/version-v0.2.0-blue.svg" alt="version"/>
+    <img src="https://img.shields.io/badge/version-v0.3.0-blue.svg" alt="version"/>
   </a>
   <a href="https://github.com/cherish-ltt/Guardian">
     <img src="https://img.shields.io/badge/status-stable-green.svg" alt="status"/>
@@ -107,6 +107,7 @@ npm run build
 ## 文档导航
 
 - 生产部署（真实客户端 IP、反向代理 / CDN、上线清单）：[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
+- 各版本发布说明（前后端分列）：[docs](docs)
 - 后端总览与运行说明：[backend/README.md](backend/README.md)
 - 后台模块与接口契约：[backend/docs/ADMIN.md](backend/docs/ADMIN.md)
 - 架构、中间件、日志、事务、响应结构、测试：[backend/docs](backend/docs)
