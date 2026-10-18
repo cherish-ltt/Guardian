@@ -32,6 +32,12 @@
   - 内容按「后端」「前端」两节分别罗列本次变动，没有改动的部分保留小节标题并写「无」；
   - `release.yml` 会读 `docs/version/<tag>.md` 作为 Release 正文，文件缺失时发布失败；
   - 新增版本时必须先补该文件再打 tag，并同步 [backend/docs/CHANGELOG.md](backend/docs/CHANGELOG.md)。
+- [docs/version/UNRELEASE.md](docs/version/UNRELEASE.md) 累积下一次发布要带上的变更：
+  - 日常提交如果改动了对外行为、配置项或部署方式，在同一提交里往这个文件补一条，
+    小节结构与正式发布说明一致（按「后端」「前端」分节，无改动的写「无」）；
+  - **发版时必须从这里取出更新记录**：新增 `vX.Y.Z.md` 时把 `UNRELEASE.md` 的内容并入，
+    作为发布说明与 Release 正文的一部分，而不是只按本 tag 的提交历史另写一遍；
+  - 并完后清空 `UNRELEASE.md`（保留标题、说明与两个小节标题），下一轮变更重新累积。
 - 生产部署前必须处理后端 README 的「生产环境注意事项」与 `backend/AGENTS.md` 第 10.11 节列出的
   演示数据与默认口令，并按 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) 配置可信代理与网关。
 - 部署说明统一放在仓库根 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)，由根 README 的「文档导航」
