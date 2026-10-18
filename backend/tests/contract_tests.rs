@@ -1,8 +1,10 @@
 //! 端点契约矩阵：把 Router 上注册的全部接口当成对外契约逐条锁定。
 //!
-//! 三张表与 `src/api/controllers` 的路由注册一一对应，共 83 个 `(方法, 路径)`：
-//! 需要权限码的 64 个、仅需登录的 10 个、公开的 9 个。表格驱动的目的是让
-//! 「新增接口但忘了加鉴权」这类回归在测试里立刻暴露，而不是漏到线上。
+//! 四张表与 `src/api/controllers` 的路由注册一一对应，共 91 个 `(方法, 路径)`：
+//! 需要权限码的 65 个、仅需登录的 12 个、脚手架登录态的 4 个、公开的 10 个。
+//! 表格驱动的目的是让「新增接口但忘了加鉴权」这类回归在测试里立刻暴露，
+//! 而不是漏到线上；`endpoint_tables_cover_every_registered_route` 会真的枚举
+//! Router 已注册的路径与方法，与本文件的四张表双向比对。
 //!
 //! 断言的是对外可观测语义：HTTP 状态码、统一响应体的 `code` 与 `message`，
 //! 文案与 Spring 版逐字对齐（见 `docs/ADMIN.md`）。
@@ -217,26 +219,139 @@ fn body_of(method: &str) -> Option<Value> {
     matches!(method, "POST" | "PUT" | "PATCH").then(|| json!({"password": "invalid-password"}))
 }
 
-/// 三张表必须覆盖 Router 上注册的全部端点，漏掉一个就说明表没跟上路由。
+/// 四张表必须与 Router 上注册的端点完全一致：漏登记或多登记都会失败。
+///
+/// 这里不是数一遍表长就完事，而是从 `Router` 的 `Debug` 输出里读出实际注册的
+/// 路径与方法（axum 0.8 没有公开的枚举接口），再和四张表双向比对：
+/// 新增路由而没登记会报 `未登记`，删了路由而表没跟上会报 `已失效`。
 #[test]
 fn endpoint_tables_cover_every_registered_route() {
-    assert_eq!(PERMISSION_ENDPOINTS.len(), 65);
-    assert_eq!(AUTH_ENDPOINTS.len(), 12);
-    assert_eq!(SCAFFOLD_AUTH_ENDPOINTS.len(), 4);
-    assert_eq!(PUBLIC_ENDPOINTS.len(), 10);
-
-    let mut all: Vec<(&str, &str)> = PERMISSION_ENDPOINTS
+    let mut declared: Vec<(String, String)> = PERMISSION_ENDPOINTS
         .iter()
-        .map(|(method, path, _)| (*method, *path))
-        .chain(AUTH_ENDPOINTS.iter().copied())
-        .chain(SCAFFOLD_AUTH_ENDPOINTS.iter().copied())
-        .chain(PUBLIC_ENDPOINTS.iter().copied())
+        .map(|(method, path, _)| ((*method).to_string(), (*path).to_string()))
+        .chain(
+            AUTH_ENDPOINTS
+                .iter()
+                .copied()
+                .chain(SCAFFOLD_AUTH_ENDPOINTS.iter().copied())
+                .chain(PUBLIC_ENDPOINTS.iter().copied())
+                .map(|(method, path)| (method.to_string(), path.to_string())),
+        )
         .collect();
-    let total = all.len();
-    all.sort_unstable();
-    all.dedup();
+    declared.sort();
+    let total = declared.len();
+    declared.dedup();
+    assert_eq!(declared.len(), total, "四张表之间存在重复的端点");
 
-    assert_eq!(all.len(), total, "三张表之间存在重复的端点");
+    let mut registered = registered_routes();
+    registered.sort();
+
+    // 表里写的是具体 ID（如 `/system/users/1`），Router 里是路径参数（`{id}`），
+    // 所以不能直接比对字符串，要按段位对齐：字面相同的段必须相等，
+    // Router 侧的 `{...}` 段可以匹配表里的任意非空段。
+    let mut claimed: Vec<&(String, String)> = Vec::new();
+    let mut stale: Vec<&(String, String)> = Vec::new();
+    for endpoint in &declared {
+        let mut candidates: Vec<&(String, String)> = registered
+            .iter()
+            .filter(|other| other.0 == endpoint.0 && other.1 == endpoint.1)
+            .collect();
+        if candidates.is_empty() {
+            candidates = registered
+                .iter()
+                .filter(|other| other.0 == endpoint.0 && segments_match(&endpoint.1, &other.1))
+                .collect();
+        }
+        match candidates.as_slice() {
+            [] => stale.push(endpoint),
+            [hit] => claimed.push(hit),
+            _ => panic!("端点 {endpoint:?} 同时匹配多条路由：{candidates:?}"),
+        }
+    }
+
+    let missing: Vec<_> = registered
+        .iter()
+        .filter(|endpoint| !claimed.contains(endpoint))
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "Router 已注册但四张表未登记的端点：{missing:?}"
+    );
+    assert!(
+        stale.is_empty(),
+        "四张表登记了但 Router 未注册的端点：{stale:?}"
+    );
+    assert_eq!(
+        claimed.len(),
+        registered.len(),
+        "多条表项映射到了同一条路由，说明表里有重复登记"
+    );
+}
+
+/// 表里的具体路径能否落到 Router 的参数化路径上。
+fn segments_match(declared: &str, registered: &str) -> bool {
+    let declared: Vec<&str> = declared.trim_matches('/').split('/').collect();
+    let registered: Vec<&str> = registered.trim_matches('/').split('/').collect();
+
+    declared.len() == registered.len()
+        && declared
+            .iter()
+            .zip(registered.iter())
+            .all(|(left, right)| right.starts_with('{') || left == right)
+}
+
+/// 从 `api::router()` 的 `Debug` 输出里还原 `(方法, 完整路径)`。
+///
+/// axum 0.8 的 `Router` 没有公开的路由枚举接口，`Debug` 是唯一能看到实际注册内容的
+/// 途径。格式变了就解析不出来，此时函数直接 panic，不会静默返回空集让断言空转。
+fn registered_routes() -> Vec<(String, String)> {
+    use std::collections::HashMap;
+
+    let debug = format!("{:?}", guardian_backend::api::router());
+    // 兜底路由（`/` 与 `/{*...}`）不属于业务契约，且 RouteId 会与真实路由重号。
+    let main = debug
+        .split("fallback_router:")
+        .next()
+        .expect("Debug 输出包含 fallback_router 之前的部分");
+
+    let mut paths: HashMap<u32, String> = HashMap::new();
+    let mut methods: HashMap<u32, Vec<String>> = HashMap::new();
+    for chunk in main.split("RouteId(").skip(1) {
+        let (id, rest) = chunk.split_once("): ").expect("RouteId 后紧跟 `): `");
+        let id: u32 = id.trim().parse().expect("RouteId 内的数字");
+
+        if let Some(quoted) = rest.strip_prefix('"') {
+            let (path, _) = quoted.split_once('"').expect("路径字符串以引号结束");
+            paths.insert(id, path.to_string());
+            continue;
+        }
+        let Some(index) = rest.find("allow_header: Bytes(b\"") else {
+            continue;
+        };
+        let tail = &rest[index + "allow_header: Bytes(b\"".len()..];
+        let (allow, _) = tail.split_once('"').expect("allow_header 以引号结束");
+        // `GET` 会自动带上 `HEAD`，它不是单独注册的业务方法。
+        let verbs = allow
+            .split(',')
+            .filter(|verb| !verb.is_empty() && *verb != "HEAD")
+            .map(str::to_string)
+            .collect();
+        methods.insert(id, verbs);
+    }
+
+    assert!(!paths.is_empty(), "未能从 Router 的 Debug 输出解析出路径");
+    let mut endpoints = Vec::new();
+    for (id, path) in paths {
+        let verbs = methods
+            .get(&id)
+            .unwrap_or_else(|| panic!("路由 {path} 缺少方法列表"));
+        assert!(!verbs.is_empty(), "路由 {path} 没有任何方法");
+        for verb in verbs {
+            endpoints.push((verb.clone(), format!("/api/v1{path}")));
+        }
+    }
+
+    endpoints
 }
 
 /// 后台端点缺令牌：统一 401 + 「未认证或登录已过期」，与「无权限」的 403 区分开。
