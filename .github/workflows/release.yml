@@ -21,10 +21,10 @@ jobs:
       - name: Resolve release notes
         id: notes
         run: |
-          # 发布说明按 tag 名取文件：v0.3.0 -> docs/v0.3.0.md
-          notes_file="docs/${GITHUB_REF_NAME}.md"
+          # 发布说明按 tag 名取文件：v0.3.0 -> docs/version/v0.3.0.md
+          notes_file="docs/version/${GITHUB_REF_NAME}.md"
           if [ ! -f "$notes_file" ]; then
-            echo "缺少发布说明文件 $notes_file：每个版本必须在 docs/ 下提供分前后端的变动清单" >&2
+            echo "缺少发布说明文件 $notes_file：每个版本必须在 docs/version/ 下提供分前后端的变动清单" >&2
             exit 1
           fi
           echo "file=$notes_file" >> "$GITHUB_OUTPUT"

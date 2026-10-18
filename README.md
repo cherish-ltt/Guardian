@@ -107,7 +107,7 @@ npm run build
 ## 文档导航
 
 - 生产部署（真实客户端 IP、反向代理 / CDN、上线清单）：[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
-- 各版本发布说明（前后端分列）：[docs](docs)
+- 各版本发布说明（前后端分列）：[docs/version](docs/version)
 - 后端总览与运行说明：[backend/README.md](backend/README.md)
 - 后台模块与接口契约：[backend/docs/ADMIN.md](backend/docs/ADMIN.md)
 - 架构、中间件、日志、事务、响应结构、测试：[backend/docs](backend/docs)
