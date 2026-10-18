@@ -28,7 +28,9 @@
 查询逻辑与上游逐行一致，升级方式：按上述差异重新套用新版本的上游文件，并在本项目里跑一次
 
 ```bash
-IP_LOCATION_DB_PATH=/path/to/ip2region_v4.xdb cargo test --features docs
+IP_LOCATION_DB_PATH=/path/to/ip2region_v4.xdb \
+IP_LOCATION_V6_DB_PATH=/path/to/ip2region_v6.xdb \
+cargo test --features docs
 ```
 
 加上一次真实登录，确认 `sys_login_log.location` 仍是地名。

@@ -85,8 +85,8 @@ rg 'request diagnostic|route="/api/v1/transactions/\{id\}"' log/
   尤其是 `max_loads` 过小会让回源直接返回 `503`、`timeout_ms` 过大则会放大 Redis 阻塞。
 - `seed` 组输出 `admin_password=***(N chars)`、账号数量，以及每个账号的
   `user[i].username` / `nickname` / `email` / `dept_id`：用于核对「这台机器实际播种了哪些账号」，
-  口令不落日志。`ip_location` 组输出 `ip_location_db_path` 的实际路径或 `(not set)`，
-  排查日志地点只有「外网」档位时先看这一行。
+  口令不落日志。`ip_location` 组输出 `ip_location_db_path` 与 `ip_location_v6_db_path` 的实际路径或
+  `(not set)`，排查日志地点只有「外网」档位时先看这两行。
 - `middleware` 组还包含 `cors_allowed_origins` 与 `trusted_proxies`：跨域失败或来源 IP 记成代理地址时，
   以这两行的实际值为准，不要只看 `.env`。
 

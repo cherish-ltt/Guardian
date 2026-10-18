@@ -129,6 +129,8 @@ REDIS_URL=redis://127.0.0.1:6379
 REDIS_PASSWORD=
 # 留空表示不查 IP 地名，日志地点只区分本机 / 内网 / 外网
 IP_LOCATION_DB_PATH=
+# IPv6 地名库，与上一条互相独立；留空则 IPv6 来源的地点只区分本机 / 内网 / 外网
+IP_LOCATION_V6_DB_PATH=
 ```
 
 ### 2. 启动服务
@@ -188,7 +190,7 @@ SEED_USERS=ops_admin:运维管理员:ops@example.com:2
 | `sys_oper_log` / `sys_login_log` | 本地联调产生的日志 | 上线前清空 |
 | Redis | `captcha:*`、`auth:token:*`、`auth:user:*` | 切换环境时清空，避免旧会话残留 |
 | `log/` | 本地运行日志 | 不入库，部署时按需清理 |
-| 建议配置 | `.env` 的 `IP_LOCATION_DB_PATH`（默认空） | 配置后登录 / 操作日志的 `location` 列写入离线库地名，未配置只区分本机 / 内网 / 外网；库文件不随仓库分发，下载与更新见 [生产部署](../docs/DEPLOYMENT.md) |
+| 建议配置 | `.env` 的 `IP_LOCATION_DB_PATH` / `IP_LOCATION_V6_DB_PATH`（默认空） | 配置后登录 / 操作日志的 `location` 列写入离线库地名，未配置只区分本机 / 内网 / 外网；两个路径分别对应 IPv4 与 IPv6，库文件不随仓库分发，下载与更新见 [生产部署](../docs/DEPLOYMENT.md) |
 | `.env` | `MIDDLEWARE_TRUSTED_PROXIES`（默认空） | 部署在反向代理后时必须填写代理 IP/CIDR，否则所有用户共用代理 IP 的额度，日志里的来源也会记成代理地址；不要用 `*`（生产环境会拒绝启动）。各形态的填法见 [生产部署](../docs/DEPLOYMENT.md) |
 
 建议保留的默认数据（清掉会导致页面无法正常使用）：
