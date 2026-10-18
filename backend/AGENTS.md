@@ -40,20 +40,30 @@ on:
     paths:
       - "backend/**.rs"
       - "backend/**.proto"
+      - "backend/migrations/**.sql"
       - "backend/Cargo.toml"
       - "backend/Cargo.lock"
+      - "backend/vendor/**/Cargo.toml"
       - "backend/.rustfmt.toml"
       - "backend/.clippy.toml"
+      - "backend/.env-example"
+      - "backend/docs/**.md"
+      - "backend/AGENTS.md"
       - ".github/workflows/backend.yml"
   pull_request:
     branches: [ "main", "master" ]
     paths:
       - "backend/**.rs"
       - "backend/**.proto"
+      - "backend/migrations/**.sql"
       - "backend/Cargo.toml"
       - "backend/Cargo.lock"
+      - "backend/vendor/**/Cargo.toml"
       - "backend/.rustfmt.toml"
       - "backend/.clippy.toml"
+      - "backend/.env-example"
+      - "backend/docs/**.md"
+      - "backend/AGENTS.md"
       - ".github/workflows/backend.yml"
 
 env:

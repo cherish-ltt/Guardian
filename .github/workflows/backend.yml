@@ -6,20 +6,36 @@ on:
     paths:
       - "backend/**.rs"
       - "backend/**.proto"
+      # 迁移 SQL 的语法错误只在启动时才暴露，改它必须跑后端测试
+      - "backend/migrations/**.sql"
       - "backend/Cargo.toml"
       - "backend/Cargo.lock"
+      - "backend/vendor/**/Cargo.toml"
       - "backend/.rustfmt.toml"
       - "backend/.clippy.toml"
+      # 环境变量模板与代码里的默认值、启动校验绑定，改它要验证
+      - "backend/.env-example"
+      # 文档里写的是可执行命令，断链与失效命令需要能拦住
+      - "backend/docs/**.md"
+      - "backend/AGENTS.md"
       - ".github/workflows/backend.yml"
   pull_request:
     branches: [ "main", "master" ]
     paths:
       - "backend/**.rs"
       - "backend/**.proto"
+      # 迁移 SQL 的语法错误只在启动时才暴露，改它必须跑后端测试
+      - "backend/migrations/**.sql"
       - "backend/Cargo.toml"
       - "backend/Cargo.lock"
+      - "backend/vendor/**/Cargo.toml"
       - "backend/.rustfmt.toml"
       - "backend/.clippy.toml"
+      # 环境变量模板与代码里的默认值、启动校验绑定，改它要验证
+      - "backend/.env-example"
+      # 文档里写的是可执行命令，断链与失效命令需要能拦住
+      - "backend/docs/**.md"
+      - "backend/AGENTS.md"
       - ".github/workflows/backend.yml"
 
 env:
