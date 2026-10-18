@@ -19,7 +19,8 @@ npm run build
 ```
 
 默认地址 `http://localhost:5173`，`/api/v1` 代理到 `http://localhost:8080`，可用 `VITE_API_PROXY_TARGET`
-指定其他本地后端。后端准备（SQLite 与 Redis、默认账号）与生产环境清理清单见
+指定其他本地后端。该变量与 `VITE_API_BASE_URL` 一样可以从 `frontend/.env` 读取（写法 `VITE_API_PROXY_TARGET=http://…`），
+也可以直接作为 shell 环境变量传入，后者优先。后端准备（SQLite 与 Redis、默认账号）与生产环境清理清单见
 [后端说明](../backend/README.md)，接口清单见 [后台管理模块](../backend/docs/ADMIN.md)。
 
 前端请求的默认前缀是 `/api/v1`（`src/api/http.ts`），可用 `VITE_API_BASE_URL` 覆盖。
