@@ -97,7 +97,7 @@ repos:
       # cargo check：编译检查，不生成最终二进制
       - id: cargo-check
         name: cargo check 编译检查
-        entry: cargo check --manifest-path backend/Cargo.toml --all-targets --all-features
+        entry: cargo check --manifest-path backend/Cargo.toml --all-targets --features docs
         language: system
         files: '^backend/.*\.rs$'
         pass_filenames: false
@@ -105,7 +105,7 @@ repos:
       # clippy 静态分析：-D warnings 表示将警告视为错误
       - id: clippy
         name: clippy 静态分析
-        entry: cargo clippy --manifest-path backend/Cargo.toml --all-targets --all-features -- -D warnings
+        entry: cargo clippy --manifest-path backend/Cargo.toml --all-targets --features docs -- -D warnings
         language: system
         files: '^backend/.*\.rs$'
         pass_filenames: false
@@ -114,7 +114,7 @@ repos:
       # 如果测试较慢，可取消注释下一行将其移到 pre-push 阶段
       - id: test
         name: cargo test 测试
-        entry: cargo test --manifest-path backend/Cargo.toml --all-targets --all-features
+        entry: cargo test --manifest-path backend/Cargo.toml --all-targets --features docs
         language: system
         files: '^backend/.*\.rs$'
         pass_filenames: false

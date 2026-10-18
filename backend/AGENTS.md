@@ -220,8 +220,8 @@ msrv = "1.99.0"
   辅助函数里噪声过大）。改代码而不是调阈值。
 
 所有代码必须通过 `cargo clippy --all-targets --features docs -- -D warnings` 检查，无警告
-（与 CI 一致；`docs` feature 必须打开，否则文档代码不在检查范围内）。pre-commit 钩子用
-`--all-features --all-targets` 做本地兜底，当前可选 feature 只剩 `docs`。
+（与 CI 一致；`docs` feature 必须打开，否则文档代码不在检查范围内）。pre-commit 钩子与
+根 `README.md` 的验证命令用同一组参数，新增 feature 时只需改这一处口径。
 
 ---
 
