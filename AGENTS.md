@@ -18,9 +18,11 @@
   - `.github/workflows/backend.yml`：后端格式、Clippy、构建与测试。
   - `.github/workflows/frontend.yml`：前端依赖安装、单元测试与类型检查 / 构建。
   - `.github/workflows/release.yml`：推送 `v*.*.*` tag 时构建前后端产物并发布 GitHub Release。
-    后端二进制分 `x86_64` 与 `aarch64` 两个架构（各自在原生 runner 上编译，不交叉编译），
+    后端二进制按「架构 × libc」出四个包：`x86_64-linux-gnu`、`aarch64-linux-gnu`、
+    `x86_64-linux-musl`、`aarch64-linux-musl`（gnu 动态链接 glibc，musl 静态链接）；
+    gnu 目标在原生 runner 上编译，aarch64-musl 用 musl.cc 的预编译工具链交叉编译；
     前端产物与架构无关只构建一份；下载页另附本 tag 的 `.env-example`
-    （文件名带版本，如 `env-example-v0.3.0`）。
+    （文件名带版本，如 `env-example-v0.4.1`）。
   - 工作流都必须放在仓库根目录（GitHub 只识别根下的 `.github/workflows/`），
     用 `working-directory` 指向 `backend/` 与 `frontend/`。
   - `.pre-commit-config.yaml`：文件检查、密钥泄漏检测、ast-grep 规则与 Rust 钩子。

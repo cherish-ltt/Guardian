@@ -242,6 +242,20 @@ IP_LOCATION_V6_DB_PATH=/var/lib/guardian/ip2region_v6.xdb
 
 ## 启动与进程管理
 
+发布页提供预编译包，按「架构 × libc」分为四个，文件名形如
+`guardian-backend-v0.4.1-x86_64-linux-musl.tar.gz`：
+
+| 包名后缀 | 运行时 | 适用场景 |
+| --- | --- | --- |
+| `x86_64-linux-gnu` / `aarch64-linux-gnu` | 动态链接 glibc | 主流发行版（Debian / Ubuntu / RHEL），体积略小 |
+| `x86_64-linux-musl` / `aarch64-linux-musl` | 静态链接，无 libc 依赖 | Alpine、distroless 等 musl 发行版，或不想操心 glibc 版本 |
+
+解压后只有 `guardian-backend` 与 `.env-example` 两项。迁移 SQL 已由 `sqlx::migrate!` 在编译期
+嵌入二进制，包内不需要 `migrations/` 目录。不确定该用哪个时用 musl 包：静态链接，
+不会因目标机器的 glibc 版本过旧而启动失败。
+
+从源码构建：
+
 ```bash
 cd backend
 cargo build --release
