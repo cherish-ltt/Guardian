@@ -9,7 +9,6 @@ pub mod sys_config;
 pub mod sys_dept;
 pub mod sys_dict_data;
 pub mod sys_dict_type;
-pub mod sys_file;
 pub mod sys_login_log;
 pub mod sys_menu;
 pub mod sys_oper_log;

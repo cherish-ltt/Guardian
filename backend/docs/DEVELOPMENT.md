@@ -8,7 +8,8 @@
 
 1. 先在 `domain/models` 定义领域模型
 2. 在 `domain/services` 定义用例接口（仓储接口属于外圈，不放这里）
-3. 在 `entities` 新增实体，并在 `migrations/` 新增 sqlx 迁移文件（`0002_xxx.sql` 的 `CREATE TABLE`）；
+3. 在 `entities` 新增实体，并在 `migrations/` 新增 sqlx 迁移文件（`000N_xxx.sql` 的 `CREATE TABLE`）；
+   迁移只能追加，不能改已发布的文件（改会让已应用它的库 checksum 不匹配而拒启）；
    老库的补列、补索引与幂等种子写在 `infrastructure/databases/schema.rs`
 4. 在 `infrastructure/repositories` 写仓储接口与 SeaORM 适配器，方法接收 `C: ConnectionTrait`
 5. 在 `services` 写用例实现，**需要多步写入时在 `services/transaction.rs` 里找事务写法**

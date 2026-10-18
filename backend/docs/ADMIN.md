@@ -154,7 +154,8 @@ src/middleware/audit.rs                       写操作留痕
 
 ## 存储映射（MySQL → SQLite）
 
-- 表结构见 `migrations/0002_create_system_tables.sql`：17 张表，列名与 MySQL 版一致。
+- 表结构见 `migrations/0002_create_system_tables.sql`：16 张表，列名与 MySQL 版一致
+  （该文件原本建 17 张，`0005_drop_sys_file.sql` 删掉了从未使用的 `sys_file`）。
 - `DATETIME` 存 `TEXT`（`YYYY-MM-DD HH:MM:SS` 本地时间），字典序比较等价时间先后；
   查询用 `strftime` / `julianday` / `substr(x, 1, 16)` 等价 `NOW()` / `CURDATE()` / `DATE_FORMAT()`。
 - 种子数据在 `src/infrastructure/databases/seed.rs`：11 个部门、9 个岗位、6 个角色、

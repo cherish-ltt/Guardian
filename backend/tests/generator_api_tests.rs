@@ -19,7 +19,7 @@ async fn import_file_table(app: &axum::Router, token: &str) -> i64 {
         post_json_with_bearer(
             "/api/v1/tool/generator/import",
             token,
-            json!({ "tableNames": ["sys_file"] }),
+            json!({ "tableNames": ["sys_post"] }),
         ),
     )
     .await;
@@ -57,7 +57,7 @@ async fn importable_tables_mark_imported_rows_and_validate_requests() {
         .map(|table| table["tableName"].as_str().unwrap_or_default().to_string())
         .collect::<Vec<_>>();
     assert!(names.contains(&"sys_user".to_string()));
-    assert!(names.contains(&"sys_file".to_string()));
+    assert!(names.contains(&"sys_post".to_string()));
     assert!(names.contains(&"gen_table".to_string()));
     assert!(
         !names.iter().any(|name| name.starts_with("sqlite_")),
@@ -69,13 +69,13 @@ async fn importable_tables_mark_imported_rows_and_validate_requests() {
     let (_, filtered) = send(
         app.clone(),
         get_with_bearer(
-            "/api/v1/tool/generator/importable-tables?keyword=sys_file",
+            "/api/v1/tool/generator/importable-tables?keyword=sys_post",
             &token,
         ),
     )
     .await;
     assert_eq!(filtered["data"].as_array().expect("候选表").len(), 1);
-    assert_eq!(filtered["data"][0]["tableName"], "sys_file");
+    assert_eq!(filtered["data"][0]["tableName"], "sys_post");
 
     let (status, body) = send(
         app.clone(),
@@ -105,7 +105,7 @@ async fn importable_tables_mark_imported_rows_and_validate_requests() {
         post_json_with_bearer(
             "/api/v1/tool/generator/import",
             &token,
-            json!({ "tableNames": ["sys_file"] }),
+            json!({ "tableNames": ["sys_post"] }),
         ),
     )
     .await;
@@ -115,7 +115,7 @@ async fn importable_tables_mark_imported_rows_and_validate_requests() {
     let (_, candidates) = send(
         app.clone(),
         get_with_bearer(
-            "/api/v1/tool/generator/importable-tables?keyword=sys_file",
+            "/api/v1/tool/generator/importable-tables?keyword=sys_post",
             &token,
         ),
     )
@@ -130,10 +130,10 @@ async fn importable_tables_mark_imported_rows_and_validate_requests() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(page["data"]["total"], 1);
     let row = &page["data"]["rows"][0];
-    assert_eq!(row["tableName"], "sys_file");
-    assert_eq!(row["className"], "SysFile");
+    assert_eq!(row["tableName"], "sys_post");
+    assert_eq!(row["className"], "SysPost");
     assert_eq!(row["module"], "system");
-    assert_eq!(row["businessName"], "file");
+    assert_eq!(row["businessName"], "post");
     assert_eq!(row["synced"], true, "与 Spring 版一致：导入即标记为已生成");
     assert_eq!(
         row["tableComment"],
@@ -143,7 +143,7 @@ async fn importable_tables_mark_imported_rows_and_validate_requests() {
 
     let (_, searched) = send(
         app.clone(),
-        get_with_bearer("/api/v1/tool/generator/tables?keyword=SysFile", &token),
+        get_with_bearer("/api/v1/tool/generator/tables?keyword=SysPost", &token),
     )
     .await;
     assert_eq!(searched["data"]["total"], 1);
@@ -181,7 +181,7 @@ async fn columns_describe_sqlite_metadata() {
     .await;
     assert_eq!(status, StatusCode::OK);
     let columns = body["data"].as_array().expect("字段列表");
-    assert_eq!(columns.len(), 10);
+    assert_eq!(columns.len(), 11);
 
     // 主键不进表单与列表。
     assert_eq!(columns[0]["col"], "id");
@@ -193,37 +193,38 @@ async fn columns_describe_sqlite_metadata() {
     assert_eq!(columns[0]["list"], false);
     assert_eq!(columns[0]["required"], false);
 
-    // 含 name 的列默认作为模糊查询条件，NOT NULL 视为必填。
-    let original_name = &columns[1];
-    assert_eq!(original_name["col"], "original_name");
-    assert_eq!(original_name["javaField"], "originalName");
-    assert_eq!(original_name["javaType"], "String");
+    // 含 name / code 的列默认作为模糊查询条件，NOT NULL 视为必填。
+    let post_code = &columns[1];
+    assert_eq!(post_code["col"], "post_code");
+    assert_eq!(post_code["javaField"], "postCode");
+    assert_eq!(post_code["javaType"], "String");
     assert_eq!(
-        original_name["formType"], "文本域",
+        post_code["formType"], "文本域",
         "SQLite 的 TEXT 对应 MySQL 的 text"
     );
-    assert_eq!(original_name["query"], true);
-    assert_eq!(original_name["queryType"], "LIKE");
-    assert_eq!(original_name["required"], true);
+    assert_eq!(post_code["query"], true);
+    assert_eq!(post_code["queryType"], "LIKE");
+    assert_eq!(post_code["required"], true);
     assert_eq!(
-        original_name["comment"],
+        post_code["comment"],
         serde_json::Value::Null,
         "SQLite 无列注释"
     );
 
-    let size = columns
+    let sort = columns
         .iter()
-        .find(|column| column["col"] == "size")
-        .expect("size 列");
-    assert_eq!(size["javaType"], "Integer");
-    assert_eq!(size["formType"], "数字框");
-    assert_eq!(size["query"], false);
+        .find(|column| column["col"] == "sort")
+        .expect("sort 列");
+    assert_eq!(sort["javaType"], "Integer");
+    assert_eq!(sort["formType"], "数字框");
+    assert_eq!(sort["query"], false);
 
-    let url = columns
+    let status = columns
         .iter()
-        .find(|column| column["col"] == "url")
-        .expect("url 列");
-    assert_eq!(url["required"], true);
+        .find(|column| column["col"] == "status")
+        .expect("status 列");
+    assert_eq!(status["query"], true);
+    assert_eq!(status["required"], true);
 
     let create_time = columns
         .iter()
@@ -266,16 +267,16 @@ async fn preview_lists_seven_files_with_controller_active() {
     assert_eq!(
         names,
         vec![
-            "SysFile.java".to_string(),
-            "SysFileMapper.java".to_string(),
-            "SysFileService.java".to_string(),
-            "SysFileController.java".to_string(),
-            "sysFile.ts".to_string(),
+            "SysPost.java".to_string(),
+            "SysPostMapper.java".to_string(),
+            "SysPostService.java".to_string(),
+            "SysPostController.java".to_string(),
+            "sysPost.ts".to_string(),
             "index.vue".to_string(),
-            "sys_file_menu.sql".to_string(),
+            "sys_post_menu.sql".to_string(),
         ]
     );
-    assert_eq!(body["data"]["activeFile"], "SysFileController.java");
+    assert_eq!(body["data"]["activeFile"], "SysPostController.java");
     let code = body["data"]["code"].as_str().expect("默认展开的代码");
     assert_eq!(
         code,
@@ -288,48 +289,48 @@ async fn preview_lists_seven_files_with_controller_active() {
         "package com.scaffold.system.controller;\n\n\
          import org.springframework.web.bind.annotation.RequestMapping;\n\
          import org.springframework.web.bind.annotation.RestController;\n\n\
-         @RestController\n@RequestMapping(\"/api/system/sysFile\")\n\
-         public class SysFileController {\n}\n"
+         @RestController\n@RequestMapping(\"/api/system/sysPost\")\n\
+         public class SysPostController {\n}\n"
     );
     assert_eq!(
         files[1]["code"].as_str().expect("Mapper 代码"),
         "package com.scaffold.system.mapper;\n\nimport org.apache.ibatis.annotations.Mapper;\n\n\
-         @Mapper\npublic interface SysFileMapper {\n}\n"
+         @Mapper\npublic interface SysPostMapper {\n}\n"
     );
     assert_eq!(
         files[2]["code"].as_str().expect("Service 代码"),
         "package com.scaffold.system.service;\n\nimport org.springframework.stereotype.Service;\n\n\
-         @Service\npublic class SysFileService {\n}\n"
+         @Service\npublic class SysPostService {\n}\n"
     );
     assert_eq!(
         files[4]["code"].as_str().expect("前端 api 代码"),
-        "import { httpClient } from '@/api/http'\n\nexport const sysFileApi = {\n  \
-         list: (query?: Record<string, unknown>) => httpClient.get('/system/sysFile', query as any),\n}\n"
+        "import { httpClient } from '@/api/http'\n\nexport const sysPostApi = {\n  \
+         list: (query?: Record<string, unknown>) => httpClient.get('/system/sysPost', query as any),\n}\n"
     );
     assert_eq!(
         files[6]["code"].as_str().expect("菜单 SQL"),
-        "-- sys_file 菜单权限\n\
+        "-- sys_post 菜单权限\n\
          INSERT INTO sys_menu (id, parent_id, menu_name, menu_type, path, component, permission, sort, visible, status, create_by, update_by)\n\
-         SELECT COALESCE(MAX(id), 0) + 1, 0, 'SysFile管理', 'menu', '/system/sysFile', 'system/sysFile/index', 'system:sysFile:list', 1, 1, 1, 'system', 'system'\n\
+         SELECT COALESCE(MAX(id), 0) + 1, 0, 'SysPost管理', 'menu', '/system/sysPost', 'system/sysPost/index', 'system:sysPost:list', 1, 1, 1, 'system', 'system'\n\
          FROM sys_menu;\n"
     );
-    assert_eq!(files[6]["path"], "sql/sys_file_menu.sql");
+    assert_eq!(files[6]["path"], "sql/sys_post_menu.sql");
 
     // 实体类逐字段生成注释与类型；SQLite 全是 TEXT，因此不引入 LocalDateTime。
     let entity = files[0]["code"].as_str().expect("实体代码");
     assert!(
-        entity.starts_with("package com.scaffold.system.domain;\n\n\npublic class SysFile {\n")
+        entity.starts_with("package com.scaffold.system.domain;\n\n\npublic class SysPost {\n")
     );
     assert!(entity.contains("    /**  */\n    private Integer id;\n\n"));
-    assert!(entity.contains("    /**  */\n    private String originalName;\n\n"));
+    assert!(entity.contains("    /**  */\n    private String postCode;\n\n"));
     assert!(entity.ends_with("    private String updateTime;\n\n}\n"));
     assert!(!entity.contains("import java.time.LocalDateTime;"));
 
     // 前端页面取第一个参与列表展示的字段作为主字段。
     let view = files[5]["code"].as_str().expect("页面代码");
-    assert!(view.contains("const tableName = 'sys_file'"));
-    assert!(view.contains("const className = 'SysFile'"));
-    assert!(view.contains("const primaryField = 'originalName'"));
+    assert!(view.contains("const tableName = 'sys_post'"));
+    assert!(view.contains("const className = 'SysPost'"));
+    assert!(view.contains("const primaryField = 'postCode'"));
 
     let (status, body) = send(
         app.clone(),
@@ -366,9 +367,9 @@ async fn update_table_config_only_accepts_comment_and_synced() {
     let row = &page["data"]["rows"][0];
     assert_eq!(row["tableComment"], "附件表");
     assert_eq!(row["synced"], false);
-    assert_eq!(row["className"], "SysFile", "类名由表名推导，不接受覆盖");
+    assert_eq!(row["className"], "SysPost", "类名由表名推导，不接受覆盖");
     assert_eq!(row["module"], "system");
-    assert_eq!(row["businessName"], "file");
+    assert_eq!(row["businessName"], "post");
 
     let (status, body) = send(
         app.clone(),
@@ -399,7 +400,7 @@ async fn generate_and_download_returns_zip_with_every_file() {
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(body["data"]["tableName"], "sys_file");
+    assert_eq!(body["data"]["tableName"], "sys_post");
     assert_eq!(body["data"]["message"], "代码压缩包已准备就绪");
 
     let (status, body) = send(
@@ -433,19 +434,19 @@ async fn generate_and_download_returns_zip_with_every_file() {
         headers
             .get(axum::http::header::CONTENT_DISPOSITION)
             .expect("disposition"),
-        "attachment; filename=\"SysFile.zip\""
+        "attachment; filename=\"SysPost.zip\""
     );
 
     let mut archive = ZipArchive::new(Cursor::new(bytes.clone())).expect("ZIP 内容");
     assert_eq!(archive.len(), 7, "ZIP 里是完整路径的 7 个文件");
     let mut controller = String::new();
     archive
-        .by_name("backend/src/main/java/com/scaffold/system/controller/SysFileController.java")
+        .by_name("backend/src/main/java/com/scaffold/system/controller/SysPostController.java")
         .expect("Controller 条目")
         .read_to_string(&mut controller)
         .expect("读取条目");
     assert!(controller.starts_with("package com.scaffold.system.controller;\n"));
-    assert!(controller.contains("public class SysFileController {\n}\n"));
+    assert!(controller.contains("public class SysPostController {\n}\n"));
     // 条目顺序与 Spring 版的 LinkedHashMap 一致。
     let names = (0..archive.len())
         .map(|index| {
@@ -459,9 +460,9 @@ async fn generate_and_download_returns_zip_with_every_file() {
         .collect::<Vec<_>>();
     assert_eq!(
         names[0],
-        "backend/src/main/java/com/scaffold/system/domain/SysFile.java"
+        "backend/src/main/java/com/scaffold/system/domain/SysPost.java"
     );
-    assert_eq!(names[6], "sql/sys_file_menu.sql");
+    assert_eq!(names[6], "sql/sys_post_menu.sql");
 
     let (status, _, _) = send_raw(
         app.clone(),
