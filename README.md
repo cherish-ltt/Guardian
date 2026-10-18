@@ -9,7 +9,7 @@
     <img src="https://img.shields.io/badge/rust-1.99.0+-orange.svg" alt="rust"/>
   </a>
   <a href="https://github.com/cherish-ltt/Guardian">
-    <img src="https://img.shields.io/badge/version-v0.3.0-blue.svg" alt="version"/>
+    <img src="https://img.shields.io/badge/version-v0.4.0-blue.svg" alt="version"/>
   </a>
   <a href="https://github.com/cherish-ltt/Guardian">
     <img src="https://img.shields.io/badge/status-stable-green.svg" alt="status"/>
