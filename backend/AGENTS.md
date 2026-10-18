@@ -366,7 +366,8 @@ msrv = "1.99.0"
 - 集成测试放在 `tests/` 目录，按职责拆分文件：
   - `tests/api_tests.rs`：通过 `create_app` + `tower::ServiceExt::oneshot` 覆盖 HTTP 接口层（controllers、DTO、extractor、JWT 鉴权、Swagger 文档）。
   - `tests/contract_tests.rs`：用表格驱动锁定全部端点的鉴权与错误语义（401 / 403 / 404 / 405 / 400）。
-    新增或删除路由必须同步三张端点表，否则 `endpoint_tables_cover_every_registered_route` 会失败。
+    新增或删除路由必须同步四张端点表，否则 `endpoint_tables_cover_every_registered_route` 会失败
+    （它解析 `api::router()` 的 `Debug` 输出，与四张表双向比对）。
   - `tests/config_tests.rs`：覆盖 `AppConfig::from_env` 的默认值、覆盖项与全部校验分支。
   - `tests/logging_tests.rs`：覆盖日志初始化与配置校验。
   - `tests/middleware_tests.rs`：覆盖中间件栈的对外行为（含排队的超时、Body 超限、背压、限流、

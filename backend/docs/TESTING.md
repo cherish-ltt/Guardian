@@ -94,7 +94,7 @@ cargo llvm-cov --features docs --summary-only
 ### 后台管理与监控接口测试
 
 `tests/support/mod.rs` 提供公共装置：临时 SQLite 装配、登录（自动取验证码）与带令牌请求构造、
-原始响应读取。基于它的四个契约测试文件：
+原始响应读取。基于它的九个集成测试文件：
 
 | 文件 | 覆盖范围 |
 | --- | --- |
@@ -108,8 +108,10 @@ cargo llvm-cov --features docs --summary-only
 | `tests/login_challenge_tests.rs` | 两步登录：第一步不签发 JWT、挑战一次性、过期/密码变更/失败限次均失效、并发提交只成功一次 |
 | `tests/cache_tests.rs` | 并发未命中只回源一次、写屏障阻止旧值回填、缓存故障降级与回源上限 503、空值缓存与错误不缓存、键数上限；真实 Redis 的读写 / TTL / 换代用例默认 `#[ignore]` |
 
-`tests/contract_tests.rs` 的三张端点表与 `src/api/controllers` 的路由注册一一对应：
-新增或删除端点时必须同步这三张表，否则 `endpoint_tables_cover_every_registered_route`
-这个计数断言会先失败——它就是为了让「加了接口但忘了加鉴权」在测试里暴露。
+`tests/contract_tests.rs` 的四张端点表与 `src/api/controllers` 的路由注册一一对应：
+新增或删除端点时必须同步这四张表，否则 `endpoint_tables_cover_every_registered_route`
+会报错。这个用例会解析 `api::router()` 的 `Debug` 输出，还原 Router 实际注册的
+`(方法, 路径)`，再与四张表双向比对：新增路由没登记报「未登记」，删了路由而表没跟上
+报「已失效」——它就是为了让「加了接口但忘了加鉴权」在测试里暴露。
 
 这些用例按字节断言生成的 Java / TS / Vue / SQL 文件内容，因此修改代码生成模板必须同步更新断言。
