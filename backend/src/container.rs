@@ -84,7 +84,10 @@ impl Container {
         let database = connect_database(&config.database).await?;
         run_migrations(&database, &config.database.url, &config.seed).await?;
         let jwt_service = Arc::new(JwtService::new(config.jwt.clone())?);
-        let ip_location = Arc::new(IpLocation::load(config.ip_location_db_path.as_deref())?);
+        let ip_location = Arc::new(IpLocation::load(
+            config.ip_location_db_path.as_deref(),
+            config.ip_location_v6_db_path.as_deref(),
+        )?);
 
         let auth_service: Arc<dyn AuthUseCase> = Arc::new(AuthService::new(jwt_service.clone()));
         let example_service: Arc<dyn ExampleUseCase> = Arc::new(ExampleService::new());

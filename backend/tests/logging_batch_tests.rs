@@ -75,6 +75,7 @@ fn test_config(out_dir: &str) -> AppConfig {
             slow_request_ms: 1000,
         },
         ip_location_db_path: None,
+        ip_location_v6_db_path: None,
         cache: Default::default(),
         two_factor_key: Some("BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=".into()),
     }

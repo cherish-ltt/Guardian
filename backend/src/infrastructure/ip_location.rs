@@ -1,9 +1,13 @@
 //! 客户端 IP 的地点：本地网段直接判定，其余查离线地名库。
 //!
-//! 离线库是 ip2region 的 xdb（`vendor/ip2region`）。库文件不随仓库分发，部署时下载并通过
-//! `IP_LOCATION_DB_PATH` 指定；未配置时不查地名，只区分本机 / 内网 / 外网。
+//! 离线库是 ip2region 的 xdb（`vendor/ip2region`），IPv4 与 IPv6 各一个库文件。库文件不随仓库
+//! 分发，部署时下载并分别通过 `IP_LOCATION_DB_PATH`、`IP_LOCATION_V6_DB_PATH` 指定；未配置的
+//! 协议不查地名，只区分本机 / 内网 / 外网。
 
-use std::{net::IpAddr, path::Path};
+use std::{
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    path::Path,
+};
 
 use anyhow::{Context, Result};
 use ip2region::{CachePolicy, Searcher};
@@ -14,30 +18,27 @@ const LAN: &str = "内网";
 const WAN: &str = "外网";
 
 pub struct IpLocation {
-    searcher: Option<Searcher>,
+    v4: Option<Searcher>,
+    v6: Option<Searcher>,
 }
 
 impl IpLocation {
     /// 配置了库文件却加载不了时直接失败：静默降级会让所有日志悄悄丢失地名。
-    pub fn load(db_path: Option<&Path>) -> Result<Self> {
-        let Some(db_path) = db_path else {
+    pub fn load(v4_path: Option<&Path>, v6_path: Option<&Path>) -> Result<Self> {
+        let v4 = v4_path
+            .map(|path| load_searcher(path, Ipv4Addr::LOCALHOST.into()))
+            .transpose()?;
+        let v6 = v6_path
+            .map(|path| load_searcher(path, Ipv6Addr::LOCALHOST.into()))
+            .transpose()?;
+        if v4.is_none() && v6.is_none() {
             info!("IP 地名库未配置，日志地点只区分本机 / 内网 / 外网");
-            return Ok(Self { searcher: None });
-        };
+        }
 
-        let searcher = Searcher::new(
-            db_path.to_string_lossy().into_owned(),
-            CachePolicy::VectorIndex,
-        )
-        .with_context(|| format!("加载 IP 地名库失败：{}", db_path.display()))?;
-        info!(path = %db_path.display(), "IP 地名库已加载");
-
-        Ok(Self {
-            searcher: Some(searcher),
-        })
+        Ok(Self { v4, v6 })
     }
 
-    /// 回环「本机」、私网与链路本地「内网」，其余查地名库；库未配置或未命中时「外网」。
+    /// 回环「本机」、私网与链路本地「内网」，其余查对应协议的库；库未配置或未命中时「外网」。
     ///
     /// 地名保留库里的原始串（如 `中国|广东省|茂名市|电信|CN`），不裁剪字段。
     pub fn resolve(&self, ip: Option<&str>) -> Option<String> {
@@ -51,20 +52,40 @@ impl IpLocation {
             return Some(LAN.to_string());
         }
 
-        // 只加载 IPv4 库，IPv6 来源不查地名。
-        let IpAddr::V4(addr) = addr else {
-            return Some(WAN.to_string());
+        let region = match addr {
+            IpAddr::V4(addr) => self
+                .v4
+                .as_ref()
+                .and_then(|searcher| searcher.search(addr).ok()),
+            IpAddr::V6(addr) => self
+                .v6
+                .as_ref()
+                .and_then(|searcher| searcher.search(addr).ok()),
         };
 
-        match self
-            .searcher
-            .as_ref()
-            .and_then(|searcher| searcher.search(addr).ok())
-        {
+        match region {
             Some(region) if is_region(&region) => Some(region),
             _ => Some(WAN.to_string()),
         }
     }
+}
+
+/// 库头记录的是 v4 还是 v6 只影响查询结果：库版本与配置的协议不一致时查询一律报错，
+/// 上层会把它当成未命中退回「外网」，因此这里用一条本机地址探测一次，让配置错误在启动时暴露。
+fn load_searcher(path: &Path, probe: IpAddr) -> Result<Searcher> {
+    let searcher = Searcher::new(
+        path.to_string_lossy().into_owned(),
+        CachePolicy::VectorIndex,
+    )
+    .with_context(|| format!("加载 IP 地名库失败：{}", path.display()))?;
+    match probe {
+        IpAddr::V4(probe) => searcher.search(probe),
+        IpAddr::V6(probe) => searcher.search(probe),
+    }
+    .with_context(|| format!("IP 地名库版本与配置的协议不符：{}", path.display()))?;
+    info!(path = %path.display(), "IP 地名库已加载");
+
+    Ok(searcher)
 }
 
 /// RFC1918 私网、链路本地与 IPv6 ULA 视为内网；CGNAT（100.64/10）不是私网，按外网处理。
@@ -87,7 +108,7 @@ mod tests {
     use super::IpLocation;
 
     fn without_database() -> IpLocation {
-        IpLocation::load(None).expect("不配置库文件时应构造成功")
+        IpLocation::load(None, None).expect("不配置库文件时应构造成功")
     }
 
     #[test]
@@ -141,7 +162,9 @@ mod tests {
     #[test]
     fn a_configured_but_unusable_database_fails_loudly() {
         let path = Path::new("/nonexistent/ip2region_v4.xdb");
+        let v6_path = Path::new("/nonexistent/ip2region_v6.xdb");
 
-        assert!(IpLocation::load(Some(path)).is_err());
+        assert!(IpLocation::load(Some(path), None).is_err());
+        assert!(IpLocation::load(None, Some(v6_path)).is_err());
     }
 }

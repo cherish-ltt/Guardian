@@ -109,6 +109,7 @@ pub async fn setup_container(trusted_proxies: Vec<IpNet>) -> Arc<Container> {
             slow_request_ms: 1000,
         },
         ip_location_db_path: None,
+        ip_location_v6_db_path: None,
         cache: Default::default(),
         two_factor_key: Some("BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=".into()),
     };

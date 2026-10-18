@@ -222,14 +222,24 @@ pub fn log_startup_config(config: &AppConfig) {
         &mut lines,
         &dashes,
         "ip_location",
-        vec![format!(
-            "ip_location_db_path={}",
-            config
-                .ip_location_db_path
-                .as_ref()
-                .map(|path| path.display().to_string())
-                .unwrap_or_else(|| "(not set)".to_string())
-        )],
+        vec![
+            format!(
+                "ip_location_db_path={}",
+                config
+                    .ip_location_db_path
+                    .as_ref()
+                    .map(|path| path.display().to_string())
+                    .unwrap_or_else(|| "(not set)".to_string())
+            ),
+            format!(
+                "ip_location_v6_db_path={}",
+                config
+                    .ip_location_v6_db_path
+                    .as_ref()
+                    .map(|path| path.display().to_string())
+                    .unwrap_or_else(|| "(not set)".to_string())
+            ),
+        ],
     );
     push_section(
         &mut lines,

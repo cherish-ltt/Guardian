@@ -226,6 +226,7 @@ async fn interrupted_database_stage_is_reported(logs: &Arc<LogBuffer>) {
             ..base_config()
         },
         ip_location_db_path: None,
+        ip_location_v6_db_path: None,
         cache: Default::default(),
         two_factor_key: Some("BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=".into()),
     };

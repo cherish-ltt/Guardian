@@ -25,6 +25,8 @@ pub struct AppConfig {
     pub middleware: MiddlewareConfig,
     /// 离线 IP 地名库（ip2region xdb）路径；留空则日志地点只区分本机 / 内网 / 外网。
     pub ip_location_db_path: Option<PathBuf>,
+    /// IPv6 离线地名库路径；与 v4 库各自独立，留空则 IPv6 来源只区分本机 / 内网 / 外网。
+    pub ip_location_v6_db_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone)]
@@ -415,12 +417,8 @@ impl AppConfig {
             ));
         }
 
-        let ip_location_db_path = {
-            let value = get_env_or("IP_LOCATION_DB_PATH", "");
-            let value = value.trim();
-
-            (!value.is_empty()).then(|| PathBuf::from(value))
-        };
+        let ip_location_db_path = optional_path("IP_LOCATION_DB_PATH");
+        let ip_location_v6_db_path = optional_path("IP_LOCATION_V6_DB_PATH");
 
         let middleware = MiddlewareConfig {
             request_timeout_secs: parse_env_or("MIDDLEWARE_REQUEST_TIMEOUT_SECS", 10_u64)?,
@@ -490,8 +488,17 @@ impl AppConfig {
             logging,
             middleware,
             ip_location_db_path,
+            ip_location_v6_db_path,
         })
     }
+}
+
+/// 可选的路径类配置：去掉首尾空白后为空即视为未配置。
+fn optional_path(key: &str) -> Option<PathBuf> {
+    let value = get_env_or(key, "");
+    let value = value.trim();
+
+    (!value.is_empty()).then(|| PathBuf::from(value))
 }
 
 fn get_required_env(key: &str) -> Result<String> {
