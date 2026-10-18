@@ -5,11 +5,7 @@
 
 ## 后端
 
-- **发布产物结构简化**：`release.yml` 打出的后端压缩包内，二进制由 `target/release/guardian-backend`
-  改为根位置的 `guardian-backend`，与 `.env-example` 并列，解压即可部署。
-  打包步骤额外打印包内清单，发布日志里可直接核对结构。
-- **产物不再附带 `migrations/`**：迁移 SQL 由 `sqlx::migrate!` 在编译期嵌入二进制，运行时不再读
-  磁盘上的迁移目录，包里保留它只是冗余副本。
+- 无。
 
 ## 前端
 
