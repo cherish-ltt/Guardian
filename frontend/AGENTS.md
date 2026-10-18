@@ -43,7 +43,12 @@ npm run build
 ```
 
 - CI 在仓库根的 `.github/workflows/frontend.yml`，与上面三条命令一致（Node 24 + npm 缓存）。
-- `npm run test:unit` 覆盖 `src/api/__tests__` 与 `src/utils/__tests__`（`node --test` 直跑 TS）。
+- `npm run test:unit` 覆盖 `src/api/__tests__`、`src/utils/__tests__` 与
+  `src/components/__tests__`（`node --test` 直跑 TS）。
+- 组件测试不引 vitest / jsdom：`src/components/__tests__/support.ts` 用 `@vue/compiler-sfc`
+  编译 SFC、esbuild 去 TS 语法、`@vue/server-renderer` 输出 HTML 断言，三者都已在依赖树里。
+  被测组件不能 import 其他 SFC（`@/` 别名与 `.vue` 导入在 Node 里无法解析），
+  因此断言只落在纯展示控件上；带子组件或需要交互的页面用 `scripts/session-regression.py` 验证。
 - 改接口路径或响应结构时同步更新 `src/api/__tests__` 的契约断言。
 - 需要真实浏览器验证时用 `scripts/session-regression.py`（要求前后端已启动、
   已安装 Python Playwright 与 Chromium；脚本自建自删夹具，不清空表）。

@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "vite",
     "test:api": "node --test --experimental-strip-types src/api/__tests__/*.test.ts",
-    "test:unit": "node --test --experimental-strip-types src/api/__tests__/*.test.ts src/utils/__tests__/*.test.ts",
+    "test:unit": "node --test --experimental-strip-types src/api/__tests__/*.test.ts src/utils/__tests__/*.test.ts src/components/__tests__/*.test.ts",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview"
   },
