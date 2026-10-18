@@ -71,7 +71,7 @@ src/middleware/audit.rs                       写操作留痕
 | GET | `/system/dict/types` | `system:dict:list` | 字典类型分页列表 |
 | GET | `/system/dict/types/export` | 同上 | `dict-types.csv` |
 | GET | `/system/dict/data/{dict_type}` | 同上 | 指定类型的字典数据（管理页用，`def` 为布尔） |
-| GET | `/system/dict/options/{dict_type}` | 同上 | 业务下拉（`def` 为 0/1，带 `tone`） |
+| GET | `/system/dict/options/{dict_type}` | 登录态 | 业务下拉（`def` 为 0/1，带 `tone`）；供任意已登录页面渲染，不校验 `system:dict:list` |
 | POST / PUT / DELETE | `/system/dict/types`、`/system/dict/types/{id}` | `system:dict:add` / `edit` / `remove` | 有字典数据不可删 |
 | POST / PUT / DELETE | `/system/dict/data`、`/system/dict/data/{dict_type}` | 同上 | `{dict_type}` 位置：GET 传类型，PUT / DELETE 传主键 |
 | GET | `/system/configs` | `system:config:list` | 参数分页列表 |

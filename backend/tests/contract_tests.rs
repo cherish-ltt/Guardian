@@ -391,6 +391,30 @@ async fn scaffold_endpoints_without_token_keep_the_english_message() {
     }
 }
 
+/// 仅需登录的端点不能误收成权限码端点：零权限账号必须能访问。
+///
+/// 否则把 `/system/dict/options/{dict_type}` 这类供任意已登录页面渲染的业务下拉
+/// 误加 `system:dict:list` 后，普通用户的下拉会整片空白，而前面的 401 / 403 用例都发现不了。
+#[tokio::test]
+async fn auth_endpoints_are_reachable_for_account_without_codes() {
+    let app = setup_app().await;
+    let token = login(&app, "linjh", DEMO_PASSWORD).await;
+
+    for (method, path) in AUTH_ENDPOINTS {
+        let (status, _, _) = send_raw(
+            app.clone(),
+            request(method, path, body_of(method), Some(&token)),
+        )
+        .await;
+
+        assert_ne!(
+            status,
+            StatusCode::FORBIDDEN,
+            "{method} {path} 是仅需登录的端点，不应校验权限码"
+        );
+    }
+}
+
 /// 已登录但没有任何权限码的账号：统一 403 + 「没有访问权限」。
 ///
 /// 种子里的 `linjh`（`sys_admin`）默认没有菜单授权，权限码为空集。
