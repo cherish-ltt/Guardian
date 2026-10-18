@@ -9,6 +9,30 @@
 > [AxumServiceScaffold](https://github.com/cherish-ltt/AxumServiceScaffold)。
 > 下方 `0.6.0` 及更早的条目属于上游项目的历史记录，版本号与本项目不连续。
 
+## [0.4.0] - 2026-10-18
+
+本次让日志 `location` 列对 IPv6 来源也能给出地名，并统一前后端版本号。
+分前后端的发布说明见 [docs/version/v0.4.0.md](../../docs/version/v0.4.0.md)。
+
+### 新增
+
+- **地名解析支持 IPv6**：`IpLocation` 由单个查询器改为 IPv4 / IPv6 各一个，按来源 IP 的协议
+  分别查询离线库；新增 `IP_LOCATION_V6_DB_PATH` 配置项，与 `IP_LOCATION_DB_PATH` 并列且互相独立。
+  只配其中一个时另一个协议的来源仍按本地网段与「外网」判定。
+- **库版本与配置不符时启动失败**：加载库时用一条本机地址探测一次，库头记录的 IP 版本与
+  配置的变量不符直接拒绝启动，不会静默退回「外网」。
+
+### 变更
+
+- **版本号统一到 `0.4.0`**：`backend/Cargo.toml`、`frontend/package.json`、
+  `frontend/package-lock.json`、根 README 徽章与 `src/api/dto/system.rs` 的 OpenAPI 示例同步。
+- **启动配置日志**：`ip_location` 组新增 `ip_location_v6_db_path`。
+
+### 测试
+
+- `tests/config_tests.rs` 的路径用例同时覆盖两个变量（含空白视为未配置），
+  `src/infrastructure/ip_location.rs` 的失败用例分别覆盖 v4 与 v6 库路径。
+
 ## [0.3.0] - 2026-10-18
 
 本次把登录验证码开关做成真正生效的功能，并统一前后端版本号。
