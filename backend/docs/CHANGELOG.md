@@ -9,6 +9,26 @@
 > [AxumServiceScaffold](https://github.com/cherish-ltt/AxumServiceScaffold)。
 > 下方 `0.6.0` 及更早的条目属于上游项目的历史记录，版本号与本项目不连续。
 
+## [0.4.1] - 2026-10-18
+
+本次让后端产物明确区分 glibc 与 musl 运行时，共四个下载包，并简化了包内结构。
+分前后端的发布说明见 [docs/version/v0.4.1.md](../../docs/version/v0.4.1.md)。
+
+### 变更
+
+- **产物按 libc 区分**：产物名由 `guardian-backend-<tag>-linux-<arch>` 改为带 libc，
+  共四个包：`x86_64-linux-gnu`、`aarch64-linux-gnu`、`x86_64-linux-musl`、`aarch64-linux-musl`。
+  gnu 包动态链接 glibc，musl 包静态链接；此前未标明运行时，下载者无法判断能否在 Alpine 上运行。
+- **包内结构**：二进制由 `target/release/guardian-backend` 改为根位置的 `guardian-backend`，
+  与 `.env-example` 并列，不再附带 `migrations/`（迁移 SQL 已由 `sqlx::migrate!` 编译期嵌入）。
+- **版本号统一到 `0.4.1`**：`backend/Cargo.toml`、`frontend/package.json`、
+  `frontend/package-lock.json`、根 README 徽章与 `src/api/dto/system.rs` 的 OpenAPI 示例同步。
+
+### 构建
+
+- `aarch64-unknown-linux-musl` 用 musl.cc 的预编译工具链交叉编译；
+  不能用 `aarch64-linux-gnu-gcc` 充当 musl 链接器（glibc 工具链，会因缺 `stat64` 等符号链接失败）。
+
 ## [0.4.0] - 2026-10-18
 
 本次让日志 `location` 列对 IPv6 来源也能给出地名，并统一前后端版本号。
