@@ -101,4 +101,6 @@ python3 scripts/session-regression.py
 - 本目录代码派生自 `scaffold-master` 的 `scaffold-vue`，沿用上游 MIT 许可并保留版权声明，
   见 [LICENSE](LICENSE)；本仓库整体采用 `MIT OR Apache-2.0` 双许可，见 [根目录说明](../README.md)。
 - GSAP 依赖遵循其 [Standard "No Charge" License](https://gsap.com/community/standard-license/)。
-- 主题、密度与减少动效规则来自上游 `DESIGN.md`，前后端链路见上游 `PROJECT_MAP.md`。
+- 主题、密度与减少动效规则来自上游 `scaffold-master` 的 `DESIGN.md`（未随本仓库分发），
+  前后端链路见同一仓库的 `PROJECT_MAP.md`；本仓库的落地位置是 `src/styles/tokens.css` 与
+  `src/composables/appearance.ts`。
