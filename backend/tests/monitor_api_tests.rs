@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 
 use support::{
     admin_token, delete_with_bearer, get, get_with_bearer, login, post_json, post_json_with_bearer,
-    send, send_raw, setup_app, setup_app_with_trusted_proxies,
+    send, send_raw, setup_app_with_store, setup_app_with_store_with_trusted_proxies, take_captcha,
 };
 
 fn with_forwarded_for(
@@ -22,8 +22,8 @@ fn with_forwarded_for(
 
 #[tokio::test]
 async fn write_operations_are_recorded_with_module_action_and_operator() {
-    let app = setup_app().await;
-    let token = admin_token(&app).await;
+    let (app, store) = setup_app_with_store().await;
+    let token = admin_token(&app, store.as_ref()).await;
 
     let (status, _) = send(
         app.clone(),
@@ -81,7 +81,7 @@ async fn write_operations_are_recorded_with_module_action_and_operator() {
     assert_eq!(logs["data"]["rows"][0]["errorMsg"], "岗位编码已存在");
 
     // 权限被拒的请求不进业务方法，因此不留痕（与 Spring 版切面一致）。
-    let outsider = login(&app, "linjh", support::DEMO_PASSWORD).await;
+    let outsider = login(&app, store.as_ref(), "linjh", support::DEMO_PASSWORD).await;
     let (status, _) = send(
         app.clone(),
         post_json_with_bearer(
@@ -159,8 +159,8 @@ async fn write_operations_are_recorded_with_module_action_and_operator() {
 
 #[tokio::test]
 async fn oper_stats_and_timeline_aggregate_recorded_operations() {
-    let app = setup_app().await;
-    let token = admin_token(&app).await;
+    let (app, store) = setup_app_with_store().await;
+    let token = admin_token(&app, store.as_ref()).await;
 
     for (code, name) in [("stat_a", "统计甲"), ("stat_b", "统计乙")] {
         let (status, _) = send(
@@ -259,8 +259,8 @@ async fn oper_stats_and_timeline_aggregate_recorded_operations() {
 
 #[tokio::test]
 async fn login_stats_heatmap_and_exports() {
-    let app = setup_app().await;
-    let token = admin_token(&app).await;
+    let (app, store) = setup_app_with_store().await;
+    let token = admin_token(&app, store.as_ref()).await;
 
     let (status, stats) = send(
         app.clone(),
@@ -361,8 +361,8 @@ async fn login_stats_heatmap_and_exports() {
 
 #[tokio::test]
 async fn dashboard_summary_reports_cards_trends_and_activities() {
-    let app = setup_app().await;
-    let token = admin_token(&app).await;
+    let (app, store) = setup_app_with_store().await;
+    let token = admin_token(&app, store.as_ref()).await;
 
     let (status, summary) = send(
         app.clone(),
@@ -443,7 +443,7 @@ async fn dashboard_summary_reports_cards_trends_and_activities() {
 
 #[tokio::test]
 async fn health_probe_is_public_and_reports_up() {
-    let app = setup_app().await;
+    let (app, _store) = setup_app_with_store().await;
 
     let (status, body) = send(app.clone(), get("/api/v1/health")).await;
     assert_eq!(status, StatusCode::OK);
@@ -459,8 +459,8 @@ async fn health_probe_is_public_and_reports_up() {
 /// 操作日志导出：有记录时逐列输出，列顺序与 Spring 版一致。
 #[tokio::test]
 async fn oper_log_export_contains_recorded_rows() {
-    let app = setup_app().await;
-    let token = admin_token(&app).await;
+    let (app, store) = setup_app_with_store().await;
+    let token = admin_token(&app, store.as_ref()).await;
 
     let (status, _) = send(
         app.clone(),
@@ -514,8 +514,8 @@ async fn oper_log_export_contains_recorded_rows() {
 /// 登录失败阈值取自参数配置；达到阈值的账号出现在热力图告警里。
 #[tokio::test]
 async fn login_heatmap_uses_configured_threshold_and_reports_anomalies() {
-    let app = setup_app().await;
-    let token = admin_token(&app).await;
+    let (app, store) = setup_app_with_store().await;
+    let token = admin_token(&app, store.as_ref()).await;
 
     let (status, _) = send(
         app.clone(),
@@ -543,7 +543,7 @@ async fn login_heatmap_uses_configured_threshold_and_reports_anomalies() {
                 json!({
                     "username": "admin",
                     "password": "wrong-password",
-                    "captcha": captcha["data"]["code"],
+                    "captcha": take_captcha(store.as_ref(), captcha["data"]["uuid"].as_str().expect("验证码标识")),
                     "captchaUuid": captcha["data"]["uuid"],
                 }),
             ),
@@ -577,8 +577,8 @@ async fn login_heatmap_uses_configured_threshold_and_reports_anomalies() {
 /// 时间线的 date 参数只接受 `yyyy-MM-dd`，其余一律 400。
 #[tokio::test]
 async fn oper_timeline_rejects_a_malformed_date() {
-    let app = setup_app().await;
-    let token = admin_token(&app).await;
+    let (app, store) = setup_app_with_store().await;
+    let token = admin_token(&app, store.as_ref()).await;
 
     for value in ["2026-13-40", "yesterday", "20260101"] {
         let (status, body) = send(
@@ -599,8 +599,8 @@ async fn oper_timeline_rejects_a_malformed_date() {
 /// 只有显式配置为可信代理的对端送来的 `X-Forwarded-For` 才会按真实来源记录。
 #[tokio::test]
 async fn recorded_client_ip_follows_the_trusted_proxy_chain() {
-    let app = setup_app().await;
-    let token = admin_token(&app).await;
+    let (app, store) = setup_app_with_store().await;
+    let token = admin_token(&app, store.as_ref()).await;
 
     let mut forged = post_json_with_bearer(
         "/api/v1/system/posts",
@@ -627,9 +627,10 @@ async fn recorded_client_ip_follows_the_trusted_proxy_chain() {
     assert_eq!(row["location"], "本机");
 
     // 同一条请求在配置了可信代理后按转发头里的真实来源记录。
-    let trusted =
-        setup_app_with_trusted_proxies(vec!["127.0.0.1/32".parse().expect("构造网段")]).await;
-    let trusted_token = admin_token(&trusted).await;
+    let (trusted, trusted_store) =
+        setup_app_with_store_with_trusted_proxies(vec!["127.0.0.1/32".parse().expect("构造网段")])
+            .await;
+    let trusted_token = admin_token(&trusted, trusted_store.as_ref()).await;
 
     let mut proxied = post_json_with_bearer(
         "/api/v1/system/posts",
@@ -658,8 +659,8 @@ async fn recorded_client_ip_follows_the_trusted_proxy_chain() {
 /// 工作台汇总统计的是已落库的操作量：写一次后当天与近 24 小时都能看到。
 #[tokio::test]
 async fn dashboard_summary_counts_persisted_operations() {
-    let app = setup_app().await;
-    let token = admin_token(&app).await;
+    let (app, store) = setup_app_with_store().await;
+    let token = admin_token(&app, store.as_ref()).await;
 
     let (status, _) = send(
         app.clone(),

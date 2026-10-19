@@ -19,7 +19,7 @@ use serde_json::{Value, json};
 
 use support::{
     DEMO_PASSWORD, admin_token, get_with_bearer, login, post_json_with_bearer, request, send,
-    send_raw, setup_app,
+    send_raw, setup_app_with_store,
 };
 
 /// 需要权限码的端点：`(方法, 路径, 权限码)`，与 `AdminUser::require` 的入参一致。
@@ -213,10 +213,11 @@ const PUBLIC_ENDPOINTS: &[(&str, &str)] = &[
     ("POST", "/api/v1/transactions/dev-transfer"),
 ];
 
-/// 带请求体的方法在鉴权失败前仍要通过 `ApiJson`，给一个空对象即可：
-/// 后台的写命令字段全部可选，`{}` 能反序列化成功。
+/// 带请求体的方法在鉴权失败前仍要通过 `ApiJson`，给一个字段合法但取值无效的对象即可：
+/// 后台的写命令字段全部可选，`{}` 能反序列化成功；口令取 5 位，必被长度校验挡下，
+/// 不会在契约测试里真的把账号口令改掉（那会撤销当前令牌，后续断言全部 401）。
 fn body_of(method: &str) -> Option<Value> {
-    matches!(method, "POST" | "PUT" | "PATCH").then(|| json!({"password": "invalid-password"}))
+    matches!(method, "POST" | "PUT" | "PATCH").then(|| json!({"password": "short"}))
 }
 
 /// 四张表必须与 Router 上注册的端点完全一致：漏登记或多登记都会失败。
@@ -363,7 +364,7 @@ fn registered_routes() -> Vec<(String, String)> {
 /// 后台端点缺令牌：统一 401 + 「未认证或登录已过期」，与「无权限」的 403 区分开。
 #[tokio::test]
 async fn protected_endpoints_without_token_are_rejected_with_401() {
-    let app = setup_app().await;
+    let (app, _store) = setup_app_with_store().await;
     let protected: Vec<(&str, &str)> = PERMISSION_ENDPOINTS
         .iter()
         .map(|(method, path, _)| (*method, *path))
@@ -383,7 +384,7 @@ async fn protected_endpoints_without_token_are_rejected_with_401() {
 /// 脚手架自带的接口同样 401，但走 `CurrentUser` 提取器，文案保持英文原文。
 #[tokio::test]
 async fn scaffold_endpoints_without_token_keep_the_english_message() {
-    let app = setup_app().await;
+    let (app, _store) = setup_app_with_store().await;
 
     for (method, path) in SCAFFOLD_AUTH_ENDPOINTS {
         let (status, body) = send(app.clone(), request(method, path, None, None)).await;
@@ -403,8 +404,8 @@ async fn scaffold_endpoints_without_token_keep_the_english_message() {
 /// 误加 `system:dict:list` 后，普通用户的下拉会整片空白，而前面的 401 / 403 用例都发现不了。
 #[tokio::test]
 async fn auth_endpoints_are_reachable_for_account_without_codes() {
-    let app = setup_app().await;
-    let token = login(&app, "linjh", DEMO_PASSWORD).await;
+    let (app, store) = setup_app_with_store().await;
+    let token = login(&app, store.as_ref(), "linjh", DEMO_PASSWORD).await;
 
     for (method, path) in AUTH_ENDPOINTS {
         let (status, _, _) = send_raw(
@@ -426,8 +427,8 @@ async fn auth_endpoints_are_reachable_for_account_without_codes() {
 /// 种子里的 `linjh`（`sys_admin`）默认没有菜单授权，权限码为空集。
 #[tokio::test]
 async fn permission_endpoints_reject_account_without_codes_with_403() {
-    let app = setup_app().await;
-    let token = login(&app, "linjh", DEMO_PASSWORD).await;
+    let (app, store) = setup_app_with_store().await;
+    let token = login(&app, store.as_ref(), "linjh", DEMO_PASSWORD).await;
 
     for (method, path, permission) in PERMISSION_ENDPOINTS {
         let (status, body) = send(
@@ -451,8 +452,8 @@ async fn permission_endpoints_reject_account_without_codes_with_403() {
 /// 导出与下载端点的响应是 CSV / ZIP，不能按 JSON 解析，因此只取状态码。
 #[tokio::test]
 async fn admin_token_is_never_rejected_by_the_auth_layer() {
-    let app = setup_app().await;
-    let token = admin_token(&app).await;
+    let (app, store) = setup_app_with_store().await;
+    let token = admin_token(&app, store.as_ref()).await;
 
     for (method, path, _) in PERMISSION_ENDPOINTS {
         let (status, _, _) = send_raw(
@@ -469,7 +470,7 @@ async fn admin_token_is_never_rejected_by_the_auth_layer() {
 /// 公开端点不带令牌也是 200，且恰好是表里那 9 个。
 #[tokio::test]
 async fn public_endpoints_answer_without_a_token() {
-    let app = setup_app().await;
+    let (app, _store) = setup_app_with_store().await;
 
     for (method, path) in [
         ("GET", "/api/v1/health"),
@@ -488,7 +489,7 @@ async fn public_endpoints_answer_without_a_token() {
 /// 404 与 405 使用 Spring 版文案，且都是统一响应体（而非 axum 默认纯文本）。
 #[tokio::test]
 async fn unknown_paths_and_unsupported_methods_share_spring_wording() {
-    let app = setup_app().await;
+    let (app, _store) = setup_app_with_store().await;
 
     for path in [
         "/api/v1/unknown",
@@ -527,8 +528,8 @@ async fn unknown_paths_and_unsupported_methods_share_spring_wording() {
 /// 查询参数无法解析时 400，而不是静默忽略过滤条件。
 #[tokio::test]
 async fn invalid_query_parameters_are_rejected_with_400() {
-    let app = setup_app().await;
-    let token = admin_token(&app).await;
+    let (app, store) = setup_app_with_store().await;
+    let token = admin_token(&app, store.as_ref()).await;
 
     for (path, message) in [
         (
@@ -571,8 +572,8 @@ async fn invalid_query_parameters_are_rejected_with_400() {
 /// 400「请求体格式错误」，不出现 axum 默认的 422 纯文本响应。
 #[tokio::test]
 async fn malformed_admin_bodies_become_400_with_unified_envelope() {
-    let app = setup_app().await;
-    let token = admin_token(&app).await;
+    let (app, store) = setup_app_with_store().await;
+    let token = admin_token(&app, store.as_ref()).await;
 
     let cases = [
         (

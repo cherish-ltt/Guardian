@@ -10,7 +10,7 @@ use zip::ZipArchive;
 
 use support::{
     DEMO_PASSWORD, admin_token, delete_with_bearer, get_with_bearer, login, post_json_with_bearer,
-    put_json_with_bearer, send, send_raw, setup_app,
+    put_json_with_bearer, send, send_raw, setup_app_with_store,
 };
 
 async fn import_file_table(app: &axum::Router, token: &str) -> i64 {
@@ -31,8 +31,8 @@ async fn import_file_table(app: &axum::Router, token: &str) -> i64 {
 
 #[tokio::test]
 async fn importable_tables_mark_imported_rows_and_validate_requests() {
-    let app = setup_app().await;
-    let token = admin_token(&app).await;
+    let (app, store) = setup_app_with_store().await;
+    let token = admin_token(&app, store.as_ref()).await;
 
     let (status, empty) = send(
         app.clone(),
@@ -155,7 +155,7 @@ async fn importable_tables_mark_imported_rows_and_validate_requests() {
     assert_eq!(missing["data"]["total"], 0);
 
     // 没有 `tool:gen:list` 权限的账号被拒绝。
-    let outsider = login(&app, "linjh", DEMO_PASSWORD).await;
+    let outsider = login(&app, store.as_ref(), "linjh", DEMO_PASSWORD).await;
     let (status, body) = send(
         app.clone(),
         get_with_bearer("/api/v1/tool/generator/tables", &outsider),
@@ -167,8 +167,8 @@ async fn importable_tables_mark_imported_rows_and_validate_requests() {
 
 #[tokio::test]
 async fn columns_describe_sqlite_metadata() {
-    let app = setup_app().await;
-    let token = admin_token(&app).await;
+    let (app, store) = setup_app_with_store().await;
+    let token = admin_token(&app, store.as_ref()).await;
     let table_id = import_file_table(&app, &token).await;
 
     let (status, body) = send(
@@ -245,8 +245,8 @@ async fn columns_describe_sqlite_metadata() {
 
 #[tokio::test]
 async fn preview_lists_seven_files_with_controller_active() {
-    let app = setup_app().await;
-    let token = admin_token(&app).await;
+    let (app, store) = setup_app_with_store().await;
+    let token = admin_token(&app, store.as_ref()).await;
     let table_id = import_file_table(&app, &token).await;
 
     let (status, body) = send(
@@ -343,8 +343,8 @@ async fn preview_lists_seven_files_with_controller_active() {
 
 #[tokio::test]
 async fn update_table_config_only_accepts_comment_and_synced() {
-    let app = setup_app().await;
-    let token = admin_token(&app).await;
+    let (app, store) = setup_app_with_store().await;
+    let token = admin_token(&app, store.as_ref()).await;
     let table_id = import_file_table(&app, &token).await;
 
     // 与 Spring 版一致：生成配置只能改表说明与确认状态。
@@ -386,8 +386,8 @@ async fn update_table_config_only_accepts_comment_and_synced() {
 
 #[tokio::test]
 async fn generate_and_download_returns_zip_with_every_file() {
-    let app = setup_app().await;
-    let token = admin_token(&app).await;
+    let (app, store) = setup_app_with_store().await;
+    let token = admin_token(&app, store.as_ref()).await;
     let table_id = import_file_table(&app, &token).await;
 
     let (status, body) = send(

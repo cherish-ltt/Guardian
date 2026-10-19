@@ -121,15 +121,17 @@ pub struct ClientSource {
     pub os: Option<String>,
 }
 
-/// 登录时生成的验证码：`code` 直接回显给登录页显示（与 Spring 版一致）。
+/// 登录时生成的验证码：只回传图片，明文只留在服务端缓存里比对。
 ///
 /// `enabled` 为 `false` 时（`sys.account.captchaEnabled` 被关闭）不生成验证码，
-/// `uuid` 与 `code` 为空串，登录页据此隐藏输入框。
+/// `uuid` 与 `image` 为空串，登录页据此隐藏输入框。
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CaptchaChallenge {
     pub enabled: bool,
     pub uuid: String,
-    pub code: String,
+    /// `data:image/svg+xml;base64,...`，前端直接放进 `<img src>`。
+    pub image: String,
 }
 
 /// 修改密码命令。

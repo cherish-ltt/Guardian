@@ -1,5 +1,6 @@
 mod support;
 use axum::http::StatusCode;
+use guardian_backend::infrastructure::services::auth_store::MemoryAuthStore;
 use serde_json::{Value, json};
 use support::*;
 
@@ -44,11 +45,13 @@ async fn enroll(app: &axum::Router, token: &str) -> (String, Vec<String>, String
 }
 async fn login_factor(
     app: &axum::Router,
+    store: &MemoryAuthStore,
     username: &str,
     factor: Option<&str>,
 ) -> (StatusCode, Value) {
     let (_, captcha) = send(app.clone(), get("/api/v1/auth/captcha")).await;
-    let result = send(app.clone(), post_json("/api/v1/auth/login", json!({"username": username, "password": DEMO_PASSWORD, "captcha": captcha["data"]["code"], "captchaUuid": captcha["data"]["uuid"]}))).await;
+    let code = take_captcha(store, captcha["data"]["uuid"].as_str().unwrap());
+    let result = send(app.clone(), post_json("/api/v1/auth/login", json!({"username": username, "password": DEMO_PASSWORD, "captcha": code, "captchaUuid": captcha["data"]["uuid"]}))).await;
     if result.1["data"]["twoFactorRequired"] != true {
         return result;
     }
@@ -58,8 +61,8 @@ async fn login_factor(
 
 #[tokio::test]
 async fn profile_updates_only_own_allowed_fields() {
-    let app = setup_app().await;
-    let token = admin_token(&app).await;
+    let (app, store) = setup_app_with_store().await;
+    let token = admin_token(&app, store.as_ref()).await;
     let (_, before) = send(app.clone(), get_with_bearer("/api/v1/auth/profile", &token)).await;
     assert_eq!(before["data"]["twoFactorEnabled"], false);
     let body = json!({"nickname": "新昵称", "phone": "+86 13800000000", "email": "me@example.com"});
@@ -94,9 +97,9 @@ async fn profile_updates_only_own_allowed_fields() {
 
 #[tokio::test]
 async fn two_factor_lifecycle_replay_recovery_and_revocation() {
-    let app = setup_app().await;
-    let first = admin_token(&app).await;
-    let second = admin_token(&app).await;
+    let (app, store) = setup_app_with_store().await;
+    let first = admin_token(&app, store.as_ref()).await;
+    let second = admin_token(&app, store.as_ref()).await;
     assert_ne!(first, second);
     let (secret, codes, replay) = enroll(&app, &first).await;
     assert_eq!(codes.len(), 10);
@@ -109,17 +112,19 @@ async fn two_factor_lifecycle_replay_recovery_and_revocation() {
         );
     }
     assert_eq!(
-        login_factor(&app, "admin", None).await.0,
+        login_factor(&app, store.as_ref(), "admin", None).await.0,
         StatusCode::BAD_REQUEST
     );
 
     assert_eq!(
-        login_factor(&app, "admin", Some(&replay)).await.0,
+        login_factor(&app, store.as_ref(), "admin", Some(&replay))
+            .await
+            .0,
         StatusCode::BAD_REQUEST
     );
     let (a, b) = tokio::join!(
-        login_factor(&app, "admin", Some(&codes[0])),
-        login_factor(&app, "admin", Some(&codes[0]))
+        login_factor(&app, store.as_ref(), "admin", Some(&codes[0])),
+        login_factor(&app, store.as_ref(), "admin", Some(&codes[0]))
     );
     assert_eq!(
         [a.0, b.0].iter().filter(|s| **s == StatusCode::OK).count(),
@@ -141,11 +146,13 @@ async fn two_factor_lifecycle_replay_recovery_and_revocation() {
     .await;
     assert_eq!(status, StatusCode::OK, "{rotated}");
     assert_eq!(
-        login_factor(&app, "admin", Some(&codes[2])).await.0,
+        login_factor(&app, store.as_ref(), "admin", Some(&codes[2]))
+            .await
+            .0,
         StatusCode::BAD_REQUEST
     );
     let new_codes = rotated["data"]["recoveryCodes"].as_array().unwrap();
-    let (_, signed) = login_factor(&app, "admin", new_codes[0].as_str()).await;
+    let (_, signed) = login_factor(&app, store.as_ref(), "admin", new_codes[0].as_str()).await;
     let token = signed["data"]["token"].as_str().unwrap();
     assert_eq!(
         send(
@@ -160,8 +167,11 @@ async fn two_factor_lifecycle_replay_recovery_and_revocation() {
         .0,
         StatusCode::OK
     );
-    assert_eq!(login_factor(&app, "admin", None).await.0, StatusCode::OK);
-    let token = admin_token(&app).await;
+    assert_eq!(
+        login_factor(&app, store.as_ref(), "admin", None).await.0,
+        StatusCode::OK
+    );
+    let token = admin_token(&app, store.as_ref()).await;
     let (_, logs) = send(
         app.clone(),
         get_with_bearer("/api/v1/monitor/oper-logs", &token),
@@ -175,11 +185,11 @@ async fn two_factor_lifecycle_replay_recovery_and_revocation() {
 
 #[tokio::test]
 async fn reset_requires_separate_permission_password_and_invalidates_target_session() {
-    let app = setup_app().await;
-    let admin = admin_token(&app).await;
-    let user = login(&app, "linjh", DEMO_PASSWORD).await;
+    let (app, store) = setup_app_with_store().await;
+    let admin = admin_token(&app, store.as_ref()).await;
+    let user = login(&app, store.as_ref(), "linjh", DEMO_PASSWORD).await;
     let (_, codes, _) = enroll(&app, &user).await;
-    let (_, signed) = login_factor(&app, "linjh", Some(&codes[0])).await;
+    let (_, signed) = login_factor(&app, store.as_ref(), "linjh", Some(&codes[0])).await;
     let user = signed["data"]["token"].as_str().unwrap();
     let path = "/api/v1/system/users/2/2fa/reset";
     assert_eq!(
@@ -215,7 +225,10 @@ async fn reset_requires_separate_permission_password_and_invalidates_target_sess
             .0,
         StatusCode::UNAUTHORIZED
     );
-    assert_eq!(login_factor(&app, "linjh", None).await.0, StatusCode::OK);
+    assert_eq!(
+        login_factor(&app, store.as_ref(), "linjh", None).await.0,
+        StatusCode::OK
+    );
     assert_eq!(
         send(
             app.clone(),
@@ -233,8 +246,8 @@ async fn reset_requires_separate_permission_password_and_invalidates_target_sess
 
 #[tokio::test]
 async fn enrollment_requires_confirmation_and_limits_failed_proofs() {
-    let app = setup_app().await;
-    let token = admin_token(&app).await;
+    let (app, store) = setup_app_with_store().await;
+    let token = admin_token(&app, store.as_ref()).await;
     for _ in 0..5 {
         assert_eq!(
             send(

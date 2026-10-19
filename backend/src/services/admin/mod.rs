@@ -26,6 +26,8 @@ pub struct AdminService {
     /// 新增用户未传口令时的默认口令，来自 `.env` 的 `SEED_ADMIN_PASSWORD`。
     default_password: String,
     cache: std::sync::Arc<super::hot_cache::HotCache>,
+    /// 管理员重置他人口令后要撤销目标账号的会话。
+    auth_store: std::sync::Arc<dyn crate::infrastructure::services::auth_store::AuthStore>,
 }
 
 impl AdminService {
@@ -33,11 +35,13 @@ impl AdminService {
         database: DatabaseConnection,
         default_password: String,
         cache: std::sync::Arc<super::hot_cache::HotCache>,
+        auth_store: std::sync::Arc<dyn crate::infrastructure::services::auth_store::AuthStore>,
     ) -> Self {
         Self {
             database,
             default_password,
             cache,
+            auth_store,
         }
     }
 

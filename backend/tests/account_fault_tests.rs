@@ -68,7 +68,7 @@ async fn committed_security_returns_codes_when_redis_cleanup_fails_and_old_token
             .unwrap(),
     );
     let app = create_app(container);
-    let token = admin_token(&app).await;
+    let token = admin_token(&app, &store.inner).await;
     let (_, setup) = send(
         app.clone(),
         post_json_with_bearer(
@@ -105,7 +105,8 @@ async fn committed_security_returns_codes_when_redis_cleanup_fails_and_old_token
         StatusCode::UNAUTHORIZED
     );
     let (_, captcha) = send(app.clone(), get("/api/v1/auth/captcha")).await;
-    let (_, step) = send(app.clone(), post_json("/api/v1/auth/login", json!({"username":"admin","password":DEMO_PASSWORD,"captcha":captcha["data"]["code"],"captchaUuid":captcha["data"]["uuid"]}))).await;
+    let code = take_captcha(&store.inner, captcha["data"]["uuid"].as_str().unwrap());
+    let (_, step) = send(app.clone(), post_json("/api/v1/auth/login", json!({"username":"admin","password":DEMO_PASSWORD,"captcha":code,"captchaUuid":captcha["data"]["uuid"]}))).await;
     let (status, signed) = send(app.clone(), post_json("/api/v1/auth/login/2fa", json!({"challenge":step["data"]["challenge"],"secondFactor":enabled["data"]["recoveryCodes"][0]}))).await;
     assert_eq!(status, StatusCode::OK, "{signed}");
     assert_eq!(
@@ -133,7 +134,7 @@ async fn cache_failure_allows_authenticated_reads_but_never_bypasses_auth_store(
         .unwrap(),
     );
     let app = create_app(container);
-    let token = admin_token(&app).await;
+    let token = admin_token(&app, &store.inner).await;
     assert_eq!(
         send(
             app.clone(),

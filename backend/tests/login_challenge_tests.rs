@@ -1,12 +1,17 @@
 mod support;
 use axum::http::StatusCode;
-use guardian_backend::{create_app::create_app, infrastructure::repositories::sql::execute};
+use guardian_backend::{
+    create_app::create_app,
+    infrastructure::{repositories::sql::execute, services::auth_store::MemoryAuthStore},
+};
 use serde_json::{Value, json};
+use std::sync::Arc;
 use support::*;
 
-async fn challenge(app: &axum::Router) -> Value {
+async fn challenge(app: &axum::Router, store: &MemoryAuthStore) -> Value {
     let (_, captcha) = send(app.clone(), get("/api/v1/auth/captcha")).await;
-    let (status, result) = send(app.clone(), post_json("/api/v1/auth/login", json!({"username":"admin","password":DEMO_PASSWORD,"captcha":captcha["data"]["code"],"captchaUuid":captcha["data"]["uuid"]}))).await;
+    let code = take_captcha(store, captcha["data"]["uuid"].as_str().unwrap());
+    let (status, result) = send(app.clone(), post_json("/api/v1/auth/login", json!({"username":"admin","password":DEMO_PASSWORD,"captcha":code,"captchaUuid":captcha["data"]["uuid"]}))).await;
     assert_eq!(status, StatusCode::OK, "{result}");
     assert_eq!(result["data"]["twoFactorRequired"], true);
     assert!(result["data"].get("token").is_none());
@@ -25,9 +30,10 @@ async fn verify(app: &axum::Router, challenge: &Value, code: &Value) -> (StatusC
 
 #[tokio::test]
 async fn login_challenge_is_not_a_session_expires_and_is_consumed_once() {
-    let container = setup_container(Vec::new()).await;
+    let store = Arc::new(MemoryAuthStore::new());
+    let container = setup_container_with_store(Vec::new(), store.clone()).await;
     let app = create_app(container.clone());
-    let token = admin_token(&app).await;
+    let token = admin_token(&app, store.as_ref()).await;
     let (_, setup) = send(
         app.clone(),
         post_json_with_bearer(
@@ -54,7 +60,7 @@ async fn login_challenge_is_not_a_session_expires_and_is_consumed_once() {
     .await;
     assert_eq!(status, StatusCode::OK);
     let codes = &enabled["data"]["recoveryCodes"];
-    let first = challenge(&app).await;
+    let first = challenge(&app, store.as_ref()).await;
     assert_eq!(
         send(
             app.clone(),
@@ -64,7 +70,7 @@ async fn login_challenge_is_not_a_session_expires_and_is_consumed_once() {
         .0,
         StatusCode::UNAUTHORIZED
     );
-    let current = challenge(&app).await;
+    let current = challenge(&app, store.as_ref()).await;
     assert_eq!(
         verify(&app, &first, &codes[0]).await.0,
         StatusCode::BAD_REQUEST
@@ -85,7 +91,7 @@ async fn login_challenge_is_not_a_session_expires_and_is_consumed_once() {
         verify(&app, &current, &codes[2]).await.0,
         StatusCode::BAD_REQUEST
     );
-    let expired = challenge(&app).await;
+    let expired = challenge(&app, store.as_ref()).await;
     execute(
         &container.database,
         "UPDATE sys_user_security SET login_challenge_expires = 1 WHERE user_id = 1",
@@ -97,7 +103,7 @@ async fn login_challenge_is_not_a_session_expires_and_is_consumed_once() {
         verify(&app, &expired, &codes[2]).await.0,
         StatusCode::BAD_REQUEST
     );
-    let changed_password = challenge(&app).await;
+    let changed_password = challenge(&app, store.as_ref()).await;
     execute(
         &container.database,
         "UPDATE sys_user_security SET login_password_hash = 'changed' WHERE user_id = 1",
@@ -109,7 +115,7 @@ async fn login_challenge_is_not_a_session_expires_and_is_consumed_once() {
         verify(&app, &changed_password, &codes[2]).await.0,
         StatusCode::BAD_REQUEST
     );
-    let limited = challenge(&app).await;
+    let limited = challenge(&app, store.as_ref()).await;
     for _ in 0..5 {
         assert_eq!(
             verify(&app, &limited, &json!("wrong")).await.0,

@@ -7,24 +7,35 @@ mod support;
 use axum::http::StatusCode;
 use serde_json::{Value, json};
 
+use guardian_backend::infrastructure::services::auth_store::MemoryAuthStore;
 use support::{
     DEMO_PASSWORD, admin_token, delete_with_bearer, get, get_with_bearer, login, post_json,
-    post_json_with_bearer, put_json_with_bearer, send, setup_app, setup_app_with_trusted_proxies,
+    post_json_with_bearer, put_json_with_bearer, send, setup_app_with_store,
+    setup_app_with_store_with_trusted_proxies, take_captcha,
 };
 
 #[tokio::test]
 async fn captcha_login_and_session_lifecycle() {
-    let app = setup_app().await;
+    let (app, store) = setup_app_with_store().await;
 
     let (status, captcha) = send(app.clone(), get("/api/v1/auth/captcha")).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(captcha["code"], 200);
     assert_eq!(captcha["message"], "操作成功");
-    let uuid = captcha["data"]["uuid"].as_str().expect("验证码标识");
-    let code = captcha["data"]["code"].as_str().expect("验证码明文");
-    assert_eq!(code.len(), 4);
-    assert!(code.chars().all(|ch| ch.is_ascii_alphanumeric()));
+    let uuid = captcha["data"]["uuid"]
+        .as_str()
+        .expect("验证码标识")
+        .to_string();
+    assert!(
+        captcha["data"]["image"]
+            .as_str()
+            .expect("验证码图片")
+            .starts_with("data:image/svg+xml;base64,"),
+        "验证码以图片形式下发"
+    );
+    assert!(captcha["data"].get("code").is_none(), "验证码明文不得回显");
     assert_eq!(uuid.len(), 32);
+    let code = take_captcha(store.as_ref(), &uuid);
     // 追踪 ID 由中间件注入响应体，与响应头同源。
     let trace_id = captcha["traceId"].as_str().expect("traceId");
     assert_eq!(trace_id.len(), 32);
@@ -106,15 +117,18 @@ async fn captcha_login_and_session_lifecycle() {
 /// 验证码开关默认开启：`enabled` 为 true，登录必须带验证码。
 #[tokio::test]
 async fn captcha_is_enabled_by_default() {
-    let app = setup_app().await;
+    let (app, _store) = setup_app_with_store().await;
 
     let (status, captcha) = send(app.clone(), get("/api/v1/auth/captcha")).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(captcha["data"]["enabled"], true);
-    assert_eq!(
-        captcha["data"]["code"].as_str().expect("验证码明文").len(),
-        4
+    assert!(
+        captcha["data"]["image"]
+            .as_str()
+            .expect("验证码图片")
+            .starts_with("data:image/svg+xml;base64,")
     );
+    assert!(captcha["data"].get("code").is_none(), "验证码明文不得回显");
 
     let (status, body) = send(
         app.clone(),
@@ -131,8 +145,8 @@ async fn captcha_is_enabled_by_default() {
 /// 后台把参数改成 false 后：`/auth/captcha` 不再生成验证码，登录也不校验。
 #[tokio::test]
 async fn disabled_captcha_skips_verification() {
-    let app = setup_app().await;
-    let token = admin_token(&app).await;
+    let (app, store) = setup_app_with_store().await;
+    let token = admin_token(&app, store.as_ref()).await;
 
     let (status, page) = send(
         app.clone(),
@@ -161,7 +175,7 @@ async fn disabled_captcha_skips_verification() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(captcha["data"]["enabled"], false);
     assert_eq!(captcha["data"]["uuid"], "");
-    assert_eq!(captcha["data"]["code"], "");
+    assert_eq!(captcha["data"]["image"], "");
 
     let (status, body) = send(
         app.clone(),
@@ -189,7 +203,7 @@ async fn disabled_captcha_skips_verification() {
 
 #[tokio::test]
 async fn missing_invalid_and_revoked_credentials_are_rejected() {
-    let app = setup_app().await;
+    let (app, _store) = setup_app_with_store().await;
 
     let (status, body) = send(app.clone(), get("/api/v1/auth/me")).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
@@ -206,10 +220,10 @@ async fn missing_invalid_and_revoked_credentials_are_rejected() {
 
 #[tokio::test]
 async fn accounts_without_permission_get_403() {
-    let app = setup_app().await;
+    let (app, store) = setup_app_with_store().await;
 
     // 种子里的 `sys_admin` 未分配任何菜单，因此没有任何权限码。
-    let token = login(&app, "linjh", DEMO_PASSWORD).await;
+    let token = login(&app, store.as_ref(), "linjh", DEMO_PASSWORD).await;
     let (status, body) = send(
         app.clone(),
         get_with_bearer("/api/v1/system/users?pageNum=1&pageSize=10", &token),
@@ -229,7 +243,7 @@ async fn accounts_without_permission_get_403() {
 
 #[tokio::test]
 async fn unknown_route_and_unsupported_method_use_spring_wording() {
-    let app = setup_app().await;
+    let (app, _store) = setup_app_with_store().await;
 
     let (status, body) = send(app.clone(), get("/api/v1/system/unknown")).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
@@ -242,8 +256,8 @@ async fn unknown_route_and_unsupported_method_use_spring_wording() {
 
 #[tokio::test]
 async fn users_page_supports_paging_filters_and_options() {
-    let app = setup_app().await;
-    let token = admin_token(&app).await;
+    let (app, store) = setup_app_with_store().await;
+    let token = admin_token(&app, store.as_ref()).await;
 
     let (status, page) = send(
         app.clone(),
@@ -319,8 +333,8 @@ async fn users_page_supports_paging_filters_and_options() {
 
 #[tokio::test]
 async fn user_write_flow_covers_create_update_status_password_and_delete() {
-    let app = setup_app().await;
-    let token = admin_token(&app).await;
+    let (app, store) = setup_app_with_store().await;
+    let token = admin_token(&app, store.as_ref()).await;
 
     let (status, created) = send(
         app.clone(),
@@ -342,7 +356,7 @@ async fn user_write_flow_covers_create_update_status_password_and_delete() {
     let id = created["data"]["id"].as_i64().expect("新用户 ID");
 
     // 新建用户使用默认口令，可直接登录。
-    let newbie_token = login(&app, "newbie", DEMO_PASSWORD).await;
+    let newbie_token = login(&app, store.as_ref(), "newbie", DEMO_PASSWORD).await;
     let (_, me) = send(
         app.clone(),
         get_with_bearer("/api/v1/auth/me", &newbie_token),
@@ -452,8 +466,21 @@ async fn user_write_flow_covers_create_update_status_password_and_delete() {
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    let rotated = login(&app, "newbie", "Zz@654321").await;
+    let rotated = login(&app, store.as_ref(), "newbie", "Zz@654321").await;
     assert!(!rotated.is_empty());
+
+    // 重置口令必须显式给出新口令，没有默认弱口令兜底。
+    let (status, body) = send(
+        app.clone(),
+        put_json_with_bearer(
+            &format!("/api/v1/system/users/{id}/password"),
+            &token,
+            json!({}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["message"], "新密码不能为空");
 
     let (status, body) = send(
         app.clone(),
@@ -488,6 +515,19 @@ async fn user_write_flow_covers_create_update_status_password_and_delete() {
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert_eq!(body["message"], "内置管理员不允许停用");
 
+    // 编辑接口同样能改 status，保护必须一致。
+    let (status, body) = send(
+        app.clone(),
+        put_json_with_bearer(
+            "/api/v1/system/users/1",
+            &token,
+            json!({ "nickname": "若依", "status": 0 }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["message"], "内置管理员不允许停用");
+
     let (status, _) = send(
         app.clone(),
         delete_with_bearer(&format!("/api/v1/system/users/{id}"), &token),
@@ -505,8 +545,8 @@ async fn user_write_flow_covers_create_update_status_password_and_delete() {
 
 #[tokio::test]
 async fn user_export_returns_spring_csv() {
-    let app = setup_app().await;
-    let token = admin_token(&app).await;
+    let (app, store) = setup_app_with_store().await;
+    let token = admin_token(&app, store.as_ref()).await;
 
     let (status, headers, bytes) = support::send_raw(
         app.clone(),
@@ -536,8 +576,8 @@ async fn user_export_returns_spring_csv() {
 
 #[tokio::test]
 async fn role_flow_covers_menus_graph_and_guards() {
-    let app = setup_app().await;
-    let token = admin_token(&app).await;
+    let (app, store) = setup_app_with_store().await;
+    let token = admin_token(&app, store.as_ref()).await;
 
     let (status, page) = send(
         app.clone(),
@@ -663,8 +703,8 @@ async fn role_flow_covers_menus_graph_and_guards() {
 
 #[tokio::test]
 async fn menu_tree_export_and_crud() {
-    let app = setup_app().await;
-    let token = admin_token(&app).await;
+    let (app, store) = setup_app_with_store().await;
+    let token = admin_token(&app, store.as_ref()).await;
 
     let (status, tree) = send(
         app.clone(),
@@ -757,8 +797,8 @@ async fn menu_tree_export_and_crud() {
 
 #[tokio::test]
 async fn dept_tree_and_crud_keep_ancestors_consistent() {
-    let app = setup_app().await;
-    let token = admin_token(&app).await;
+    let (app, store) = setup_app_with_store().await;
+    let token = admin_token(&app, store.as_ref()).await;
 
     let (status, tree) = send(
         app.clone(),
@@ -837,8 +877,8 @@ async fn dept_tree_and_crud_keep_ancestors_consistent() {
 
 #[tokio::test]
 async fn post_flow_and_export() {
-    let app = setup_app().await;
-    let token = admin_token(&app).await;
+    let (app, store) = setup_app_with_store().await;
+    let token = admin_token(&app, store.as_ref()).await;
 
     let (status, page) = send(
         app.clone(),
@@ -910,8 +950,8 @@ async fn post_flow_and_export() {
 
 #[tokio::test]
 async fn dict_flow_covers_types_data_and_business_options() {
-    let app = setup_app().await;
-    let token = admin_token(&app).await;
+    let (app, store) = setup_app_with_store().await;
+    let token = admin_token(&app, store.as_ref()).await;
 
     let (status, page) = send(
         app.clone(),
@@ -1024,8 +1064,8 @@ async fn dict_flow_covers_types_data_and_business_options() {
 
 #[tokio::test]
 async fn config_flow_and_export() {
-    let app = setup_app().await;
-    let token = admin_token(&app).await;
+    let (app, store) = setup_app_with_store().await;
+    let token = admin_token(&app, store.as_ref()).await;
 
     let (status, page) = send(
         app.clone(),
@@ -1123,8 +1163,8 @@ async fn config_flow_and_export() {
 
 #[tokio::test]
 async fn data_scope_limits_user_list_for_dept_scoped_role() {
-    let app = setup_app().await;
-    let token = admin_token(&app).await;
+    let (app, store) = setup_app_with_store().await;
+    let token = admin_token(&app, store.as_ref()).await;
 
     // 给「系统管理员」授予用户管理与角色管理菜单：它拥有 DEPT_AND_CHILD 范围（部门 5）。
     let (status, _) = send(
@@ -1138,7 +1178,7 @@ async fn data_scope_limits_user_list_for_dept_scoped_role() {
     .await;
     assert_eq!(status, StatusCode::OK);
 
-    let scoped = login(&app, "linjh", DEMO_PASSWORD).await;
+    let scoped = login(&app, store.as_ref(), "linjh", DEMO_PASSWORD).await;
     let (status, page) = send(
         app.clone(),
         get_with_bearer("/api/v1/system/users?pageNum=1&pageSize=20", &scoped),
@@ -1194,7 +1234,7 @@ async fn data_scope_limits_user_list_for_dept_scoped_role() {
     );
 
     // 缺少权限码的只读账号访问关系图仍然被拒。
-    let outsider = login(&app, "heyj", DEMO_PASSWORD).await;
+    let outsider = login(&app, store.as_ref(), "heyj", DEMO_PASSWORD).await;
     let (status, body) = send(
         app.clone(),
         get_with_bearer("/api/v1/system/permissions/graph", &outsider),
@@ -1206,8 +1246,8 @@ async fn data_scope_limits_user_list_for_dept_scoped_role() {
 
 #[tokio::test]
 async fn password_change_requires_old_password_and_rotates_credentials() {
-    let app = setup_app().await;
-    let token = admin_token(&app).await;
+    let (app, store) = setup_app_with_store().await;
+    let token = admin_token(&app, store.as_ref()).await;
 
     let (status, body) = send(
         app.clone(),
@@ -1256,7 +1296,7 @@ async fn password_change_requires_old_password_and_rotates_credentials() {
     .await;
     assert_eq!(status, StatusCode::OK);
 
-    let rotated = login(&app, "admin", "Nn@123456").await;
+    let rotated = login(&app, store.as_ref(), "admin", "Nn@123456").await;
     assert!(!rotated.is_empty());
 
     // 复原口令，避免影响同一测试文件里的其他用例（各自独立数据库，这里只是保持语义清晰）。
@@ -1275,14 +1315,14 @@ async fn password_change_requires_old_password_and_rotates_credentials() {
 /// 改密码后，该账号已签发的会话（含当前与其它设备）必须全部失效。
 #[tokio::test]
 async fn password_change_revokes_every_existing_session() {
-    let app = setup_app().await;
-    let first = admin_token(&app).await;
+    let (app, store) = setup_app_with_store().await;
+    let first = admin_token(&app, store.as_ref()).await;
     // JWT 的 iat / exp 是秒粒度，同一秒内重复登录会签发逐字相同的令牌，
     // 先错开一秒，才能确定拿到两个不同会话。
     tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
-    let second = login(&app, "admin", DEMO_PASSWORD).await;
+    let second = login(&app, store.as_ref(), "admin", DEMO_PASSWORD).await;
     assert_ne!(first, second, "两个会话必须是不同令牌");
-    let other = login(&app, "linjh", DEMO_PASSWORD).await;
+    let other = login(&app, store.as_ref(), "linjh", DEMO_PASSWORD).await;
 
     let (status, _) = send(
         app.clone(),
@@ -1305,14 +1345,14 @@ async fn password_change_revokes_every_existing_session() {
     let (status, _) = send(app.clone(), get_with_bearer("/api/v1/auth/me", &other)).await;
     assert_eq!(status, StatusCode::OK, "其他账号的会话不应被误撤");
 
-    let rotated = login(&app, "admin", "Nn@123456").await;
+    let rotated = login(&app, store.as_ref(), "admin", "Nn@123456").await;
     assert!(!rotated.is_empty());
 }
 
 #[tokio::test]
 async fn login_log_records_success_and_failure() {
-    let app = setup_app().await;
-    let token = admin_token(&app).await;
+    let (app, store) = setup_app_with_store().await;
+    let token = admin_token(&app, store.as_ref()).await;
 
     let (status, failure) = send(
         app.clone(),
@@ -1350,8 +1390,10 @@ async fn login_log_records_success_and_failure() {
 /// `User-Agent` 解析出浏览器与操作系统；伪造的转发头不再被采信。
 #[tokio::test]
 async fn login_log_records_trusted_client_source() {
-    let app = setup_app_with_trusted_proxies(vec!["127.0.0.1/32".parse().expect("构造网段")]).await;
-    let token = login_with_source(&app, FORWARDED_FOR).await;
+    let (app, store) =
+        setup_app_with_store_with_trusted_proxies(vec!["127.0.0.1/32".parse().expect("构造网段")])
+            .await;
+    let token = login_with_source(&app, store.as_ref(), FORWARDED_FOR).await;
 
     let (status, logs) = send(
         app.clone(),
@@ -1378,7 +1420,7 @@ async fn login_log_records_trusted_client_source() {
     .await;
     assert_eq!(status, StatusCode::OK);
 
-    let fresh = login_with_source(&app, FORWARDED_FOR).await;
+    let fresh = login_with_source(&app, store.as_ref(), FORWARDED_FOR).await;
     let (_, logs) = send(
         app.clone(),
         get_with_bearer("/api/v1/monitor/login-logs?pageNum=1&pageSize=10", &fresh),
@@ -1417,15 +1459,20 @@ fn with_source(
 }
 
 /// 走正确验证码 + 可信代理头的登录：用于断言日志里的客户端来源。
-async fn login_with_source(app: &axum::Router, forwarded_for: &str) -> String {
+async fn login_with_source(
+    app: &axum::Router,
+    store: &MemoryAuthStore,
+    forwarded_for: &str,
+) -> String {
     let (_, captcha) = send(app.clone(), get("/api/v1/auth/captcha")).await;
+    let code = take_captcha(store, captcha["data"]["uuid"].as_str().expect("验证码标识"));
     let request = with_source(
         post_json(
             "/api/v1/auth/login",
             json!({
                 "username": "admin",
                 "password": DEMO_PASSWORD,
-                "captcha": captcha["data"]["code"],
+                "captcha": code,
                 "captchaUuid": captcha["data"]["uuid"],
             }),
         ),
@@ -1443,8 +1490,8 @@ async fn login_with_source(app: &axum::Router, forwarded_for: &str) -> String {
 /// 三个此前没有用例的导出端点：表头、附件名与过滤参数都要与 Spring 版对齐。
 #[tokio::test]
 async fn report_exports_return_spring_csv_with_attachment_name() {
-    let app = setup_app().await;
-    let token = admin_token(&app).await;
+    let (app, store) = setup_app_with_store().await;
+    let token = admin_token(&app, store.as_ref()).await;
 
     let cases = [
         (
@@ -1498,8 +1545,8 @@ async fn report_exports_return_spring_csv_with_attachment_name() {
 /// 字典类型编辑：部分字段更新，目标不存在时报业务错而不是静默成功。
 #[tokio::test]
 async fn dict_type_update_applies_partial_changes_and_reports_missing_target() {
-    let app = setup_app().await;
-    let token = admin_token(&app).await;
+    let (app, store) = setup_app_with_store().await;
+    let token = admin_token(&app, store.as_ref()).await;
 
     let (_, created) = send(
         app.clone(),
@@ -1549,8 +1596,8 @@ async fn dict_type_update_applies_partial_changes_and_reports_missing_target() {
 /// 列表接口的 keyword / status 过滤确实下推到 SQL，而不是取回全量后在内存里筛。
 #[tokio::test]
 async fn list_filters_narrow_the_result_set() {
-    let app = setup_app().await;
-    let token = admin_token(&app).await;
+    let (app, store) = setup_app_with_store().await;
+    let token = admin_token(&app, store.as_ref()).await;
 
     let total_of = |body: &Value| body["data"]["total"].as_i64().unwrap_or_default();
 
@@ -1666,8 +1713,8 @@ async fn list_filters_narrow_the_result_set() {
 /// 非超管的动态路由走按角色授权查询，只返回被授予的菜单；超管走另一条分支。
 #[tokio::test]
 async fn non_super_admin_routes_only_expose_granted_menus() {
-    let app = setup_app().await;
-    let token = admin_token(&app).await;
+    let (app, store) = setup_app_with_store().await;
+    let token = admin_token(&app, store.as_ref()).await;
 
     // linjh 的角色（系统管理员）只授「系统管理 → 用户管理」。
     let (status, _) = send(
@@ -1681,7 +1728,7 @@ async fn non_super_admin_routes_only_expose_granted_menus() {
     .await;
     assert_eq!(status, StatusCode::OK);
 
-    let linjh = login(&app, "linjh", DEMO_PASSWORD).await;
+    let linjh = login(&app, store.as_ref(), "linjh", DEMO_PASSWORD).await;
     let (status, routes) = send(app.clone(), get_with_bearer("/api/v1/auth/routes", &linjh)).await;
     assert_eq!(status, StatusCode::OK);
     let roots = routes["data"]["routes"].as_array().expect("路由数组");
@@ -1706,10 +1753,10 @@ async fn non_super_admin_routes_only_expose_granted_menus() {
 /// 停用账号：已签发的会话立刻失效，重新登录被拒并留下失败日志。
 #[tokio::test]
 async fn disabling_an_account_invalidates_its_existing_session() {
-    let app = setup_app().await;
-    let token = admin_token(&app).await;
+    let (app, store) = setup_app_with_store().await;
+    let token = admin_token(&app, store.as_ref()).await;
 
-    let linjh = login(&app, "linjh", DEMO_PASSWORD).await;
+    let linjh = login(&app, store.as_ref(), "linjh", DEMO_PASSWORD).await;
     let (status, _) = send(app.clone(), get_with_bearer("/api/v1/auth/me", &linjh)).await;
     assert_eq!(status, StatusCode::OK);
 
@@ -1730,6 +1777,10 @@ async fn disabling_an_account_invalidates_its_existing_session() {
     assert_eq!(body["message"], "未认证或登录已过期");
 
     let (_, captcha) = send(app.clone(), get("/api/v1/auth/captcha")).await;
+    let code = take_captcha(
+        store.as_ref(),
+        captcha["data"]["uuid"].as_str().expect("验证码标识"),
+    );
     let (status, body) = send(
         app.clone(),
         post_json(
@@ -1737,7 +1788,7 @@ async fn disabling_an_account_invalidates_its_existing_session() {
             json!({
                 "username": "linjh",
                 "password": DEMO_PASSWORD,
-                "captcha": captcha["data"]["code"],
+                "captcha": code,
                 "captchaUuid": captcha["data"]["uuid"],
             }),
         ),
@@ -1758,7 +1809,7 @@ async fn disabling_an_account_invalidates_its_existing_session() {
 /// 验证码缺失或未命中缓存一律 400，且不写登录日志（避免被刷成失败记录）。
 #[tokio::test]
 async fn login_requires_a_matching_captcha() {
-    let app = setup_app().await;
+    let (app, store) = setup_app_with_store().await;
 
     let cases = [
         json!({ "username": "admin", "password": DEMO_PASSWORD }),
@@ -1773,7 +1824,7 @@ async fn login_requires_a_matching_captcha() {
         assert_eq!(response["message"], "验证码错误或已过期");
     }
 
-    let token = admin_token(&app).await;
+    let token = admin_token(&app, store.as_ref()).await;
     let (_, logs) = send(
         app.clone(),
         get_with_bearer("/api/v1/monitor/login-logs?pageNum=1&pageSize=10", &token),
@@ -1782,11 +1833,115 @@ async fn login_requires_a_matching_captcha() {
     assert_eq!(logs["data"]["total"], 1, "只有成功登录留下了记录");
 }
 
+/// 密码阶段连续失败 5 次后锁定 5 分钟：第 6 次连正确口令也不放行。
+#[tokio::test]
+async fn password_failures_lock_the_account_even_with_the_right_password() {
+    let (app, store) = setup_app_with_store().await;
+
+    for _ in 0..5 {
+        let (_, captcha) = send(app.clone(), get("/api/v1/auth/captcha")).await;
+        let code = take_captcha(
+            store.as_ref(),
+            captcha["data"]["uuid"].as_str().expect("验证码标识"),
+        );
+        let (status, body) = send(
+            app.clone(),
+            post_json(
+                "/api/v1/auth/login",
+                json!({
+                    "username": "admin",
+                    "password": "wrong-password",
+                    "captcha": code,
+                    "captchaUuid": captcha["data"]["uuid"],
+                }),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(body["message"], "账号或密码错误");
+    }
+
+    let (_, captcha) = send(app.clone(), get("/api/v1/auth/captcha")).await;
+    let code = take_captcha(
+        store.as_ref(),
+        captcha["data"]["uuid"].as_str().expect("验证码标识"),
+    );
+    let (status, body) = send(
+        app.clone(),
+        post_json(
+            "/api/v1/auth/login",
+            json!({
+                "username": "admin",
+                "password": DEMO_PASSWORD,
+                "captcha": code,
+                "captchaUuid": captcha["data"]["uuid"],
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["message"], "密码错误次数过多，请稍后重试");
+}
+
+/// 登录成功后失败计数清零，不会因为历史失败把正常用户挡在门外。
+#[tokio::test]
+async fn successful_login_clears_the_failure_counter() {
+    let (app, store) = setup_app_with_store().await;
+
+    for _ in 0..3 {
+        let (_, captcha) = send(app.clone(), get("/api/v1/auth/captcha")).await;
+        let code = take_captcha(
+            store.as_ref(),
+            captcha["data"]["uuid"].as_str().expect("验证码标识"),
+        );
+        send(
+            app.clone(),
+            post_json(
+                "/api/v1/auth/login",
+                json!({
+                    "username": "admin",
+                    "password": "wrong-password",
+                    "captcha": code,
+                    "captchaUuid": captcha["data"]["uuid"],
+                }),
+            ),
+        )
+        .await;
+    }
+
+    let token = admin_token(&app, store.as_ref()).await;
+    assert!(!token.is_empty());
+
+    // 清零后再错 4 次仍然只是「账号或密码错误」，没有触发锁定。
+    for _ in 0..4 {
+        let (_, captcha) = send(app.clone(), get("/api/v1/auth/captcha")).await;
+        let code = take_captcha(
+            store.as_ref(),
+            captcha["data"]["uuid"].as_str().expect("验证码标识"),
+        );
+        let (status, body) = send(
+            app.clone(),
+            post_json(
+                "/api/v1/auth/login",
+                json!({
+                    "username": "admin",
+                    "password": "wrong-password",
+                    "captcha": code,
+                    "captchaUuid": captcha["data"]["uuid"],
+                }),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(body["message"], "账号或密码错误");
+    }
+}
+
 /// 顶层部门的 `ancestors` 为空串，挂在它下面的部门只追加自己的父级。
 #[tokio::test]
 async fn dept_at_root_level_keeps_an_empty_ancestor_chain() {
-    let app = setup_app().await;
-    let token = admin_token(&app).await;
+    let (app, store) = setup_app_with_store().await;
+    let token = admin_token(&app, store.as_ref()).await;
 
     let (status, root) = send(
         app.clone(),
@@ -1831,8 +1986,8 @@ async fn dept_at_root_level_keeps_an_empty_ancestor_chain() {
 /// 写操作指向不存在的目标时给出明确业务文案，而不是静默成功。
 #[tokio::test]
 async fn writes_to_missing_targets_report_business_errors() {
-    let app = setup_app().await;
-    let token = admin_token(&app).await;
+    let (app, store) = setup_app_with_store().await;
+    let token = admin_token(&app, store.as_ref()).await;
 
     let (status, body) = send(
         app.clone(),
@@ -1866,8 +2021,8 @@ async fn writes_to_missing_targets_report_business_errors() {
 /// 可选字段缺省时回落到稳定默认值，避免前端漏传导致写入 NULL。
 #[tokio::test]
 async fn omitted_write_fields_fall_back_to_documented_defaults() {
-    let app = setup_app().await;
-    let token = admin_token(&app).await;
+    let (app, store) = setup_app_with_store().await;
+    let token = admin_token(&app, store.as_ref()).await;
 
     let (status, _) = send(
         app.clone(),
@@ -1924,8 +2079,8 @@ async fn omitted_write_fields_fall_back_to_documented_defaults() {
 /// 没有命中任何角色时不查授权菜单，返回空分页而不是报错。
 #[tokio::test]
 async fn role_list_without_matches_returns_an_empty_page() {
-    let app = setup_app().await;
-    let token = admin_token(&app).await;
+    let (app, store) = setup_app_with_store().await;
+    let token = admin_token(&app, store.as_ref()).await;
 
     let (status, body) = send(
         app.clone(),
@@ -1940,8 +2095,8 @@ async fn role_list_without_matches_returns_an_empty_page() {
 /// 查询串里 `%` 后面直接跟多字节字符时曾按字符切片而 panic，现在按字节解码后照常给出业务响应。
 #[tokio::test]
 async fn raw_multibyte_query_values_are_decoded_without_panicking() {
-    let app = setup_app().await;
-    let token = admin_token(&app).await;
+    let (app, store) = setup_app_with_store().await;
+    let token = admin_token(&app, store.as_ref()).await;
 
     // 非法转义保留原字符：筛选参数把解码结果当整数校验，按既有文案被拒绝，而不是让请求崩掉。
     let (status, body) = send(

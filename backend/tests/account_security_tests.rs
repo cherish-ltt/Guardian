@@ -2,16 +2,21 @@ mod support;
 use axum::http::StatusCode;
 use guardian_backend::{
     create_app::create_app,
-    infrastructure::repositories::sql::{execute, query_count, query_opt},
+    infrastructure::{
+        repositories::sql::{execute, query_count, query_opt},
+        services::auth_store::MemoryAuthStore,
+    },
 };
 use serde_json::json;
+use std::sync::Arc;
 use support::*;
 
 #[tokio::test]
 async fn enrollment_expiry_failed_confirmation_and_encrypted_storage() {
-    let container = setup_container(Vec::new()).await;
+    let store = Arc::new(MemoryAuthStore::new());
+    let container = setup_container_with_store(Vec::new(), store.clone()).await;
     let app = create_app(container.clone());
-    let token = admin_token(&app).await;
+    let token = admin_token(&app, store.as_ref()).await;
     let (status, headers, bytes) = send_raw(
         app.clone(),
         post_json_with_bearer(
@@ -85,7 +90,8 @@ async fn enrollment_expiry_failed_confirmation_and_encrypted_storage() {
 
 #[tokio::test]
 async fn upgrade_grants_reset2fa_once_without_restoring_revoked_grants() {
-    let container = setup_container(Vec::new()).await;
+    let store = Arc::new(MemoryAuthStore::new());
+    let container = setup_container_with_store(Vec::new(), store.clone()).await;
     let db = &container.database;
     execute(db, "DELETE FROM sys_role_menu WHERE menu_id IN (SELECT id FROM sys_menu WHERE permission = 'system:user:reset2fa')", vec![]).await.unwrap();
     execute(
@@ -131,7 +137,7 @@ async fn upgrade_grants_reset2fa_once_without_restoring_revoked_grants() {
     .unwrap();
     assert_eq!(query_count(db, sql, vec![]).await.unwrap(), 0);
     let app = create_app(container.clone());
-    let user = login(&app, "linjh", DEMO_PASSWORD).await;
+    let user = login(&app, store.as_ref(), "linjh", DEMO_PASSWORD).await;
     let path = "/api/v1/system/users/3/2fa/reset";
     assert_eq!(
         send(

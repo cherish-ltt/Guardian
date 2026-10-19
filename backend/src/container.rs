@@ -41,6 +41,8 @@ pub struct Container {
     pub database: DatabaseConnection,
     /// 令牌签发与校验：审计中间件用它解析操作人，避免每写一条日志都查库。
     pub jwt_service: Arc<JwtService>,
+    /// 会话与验证码存储：登录令牌与验证码明文都在这里，集成测试需要它读验证码。
+    pub auth_store: Arc<dyn AuthStore>,
     pub auth_service: Arc<dyn AuthUseCase>,
     pub example_service: Arc<dyn ExampleUseCase>,
     pub system_service: Arc<dyn SystemUseCase>,
@@ -106,7 +108,7 @@ impl Container {
         let admin_auth_service: Arc<dyn AdminAuthUseCase> = Arc::new(AdminAuthService::new(
             database.clone(),
             jwt_service.clone(),
-            auth_store,
+            auth_store.clone(),
             ip_location.clone(),
             account_service.clone(),
         ));
@@ -117,6 +119,7 @@ impl Container {
                 cache_store,
                 config.cache.clone(),
             )),
+            auth_store.clone(),
         ));
         let monitor_service: Arc<dyn MonitorUseCase> =
             Arc::new(MonitorService::new(database.clone()));
@@ -132,6 +135,7 @@ impl Container {
             config,
             database,
             jwt_service,
+            auth_store,
             auth_service,
             example_service,
             system_service,
@@ -147,7 +151,10 @@ impl Container {
     }
 
     /// 集成分身用的内存会话存储，测试里显式构造。
-    pub fn memory_auth_store() -> Arc<dyn AuthStore> {
+    ///
+    /// 返回具体类型而非 `Arc<dyn AuthStore>`：测试需要读回服务端保存的验证码明文，
+    /// 那个入口只存在于内存实现上，生产装配用的是 [`RedisAuthStore`]。
+    pub fn memory_auth_store() -> Arc<MemoryAuthStore> {
         Arc::new(MemoryAuthStore::new())
     }
 }

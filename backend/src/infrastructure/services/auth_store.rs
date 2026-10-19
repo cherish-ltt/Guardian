@@ -68,6 +68,14 @@ impl MemoryAuthStore {
         Self::default()
     }
 
+    /// 读取尚未消费的验证码明文，不移除条目。
+    ///
+    /// 仅供测试：`/auth/captcha` 不再回显明文，集成测试需要从服务端侧拿到它
+    /// 才能走完登录流程；一次性语义仍由登录时的 `take_captcha` 保证。
+    pub fn peek_captcha(&self, uuid: &str) -> Option<String> {
+        self.get(&captcha_key(uuid))
+    }
+
     fn save(&self, key: String, value: String, ttl: Option<Duration>) {
         let mut entries = self.lock();
         entries.insert(key, (value, ttl.map(|ttl| Instant::now() + ttl)));

@@ -11,7 +11,7 @@ use crate::{
     },
     error::AppError,
     infrastructure::repositories::sql::{
-        execute, insert, int_or_zero, query_all, query_count, text, text_or_none,
+        execute, insert, int_or_zero, query_all, query_count, query_opt, text, text_or_none,
     },
     util::time,
 };
@@ -39,6 +39,11 @@ pub trait UserRepository: Send + Sync {
         C: ConnectionTrait;
 
     async fn count_username<C>(&self, db: &C, username: &str) -> Result<i64, AppError>
+    where
+        C: ConnectionTrait;
+
+    /// 账号名：重置口令后要按它撤销会话。账号不存在时返回 `None`。
+    async fn find_username<C>(&self, db: &C, id: i64) -> Result<Option<String>, AppError>
     where
         C: ConnectionTrait;
 
@@ -182,6 +187,21 @@ impl UserRepository for SeaOrmUserRepository {
             vec![username.into()],
         )
         .await
+    }
+
+    async fn find_username<C>(&self, db: &C, id: i64) -> Result<Option<String>, AppError>
+    where
+        C: ConnectionTrait,
+    {
+        let row = query_opt(
+            db,
+            "SELECT username FROM sys_user WHERE id = ? AND deleted = 0",
+            vec![id.into()],
+        )
+        .await?;
+
+        row.map(|row| row.try_get("", "username").map_err(AppError::from))
+            .transpose()
     }
 
     async fn insert_user<C>(

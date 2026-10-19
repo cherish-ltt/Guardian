@@ -20,6 +20,7 @@ use guardian_backend::{
         AppConfig, DatabaseConfig, JwtConfig, LoggingConfig, MiddlewareConfig, RedisConfig,
         SeedConfig, ServerConfig,
     },
+    infrastructure::services::auth_store::{AuthStore, MemoryAuthStore},
 };
 use http_body_util::BodyExt;
 use ipnet::IpNet;
@@ -37,12 +38,41 @@ pub async fn setup_app() -> Router {
     setup_app_with_trusted_proxies(Vec::new()).await
 }
 
+/// 需要走登录流程的用例用这个：同时返回应用与它自己的会话存储。
+///
+/// 验证码明文不再回显，只能从服务端存储里读；令牌也必须在同一个存储里签发，
+/// 否则 `token_owner` 校验会判成过期。
+pub async fn setup_app_with_store() -> (Router, Arc<MemoryAuthStore>) {
+    let store = Container::memory_auth_store();
+    let container = setup_container_with_store(Vec::new(), store.clone()).await;
+
+    (create_app(container), store)
+}
+
 /// 可信代理链只在验证「网关透传的真实客户端 IP 会被采信」时显式配置。
 pub async fn setup_app_with_trusted_proxies(trusted_proxies: Vec<IpNet>) -> Router {
     create_app(setup_container(trusted_proxies).await)
 }
 
+/// 需要走登录流程 + 指定可信代理链时用这个。
+pub async fn setup_app_with_store_with_trusted_proxies(
+    trusted_proxies: Vec<IpNet>,
+) -> (Router, Arc<MemoryAuthStore>) {
+    let store = Container::memory_auth_store();
+    let container = setup_container_with_store(trusted_proxies, store.clone()).await;
+
+    (create_app(container), store)
+}
+
 pub async fn setup_container(trusted_proxies: Vec<IpNet>) -> Arc<Container> {
+    setup_container_with_store(trusted_proxies, Container::memory_auth_store()).await
+}
+
+/// 指定会话存储装配容器：需要从服务端侧读取验证码明文时用（见 [`take_captcha`]）。
+pub async fn setup_container_with_store(
+    trusted_proxies: Vec<IpNet>,
+    auth_store: Arc<dyn AuthStore>,
+) -> Arc<Container> {
     let database_url = format!(
         "sqlite://{}?mode=rwc",
         std::env::temp_dir()
@@ -114,7 +144,7 @@ pub async fn setup_container(trusted_proxies: Vec<IpNet>) -> Arc<Container> {
         two_factor_key: Some("BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=".into()),
     };
 
-    let container = Container::bootstrap_with_auth_store(config, Container::memory_auth_store())
+    let container = Container::bootstrap_with_auth_store(config, auth_store)
         .await
         .expect("容器装配成功");
 
@@ -221,17 +251,35 @@ pub fn request(method: &str, uri: &str, body: Option<Value>, token: Option<&str>
     builder.body(body).expect("构造请求")
 }
 
-/// 走完整登录流程：取验证码（页面明文回显）→ 登录 → 返回令牌。
-pub async fn login(app: &Router, username: &str, password: &str) -> String {
+/// 从服务端侧取出验证码明文。
+///
+/// `/auth/captcha` 只回传图片，明文只留在会话存储里；测试用内存存储，
+/// 直接读回服务端那份明文，避免在测试里实现 OCR。读一次即消费，
+/// 与登录时的一次性语义一致。
+pub fn take_captcha(store: &MemoryAuthStore, uuid: &str) -> String {
+    store.peek_captcha(uuid).expect("验证码应存在于会话存储中")
+}
+
+/// 走完整登录流程：取验证码图片 → 从存储侧取明文 → 登录 → 返回令牌。
+///
+/// 验证码明文不再回显，所以调用方必须同时持有容器里的会话存储，
+/// 见 [`setup_app_with_store`]。
+pub async fn login(
+    app: &Router,
+    store: &MemoryAuthStore,
+    username: &str,
+    password: &str,
+) -> String {
     let (_, captcha) = send(app.clone(), get("/api/v1/auth/captcha")).await;
     let uuid = captcha["data"]["uuid"]
         .as_str()
         .expect("验证码标识")
         .to_string();
-    let code = captcha["data"]["code"]
-        .as_str()
-        .expect("验证码明文")
-        .to_string();
+    assert!(
+        captcha["data"].get("code").is_none(),
+        "验证码不得再回显明文"
+    );
+    let code = take_captcha(store, &uuid);
     let (status, body) = send(
         app.clone(),
         post_json(
@@ -255,6 +303,8 @@ pub async fn login(app: &Router, username: &str, password: &str) -> String {
 }
 
 /// 管理员令牌：绝大多数用例的起点。
-pub async fn admin_token(app: &Router) -> String {
-    login(app, "admin", DEMO_PASSWORD).await
+///
+/// 需要读到验证码明文，所以由调用方传入它自己那个容器的会话存储。
+pub async fn admin_token(app: &Router, store: &MemoryAuthStore) -> String {
+    login(app, store, "admin", DEMO_PASSWORD).await
 }

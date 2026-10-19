@@ -23,9 +23,6 @@ use crate::{
     util::{csv, password},
 };
 
-/// 新增用户未传密码时的默认口令由 `AdminService` 从配置注入，见 `SEED_ADMIN_PASSWORD`。
-/// 重置密码未传新密码时的默认值。
-const DEFAULT_RESET_PASSWORD: &str = "Yy@123456";
 /// 账号初始密码参数键；用户页只读取、不展示。
 const INIT_PASSWORD_KEY: &str = "sys.user.initPassword";
 /// 导出上限与 Spring 版一致。
@@ -205,6 +202,11 @@ impl UserAdminUseCase for AdminService {
             nickname: trim_to_null(command.nickname.clone()),
             ..command
         };
+        // 内置管理员不能被停用：`/status` 端点已有这道校验，
+        // 编辑接口同样能改 `status`，必须一致。
+        if id == 1 && command.status == Some(0) {
+            return Err(AppError::business("内置管理员不允许停用"));
+        }
         let role_ids = command.role_ids.clone();
         let post_ids = command.post_ids.clone();
 
@@ -268,19 +270,28 @@ impl UserAdminUseCase for AdminService {
         password: Option<String>,
         operator: &str,
     ) -> Result<(), AppError> {
-        let plain = default_string(password, DEFAULT_RESET_PASSWORD);
+        // 不再有默认口令：重置必须显式指定新口令，否则一律拒绝。
+        let plain = required(password, "新密码不能为空")?;
         let length = plain.chars().count();
         if !(6..=64).contains(&length) {
             return Err(AppError::business("密码长度必须在6到64位之间"));
         }
 
         let hashed = password::hash_password(&plain)?;
+        let target = SeaOrmUserRepository
+            .find_username(&self.database, id)
+            .await?;
         if SeaOrmUserRepository
             .reset_user_password(&self.database, id, &hashed, operator)
             .await?
             == 0
         {
             return Err(AppError::business("用户不存在或已删除"));
+        }
+        // 重置口令通常发生在「怀疑账号被盗」之后：旧会话必须立即失效，
+        // 否则攻击者手里的令牌还能用到 TTL 到期。
+        if let Some(username) = target {
+            self.auth_store.revoke_user_tokens(&username).await?;
         }
 
         Ok(())

@@ -24,15 +24,13 @@ use crate::{
         },
         services::{auth_store::AuthStore, jwt::JwtService},
     },
-    util::password,
+    util::{captcha, password},
 };
+
+mod password_guard;
 
 /// 超管角色编码：不受角色菜单分配限制，拥有全部权限。
 pub const SUPER_ADMIN: &str = "super_admin";
-
-/// 验证码字符集：去掉了容易混淆的 I / O / 0 / 1，与 Spring 版一致。
-const CAPTCHA_CHARS: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-const CAPTCHA_LENGTH: usize = 4;
 
 /// 登录验证码开关参数键；缺省视为开启。
 const CAPTCHA_ENABLED_KEY: &str = "sys.account.captchaEnabled";
@@ -203,18 +201,18 @@ impl AdminAuthUseCase for AdminAuthService {
             return Ok(CaptchaChallenge {
                 enabled: false,
                 uuid: String::new(),
-                code: String::new(),
+                image: String::new(),
             });
         }
 
         let uuid = uuid::Uuid::now_v7().simple().to_string();
-        let code = random_captcha_code();
+        let code = captcha::random_code()?;
         self.auth_store.save_captcha(&uuid, &code).await?;
 
         Ok(CaptchaChallenge {
             enabled: true,
             uuid,
-            code,
+            image: captcha::render_image(&code)?,
         })
     }
 
@@ -231,16 +229,23 @@ impl AdminAuthUseCase for AdminAuthService {
             .find_user_by_username(&self.database, &command.username)
             .await?
         else {
+            // 账号不存在时也消耗一次口令校验成本，避免响应时间泄露账号是否存在。
+            password_guard::spend_unknown_account_cost()?;
             self.record_login(&command.username, 0, "账号或密码错误", source)
                 .await?;
             return Err(AppError::business("账号或密码错误"));
         };
 
+        // 锁定期内不再校验口令：否则锁定只是限速，不是阻断。
+        password_guard::check_lock(&self.database, user.id).await?;
+
         if !password::verify_password(&command.password, &user.password)? {
+            password_guard::record(&self.database, user.id, false).await?;
             self.record_login(&command.username, 0, "账号或密码错误", source)
                 .await?;
             return Err(AppError::business("账号或密码错误"));
         }
+        password_guard::record(&self.database, user.id, true).await?;
         if user.status != 1 {
             self.record_login(&command.username, 0, "账号已停用", source)
                 .await?;
@@ -415,14 +420,6 @@ async fn verify_captcha(store: &dyn AuthStore, command: &LoginCommand) -> Result
 }
 
 /// 验证码取 UUID v7 的随机段字节映射到字符集，不额外引入随机数依赖。
-fn random_captcha_code() -> String {
-    let bytes = uuid::Uuid::now_v7().into_bytes();
-
-    (0..CAPTCHA_LENGTH)
-        .map(|index| CAPTCHA_CHARS[usize::from(bytes[6 + index]) % CAPTCHA_CHARS.len()] as char)
-        .collect()
-}
-
 fn dedup(values: Vec<i64>) -> Vec<i64> {
     let mut seen = std::collections::HashSet::new();
 
