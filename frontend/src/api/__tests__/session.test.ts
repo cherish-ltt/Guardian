@@ -40,3 +40,27 @@ test('auth session clears both persistent and session storages on logout', () =>
   assert.equal(local.length, 0)
   assert.equal(session.length, 0)
 })
+
+test('corrupted cached user is dropped instead of crashing module init', () => {
+  const local = memoryStorage()
+  const session = memoryStorage()
+  const authSession = createAuthSession({ localStorage: local, sessionStorage: session })
+  authSession.save({ token: 'token-3', expiresIn: 7200 }, { username: 'admin', nickname: '陈立诚' }, true)
+
+  local.setItem('guardian.user', '{"nickname":')
+
+  assert.equal(authSession.user(), null)
+  assert.equal(authSession.token(), null, '坏缓存要连令牌一起清掉，回到登录页')
+  assert.equal(local.getItem('guardian.user'), null)
+})
+
+test('cached user without a username is treated as corrupted', () => {
+  const local = memoryStorage()
+  const session = memoryStorage()
+  const authSession = createAuthSession({ localStorage: local, sessionStorage: session })
+  authSession.save({ token: 'token-4', expiresIn: 7200 }, { username: 'admin', nickname: '陈立诚' }, true)
+
+  local.setItem('guardian.user', JSON.stringify({ nickname: '旧结构' }))
+
+  assert.equal(authSession.user(), null)
+})

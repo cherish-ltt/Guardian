@@ -113,12 +113,27 @@ function toQueryString(query: QueryParams) {
   return params.toString()
 }
 
+/**
+ * 解析统一响应体。
+ *
+ * 网关返回的 HTML 错误页、反向代理的纯文本提示都不是 JSON：
+ * 直接 `JSON.parse` 会抛 `SyntaxError`，调用方只认 `ApiError`，
+ * 用户最终看到的是通用兜底文案，真实状态码丢失。这里统一收敛成同形状对象。
+ */
 async function parseJson<T>(response: Response): Promise<T> {
   const text = await response.text()
   if (!text) {
     return { code: response.status, message: response.statusText, data: null } as T
   }
-  return JSON.parse(text) as T
+  try {
+    return JSON.parse(text) as T
+  } catch {
+    return {
+      code: response.status,
+      message: response.statusText || `HTTP ${response.status}`,
+      data: null,
+    } as T
+  }
 }
 
 import { authSession } from './session.ts'

@@ -45,8 +45,21 @@ export function createAuthSession(options: AuthSessionOptions = {}) {
   }
 
   function user(): StoredUser | null {
-    const raw = activeStorage().getItem(USER_KEY)
-    return raw ? JSON.parse(raw) as StoredUser : null
+    const storage = activeStorage()
+    const raw = storage.getItem(USER_KEY)
+    if (!raw) return null
+    try {
+      const parsed: unknown = JSON.parse(raw)
+      if (!parsed || typeof parsed !== 'object') throw new Error('not an object')
+      const candidate = parsed as StoredUser
+      if (typeof candidate.username !== 'string') throw new Error('missing username')
+      return candidate
+    } catch {
+      // 缓存被写坏（旧版本结构、手工改过、存储配额异常）时清掉它，
+      // 否则应用会在路由初始化阶段抛错，用户连登录页都看不到。
+      clear()
+      return null
+    }
   }
 
   /** 当前登录是否选择了「记住登录状态」（存于 localStorage） */

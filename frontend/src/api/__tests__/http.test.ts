@@ -67,3 +67,17 @@ test('an unauthorized download for the current session uses the same login-expir
     setUnauthorizedHandler(null)
   }
 })
+
+test('non-JSON error page becomes ApiError with the real status instead of SyntaxError', async () => {
+  const fetcher = async () => new Response('<html><body>502 Bad Gateway</body></html>', {
+    status: 502,
+    statusText: 'Bad Gateway',
+    headers: { 'content-type': 'text/html' },
+  })
+  const client = createHttpClient({ baseUrl: '/api/v1', tokenProvider: () => 'token-1', fetcher })
+
+  await assert.rejects(
+    () => client.get('/system/users'),
+    (error: unknown) => error instanceof ApiError && error.status === 502 && error.message === 'Bad Gateway',
+  )
+})

@@ -2,7 +2,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { pathOf, sessionVersion } from '@/composables/auth'
-import { Avatar, Field, HoverCard, Segmented, Select, StatusTag, Switch, Tag, TextInput, type Column } from '@/components/ui'
+import { Avatar, Field, HoverCard, MultiCheck, Segmented, StatusTag, Switch, Tag, TextInput, type Column } from '@/components/ui'
 import {
   BoardView, DeptSelect, DeptTree, DictSelect, FormDialog, ListPage, PermissionButton,
   type BoardColumn,
@@ -143,13 +143,13 @@ interface UserForm {
   phone: string
   email: string
   deptId: number | null
-  roleId: number | null
-  postId: number | null
+  roleIds: number[]
+  postIds: number[]
   status: number
 }
 const emptyForm = (): UserForm => ({
   username: '', nickname: '', password: initPassword.value, phone: '', email: '',
-  deptId: list.query.deptId, roleId: null, postId: null, status: 1,
+  deptId: list.query.deptId, roleIds: [], postIds: [], status: 1,
 })
 const dialog = ref(false)
 const saving = ref(false)
@@ -168,6 +168,20 @@ function openCreate() {
   dialog.value = true
 }
 
+/**
+ * 后端返回的 `roleName` / `postName` 是逗号拼接的多值，这里按名字逐个还原成 ID。
+ * 只回填能匹配上的，匹配不到的保持缺席（用户提交时会整体替换）。
+ */
+function idsOfNames(names: string | undefined, options: Array<{ id: number; name: string }>) {
+  if (!names) return []
+  return names
+    .split(',')
+    .map(name => name.trim())
+    .filter(Boolean)
+    .map(name => options.find(option => option.name === name)?.id)
+    .filter((id): id is number => typeof id === 'number')
+}
+
 function openEdit(row: UserRow) {
   const dept = flattenDepts(departments.value).find(d => d.dept.name === row.deptName)
   Object.assign(form, {
@@ -178,8 +192,8 @@ function openEdit(row: UserRow) {
     phone: row.phone ?? '',
     email: row.email ?? '',
     deptId: dept?.dept.id ?? null,
-    roleId: roles.value.find(r => r.name === row.roleName)?.id ?? null,
-    postId: posts.value.find(p => p.name === row.postName)?.id ?? null,
+    roleIds: idsOfNames(row.roleName, roles.value),
+    postIds: idsOfNames(row.postName, posts.value),
     status: row.status,
   })
   errors.value = {}
@@ -194,7 +208,7 @@ async function submit() {
     phone: [phone],
     email: [email],
     deptId: [required('请选择所属部门')],
-    roleId: [required('请选择角色')],
+    roleIds: [v => (Array.isArray(v) && v.length ? undefined : '请选择角色')],
   })
   if (Object.keys(errors.value).length) return
   saving.value = true
@@ -205,8 +219,8 @@ async function submit() {
     email: form.email || undefined,
     deptId: form.deptId ?? undefined,
     status: form.status,
-    roleIds: form.roleId ? [form.roleId] : [],
-    postIds: form.postId ? [form.postId] : [],
+    roleIds: form.roleIds,
+    postIds: form.postIds,
   }
   try {
     if (form.id) {
@@ -455,11 +469,11 @@ async function resetTwoFactor() {
       <Field label="所属部门" required :error="errors.deptId">
         <DeptSelect v-model="form.deptId" :data="departments" :invalid="!!errors.deptId" />
       </Field>
-      <Field label="岗位">
-        <Select v-model="form.postId" :options="postOptions" placeholder="选填" clearable />
+      <Field label="岗位" hint="可多选，不选表示不分配">
+        <MultiCheck v-model="form.postIds" :options="postOptions" placeholder="选填" />
       </Field>
-      <Field label="角色" required :error="errors.roleId">
-        <Select v-model="form.roleId" :options="roleOptions" :invalid="!!errors.roleId" />
+      <Field label="角色" required :error="errors.roleIds">
+        <MultiCheck v-model="form.roleIds" :options="roleOptions" :invalid="!!errors.roleIds" />
       </Field>
       <Field label="账号状态" group>
         <Switch :model-value="form.status === 1" :label="form.status === 1 ? '正常，允许登录' : '停用，禁止登录'" @update:model-value="form.status = $event ? 1 : 0" />
