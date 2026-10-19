@@ -9,6 +9,46 @@
 > [AxumServiceScaffold](https://github.com/cherish-ltt/AxumServiceScaffold)。
 > 下方 `0.6.0` 及更早的条目属于上游项目的历史记录，版本号与本项目不连续。
 
+## [0.5.0] - 2026-10-19
+
+本次按生产级标准补齐安全、数据一致性与前端稳定性上的缺口，并给 CI 加了覆盖率护栏。
+对外行为有若干不兼容变更，分前后端的发布说明见 [docs/version/v0.5.0.md](../../docs/version/v0.5.0.md)。
+
+### 不兼容变更
+
+- `GET /auth/captcha` 不再返回 `code`，改为 `image`（base64 SVG）。
+- `POST /system/users/{id}/reset-password` 的 `password` 改为必填，不再有内置默认口令。
+- 列表接口的 `pageNum` / `pageSize` 非法值返回 `400`，不再静默回落默认值。
+- `/examples/*` 只在 debug 构建注册，release 包访问返回 `404`。
+- 新增用户未传口令时改用 `sys.user.initPassword`，参数为空才回退 `SEED_ADMIN_PASSWORD`。
+
+### 安全
+
+- 验证码改为服务端生成内联 SVG，明文只留在会话存储里比对，随机源换成系统随机数。
+- 登录密码阶段接入失败计数：连续 5 次错误锁定 5 分钟；账号不存在时也付出一次 Argon2 成本。
+- 删除硬编码重置口令，新口令必填；管理员重置他人口令后撤销该账号全部会话。
+- `PUT /system/users/{id}` 补上「内置管理员不允许停用」校验。
+
+### 修复
+
+- 用户 / 角色 / 岗位的唯一索引改为 `WHERE deleted = 0` 的部分索引（新增 `0006` 迁移），
+  软删后重建同名记录不再被数据库拦成 409。
+- CUSTOM 数据权限补上写入能力：`RoleWriteCommand` 增加 `deptIds`，角色仓储新增
+  `sys_role_dept` 的读与全量替换；删除角色一并清理。
+- 新增或编辑用户时在事务内校验 `roleIds` / `postIds` 存在，失败整体回滚。
+- 新增用户口令改为先读 `sys.user.initPassword`，与文档和前端提示一致。
+- `/system/health` 的 OpenAPI 去掉不存在的 503 分支。
+- 分页参数与过滤参数统一错误语义；移除从未被使用的 `sortField` / `sortOrder`。
+- 示例接口按 debug 构建门控，release 不再暴露 `/examples/*`。
+
+### CI 与构建
+
+- musl 目标只设 `CC_<target>=musl-gcc`，去掉 `CARGO_TARGET_<TARGET>_LINKER=musl-gcc`：
+  后者会让产物变成 dynamic-pie，运行到 musl 的 `_start_c` 段错误；打包前新增静态链接校验。
+- `release.yml` 的 Rust 工具链固定 `1.99.0`，与 `backend.yml` 一致。
+- `backend.yml` 的 paths 统一成 `backend/**/*.rs` 风格，并补 `backend/vendor/**/*.rs`。
+- 新增 `scripts/check-coverage.py`，CI 卡全局行覆盖率 80% 门槛。
+
 ## [0.4.1] - 2026-10-18
 
 本次让后端产物明确区分 glibc 与 musl 运行时，共四个下载包，并简化了包内结构。
