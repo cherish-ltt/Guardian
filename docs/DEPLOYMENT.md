@@ -252,7 +252,20 @@ IP_LOCATION_V6_DB_PATH=/var/lib/guardian/ip2region_v6.xdb
 
 解压后只有 `guardian-backend` 与 `.env-example` 两项。迁移 SQL 已由 `sqlx::migrate!` 在编译期
 嵌入二进制，包内不需要 `migrations/` 目录。不确定该用哪个时用 musl 包：静态链接，
-不会因目标机器的 glibc 版本过旧而启动失败。
+不会因目标机器的 glibc 版本过旧而启动失败（`ldd` 显示 `statically linked`，
+`readelf -l` 无 `INTERP` 段）。
+
+从源码自行构建 musl 包时，只给 C 代码指定 musl 编译器即可：
+
+```bash
+rustup target add x86_64-unknown-linux-musl
+CC_x86_64_unknown_linux_musl=musl-gcc \
+  cargo build --release --locked --target x86_64-unknown-linux-musl
+```
+
+**不要**再设 `CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc`：`musl-gcc` 是编译器驱动，
+交给 rustc 当链接器时会额外写入动态解释器，产物变成 dynamic-pie，启动即段错误。
+不设 `LINKER` 时 rustc 用自带的 rust-lld 直接产出 static-pie。
 
 从源码构建：
 

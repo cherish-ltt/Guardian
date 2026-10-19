@@ -38,32 +38,36 @@ on:
   push:
     branches: [ "main", "master" ]
     paths:
-      - "backend/**.rs"
-      - "backend/**.proto"
-      - "backend/migrations/**.sql"
+      - "backend/**/*.rs"
+      - "backend/**/*.proto"
+      - "backend/migrations/**/*.sql"
       - "backend/Cargo.toml"
       - "backend/Cargo.lock"
       - "backend/vendor/**/Cargo.toml"
+      - "backend/vendor/**/*.rs"
       - "backend/.rustfmt.toml"
       - "backend/.clippy.toml"
       - "backend/.env-example"
-      - "backend/docs/**.md"
+      - "backend/docs/**/*.md"
       - "backend/AGENTS.md"
+      - "scripts/check-coverage.py"
       - ".github/workflows/backend.yml"
   pull_request:
     branches: [ "main", "master" ]
     paths:
-      - "backend/**.rs"
-      - "backend/**.proto"
-      - "backend/migrations/**.sql"
+      - "backend/**/*.rs"
+      - "backend/**/*.proto"
+      - "backend/migrations/**/*.sql"
       - "backend/Cargo.toml"
       - "backend/Cargo.lock"
       - "backend/vendor/**/Cargo.toml"
+      - "backend/vendor/**/*.rs"
       - "backend/.rustfmt.toml"
       - "backend/.clippy.toml"
       - "backend/.env-example"
-      - "backend/docs/**.md"
+      - "backend/docs/**/*.md"
       - "backend/AGENTS.md"
+      - "scripts/check-coverage.py"
       - ".github/workflows/backend.yml"
 
 env:
@@ -94,6 +98,13 @@ jobs:
       - name: Show rustup info
         run: rustup show
 
+      # 覆盖率门槛依赖 cargo-llvm-cov；用 taiki-e 的 action 装预编译二进制，
+      # 避免每次从源码编译。
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+
       - name: Cache Cargo dependencies
         uses: Swatinem/rust-cache@v2
         with:
@@ -113,6 +124,14 @@ jobs:
 
       - name: Run tests
         run: cargo test --features docs --verbose
+
+      # AGENTS.md 10.1 要求行覆盖率 >= 80%，此前只在文档里约定、CI 没有护栏。
+      # 门槛按全局行覆盖率卡，不按文件。
+      - name: Check coverage threshold
+        run: |
+          set -euo pipefail
+          cargo llvm-cov --features docs --summary-only --json --output-path coverage.json
+          python3 ../scripts/check-coverage.py coverage.json
 ```
 
 ---

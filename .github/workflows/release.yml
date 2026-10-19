@@ -65,9 +65,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # 与 backend.yml 用同一版本，避免 CI 与发布产物由不同编译器产生
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: "1.99.0"
           targets: ${{ matrix.target }}
 
       # musl 静态链接需要 musl 的 C 工具链（aws-lc-rs 与 sqlx 都含 C 代码）。
@@ -85,9 +87,36 @@ jobs:
           workspaces: backend
           key: ${{ matrix.target }}
 
+      # musl 目标必须给 cc crate 指定 musl 的 C 编译器，否则 aws-lc-rs 与 sqlx 的
+      # C 代码会用宿主 glibc 的 gcc 编，链接阶段报符号不兼容。
+      #
+      # 只设 CC_<target>，**不要**设 CARGO_TARGET_<TARGET>_LINKER=musl-gcc：
+      # musl-gcc 是编译器驱动，交给 rustc 当 linker 时会额外塞入动态解释器，
+      # 产物变成 dynamic-pie，运行到 musl 的 _start_c 就段错误。
+      # 不设 LINKER 时 rustc 用自带的 rust-lld 直接产出 static-pie，ldd 报 statically linked。
       - name: Build backend release binary
         working-directory: backend
+        env:
+          CC_x86_64_unknown_linux_musl: musl-gcc
+          CC_aarch64_unknown_linux_musl: musl-gcc
         run: cargo build --release --locked --target ${{ matrix.target }}
+
+      # musl 包对外承诺静态链接；链接器配置一旦回退成动态就会在目标机上启动失败，
+      # 所以在打包前直接检查产物。
+      - name: Verify musl binary is statically linked
+        if: matrix.musl
+        run: |
+          set -euo pipefail
+          binary="backend/target/${{ matrix.target }}/release/guardian-backend"
+          if readelf -l "$binary" | grep -q INTERP; then
+            echo "musl 产物含 INTERP 段，说明是动态链接" >&2
+            exit 1
+          fi
+          if readelf -d "$binary" 2>/dev/null | grep -q NEEDED; then
+            echo "musl 产物有动态库依赖" >&2
+            exit 1
+          fi
+          echo "musl 产物为静态链接"
 
       - name: Package backend
         run: |

@@ -69,9 +69,10 @@ cargo test --features docs
 cargo llvm-cov --features docs --summary-only
 ```
 
-`AGENTS.md` 第 10.1 节要求**行覆盖率 ≥ 80%**：全局口径，不按文件考核；
+`AGENTS.md` 第 10.1 节要求**行覆盖率 ≥ 80%**：全局口径，不按文件考核，CI 由
+`scripts/check-coverage.py` 卡这条门槛；
 命令与 CI 的测试口径保持一致（同样带 `--features docs`，否则 `docs` 门控的代码不在统计范围内）。
-当前实测：**行 94.69% / 函数 92.39% / region 96.80%**（289 个用例，其中 1 个需真实 Redis 默认忽略；`cargo-llvm-cov 0.9.1`）。
+当前实测：**行 96.60% / 函数 92.05% / region 96.60%**（303 个用例，其中 1 个需真实 Redis 默认忽略；`cargo-llvm-cov 0.9.1`）。
 这只是当时的快照，改动后需重新测量，不要把数字当常量。
 
 下面两处不计入覆盖率目标，也无需为它们写测试：
