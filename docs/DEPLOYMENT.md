@@ -243,7 +243,7 @@ IP_LOCATION_V6_DB_PATH=/var/lib/guardian/ip2region_v6.xdb
 ## 启动与进程管理
 
 发布页提供预编译包，按「架构 × libc」分为四个，文件名形如
-`guardian-backend-v0.5.1-x86_64-linux-musl.tar.gz`：
+`guardian-backend-v0.5.2-x86_64-linux-musl.tar.gz`：
 
 | 包名后缀 | 运行时 | 适用场景 |
 | --- | --- | --- |

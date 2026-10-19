@@ -9,6 +9,30 @@
 > [AxumServiceScaffold](https://github.com/cherish-ltt/AxumServiceScaffold)。
 > 下方 `0.6.0` 及更早的条目属于上游项目的历史记录，版本号与本项目不连续。
 
+## [0.5.2] - 2026-10-19
+
+对 `0.5.0` 与 `0.5.1` 的后端改动做了一轮复核，修掉两个安全与数据一致性缺陷。
+分前后端的发布说明见 [docs/version/v0.5.2.md](../../docs/version/v0.5.2.md)。
+
+### 安全
+
+- 重置口令时在同一事务内递增 `auth_version`。此前只删会话存储里的令牌，
+  Redis 清理失败或令牌索引缺失时旧 JWT 仍能用到 TTL 到期。
+- 新增 `AccountRepository::bump_auth_version` 只更新单列，避免 `save_security`
+  整行覆盖把并发写入的其他安全字段写回旧值。
+
+### 修复
+
+- `dataScope=CUSTOM` 的 `deptIds` 校验部门存在性，不再向 `sys_role_dept`
+  写入不存在的部门 ID 留下悬空关联。
+- 补验证码字模完整性测试：字形缺失时渲染会静默跳过该字符。
+- 修正 `docs/ADMIN.md` 与 `auth_controller` 里「验证码明文回显」的过时描述。
+
+### CI
+
+- 覆盖率步骤合并为一次 `cargo llvm-cov`，不再重复跑 `cargo test`。
+- `scripts/check-coverage.py` 对缺文件、非法 JSON、结构不符给出明确报错。
+
 ## [0.5.1] - 2026-10-19
 
 修复 `0.5.0` 前端产物里的一个回归缺陷。只改了前端，后端代码无变动，版本号按约定同步递增。
