@@ -9,6 +9,19 @@
 > [AxumServiceScaffold](https://github.com/cherish-ltt/AxumServiceScaffold)。
 > 下方 `0.6.0` 及更早的条目属于上游项目的历史记录，版本号与本项目不连续。
 
+## [0.5.1] - 2026-10-19
+
+修复 `0.5.0` 前端产物里的一个回归缺陷。只改了前端，后端代码无变动，版本号按约定同步递增。
+分前后端的发布说明见 [docs/version/v0.5.1.md](../../docs/version/v0.5.1.md)。
+
+### 修复
+
+- `FormDialog.vue`、`SearchForm.vue`、`NoAccess.vue` 三处的 `import` 被误放到
+  `<script setup>` 之外，import 不生效导致 `Modal` / `Button` / `EmptyState` 未注册：
+  所有列表页底部漏出整块未受控的表单（关不掉），查询区按钮点击无效，无权限页内容空白。
+- 类型检查与 lint 对这类错误不敏感，新增 `src/components/__tests__/sfc-structure.test.ts`
+  扫描全部 `.vue`，断言 `import` / `export` 都在 `<script>` 块内。
+
 ## [0.5.0] - 2026-10-19
 
 本次按生产级标准补齐安全、数据一致性与前端稳定性上的缺口，并给 CI 加了覆盖率护栏。

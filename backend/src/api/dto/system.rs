@@ -13,7 +13,7 @@ pub struct WelcomeResponse {
     #[cfg_attr(feature = "docs", schema(example = "development"))]
     pub environment: String,
     // utoipa 的 example 不接受 env!/const 路径，只能写字面量：发版时需与 Cargo.toml version 同步。
-    #[cfg_attr(feature = "docs", schema(example = "0.5.0"))]
+    #[cfg_attr(feature = "docs", schema(example = "0.5.1"))]
     pub version: String,
     #[cfg_attr(feature = "docs", schema(example = true))]
     pub docs_enabled: bool,
@@ -38,7 +38,7 @@ pub struct HealthResponse {
     #[cfg_attr(feature = "docs", schema(example = "development"))]
     pub environment: String,
     // utoipa 的 example 不接受 env!/const 路径，只能写字面量：发版时需与 Cargo.toml version 同步。
-    #[cfg_attr(feature = "docs", schema(example = "0.5.0"))]
+    #[cfg_attr(feature = "docs", schema(example = "0.5.1"))]
     pub version: String,
     #[cfg_attr(feature = "docs", schema(example = "ok"))]
     pub status: String,

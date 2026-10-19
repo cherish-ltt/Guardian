@@ -9,7 +9,4 @@
 
 ## 前端
 
-- 修复 0.5.0 引入的回归：`FormDialog.vue`、`SearchForm.vue`、`NoAccess.vue` 的 import
-  被误放到 `<script setup>` 之外，组件没有注册，模板里的 `<Modal>` 被当成未知原生标签
-  渲染，导致各列表页底部漏出表单、查询区按钮失效、无权限页空白。同时新增 SFC 结构守卫
-  测试，防止同类写法再次通过 type-check 与 lint。
+- 无。

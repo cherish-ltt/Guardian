@@ -23,7 +23,7 @@
     四个目标都在对应架构的原生 runner 上编译（x86_64 用 `ubuntu-24.04`，aarch64 用
     `ubuntu-24.04-arm`），musl 目标的 C 工具链来自 apt 的 `musl-tools`，不引入外部下载；
     前端产物与架构无关只构建一份；下载页另附本 tag 的 `.env-example`
-    （文件名带版本，如 `env-example-v0.5.0`）。
+    （文件名带版本，如 `env-example-v0.5.1`）。
   - 工作流都必须放在仓库根目录（GitHub 只识别根下的 `.github/workflows/`），
     用 `working-directory` 指向 `backend/` 与 `frontend/`。
   - `.pre-commit-config.yaml`：文件检查、密钥泄漏检测、ast-grep 规则与 Rust 钩子。
