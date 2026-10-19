@@ -1,5 +1,5 @@
-import { Modal, Button } from '@/components/ui'
 <script setup lang="ts">
+import { Modal, Button } from '@/components/ui'
 
 /* 表单弹窗：两列网格 + 取消 / 保存。页面只写字段与校验。 */
 withDefaults(defineProps<{

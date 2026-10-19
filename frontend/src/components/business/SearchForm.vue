@@ -1,5 +1,5 @@
-import { Button } from '@/components/ui'
 <script setup lang="ts">
+import { Button } from '@/components/ui'
 
 /* 查询区：字段放默认插槽，回车即查询。查询 / 重置按钮统一在右侧。 */
 defineProps<{ loading?: boolean }>()
