@@ -543,6 +543,119 @@ async fn user_write_flow_covers_create_update_status_password_and_delete() {
     assert_eq!(body["message"], "用户不存在或已删除");
 }
 
+/// 软删除的账号、角色、岗位不再占用唯一约束：删除后可以立刻重建同名记录。
+#[tokio::test]
+async fn soft_deleted_records_do_not_block_recreating_the_same_name() {
+    let (app, store) = setup_app_with_store().await;
+    let token = admin_token(&app, store.as_ref()).await;
+
+    // 用户：删除后重建同名账号。
+    let (status, created) = send(
+        app.clone(),
+        post_json_with_bearer(
+            "/api/v1/system/users",
+            &token,
+            json!({
+                "username": "recycle",
+                "nickname": "回收站",
+                "password": "Rr@123456",
+                "deptId": 5,
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let user_id = created["data"]["id"].as_i64().expect("用户 ID");
+    assert_eq!(
+        send(
+            app.clone(),
+            delete_with_bearer(&format!("/api/v1/system/users/{user_id}"), &token)
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let (status, body) = send(
+        app.clone(),
+        post_json_with_bearer(
+            "/api/v1/system/users",
+            &token,
+            json!({
+                "username": "recycle",
+                "nickname": "回收站二",
+                "password": "Rr@123456",
+                "deptId": 5,
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "删除后应能重建同名账号: {body}");
+
+    // 角色：删除后重建同编码角色。
+    let (status, created) = send(
+        app.clone(),
+        post_json_with_bearer(
+            "/api/v1/system/roles",
+            &token,
+            json!({ "name": "回收角色", "code": "recycled_role", "dataScope": "SELF" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let role_id = created["data"]["id"].as_i64().expect("角色 ID");
+    assert_eq!(
+        send(
+            app.clone(),
+            delete_with_bearer(&format!("/api/v1/system/roles/{role_id}"), &token)
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let (status, body) = send(
+        app.clone(),
+        post_json_with_bearer(
+            "/api/v1/system/roles",
+            &token,
+            json!({ "name": "回收角色二", "code": "recycled_role", "dataScope": "SELF" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "删除后应能重建同编码角色: {body}");
+
+    // 岗位：删除后重建同编码岗位。
+    let (status, created) = send(
+        app.clone(),
+        post_json_with_bearer(
+            "/api/v1/system/posts",
+            &token,
+            json!({ "postCode": "recycled_post", "postName": "回收岗位" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let post_id = created["data"]["id"].as_i64().expect("岗位 ID");
+    assert_eq!(
+        send(
+            app.clone(),
+            delete_with_bearer(&format!("/api/v1/system/posts/{post_id}"), &token)
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let (status, body) = send(
+        app.clone(),
+        post_json_with_bearer(
+            "/api/v1/system/posts",
+            &token,
+            json!({ "postCode": "recycled_post", "postName": "回收岗位二" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "删除后应能重建同编码岗位: {body}");
+}
+
 #[tokio::test]
 async fn user_export_returns_spring_csv() {
     let (app, store) = setup_app_with_store().await;

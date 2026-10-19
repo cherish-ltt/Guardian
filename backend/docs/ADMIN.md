@@ -156,6 +156,9 @@ src/middleware/audit.rs                       写操作留痕
 
 - 表结构见 `migrations/0002_create_system_tables.sql`：16 张表，列名与 MySQL 版一致
   （该文件原本建 17 张，`0005_drop_sys_file.sql` 删掉了从未使用的 `sys_file`）。
+- 用户 / 角色 / 岗位走软删除（`deleted = 1`），唯一约束只约束未删除的行：
+  `0006_partial_unique_indexes.sql` 把 `uk_sys_user_username` / `uk_sys_role_code` /
+  `uk_sys_post_code` 改成 `WHERE deleted = 0` 的部分索引，删除后可以立刻重建同名记录。
 - `DATETIME` 存 `TEXT`（`YYYY-MM-DD HH:MM:SS` 本地时间），字典序比较等价时间先后；
   查询用 `strftime` / `julianday` / `substr(x, 1, 16)` 等价 `NOW()` / `CURDATE()` / `DATE_FORMAT()`。
 - 种子数据在 `src/infrastructure/databases/seed.rs`：11 个部门、9 个岗位、6 个角色、
