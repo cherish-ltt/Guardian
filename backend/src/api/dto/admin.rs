@@ -23,22 +23,15 @@ impl QueryString {
         Self(values)
     }
 
-    /// 分页参数：`pageNum` / `pageSize` / `sortField` / `sortOrder`。
-    pub fn page(&self) -> PageQuery {
-        PageQuery {
-            page_num: self
-                .int("pageNum")
-                .ok()
-                .flatten()
-                .and_then(|value| u32::try_from(value).ok()),
-            page_size: self
-                .int("pageSize")
-                .ok()
-                .flatten()
-                .and_then(|value| u32::try_from(value).ok()),
-            sort_field: self.text("sortField"),
-            sort_order: self.text("sortOrder"),
-        }
+    /// 分页参数：`pageNum` / `pageSize`。
+    ///
+    /// 非法整数与 `status` 等过滤条件同样返回 400，不静默当作未传——
+    /// 否则前端把 `pageNum=abc` 发出去时，用户看到的是「第一页」而不是「参数错了」。
+    pub fn page(&self) -> Result<PageQuery, AppError> {
+        Ok(PageQuery {
+            page_num: self.uint("pageNum")?,
+            page_size: self.uint("pageSize")?,
+        })
     }
 
     /// 文本条件：空串按「未传」处理，与 Spring 的 `#{keyword} IS NULL OR #{keyword} = ''` 一致。
@@ -47,6 +40,17 @@ impl QueryString {
             .get(key)
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty())
+    }
+
+    /// 非负整数条件：负数与非法值都返回 400。
+    fn uint(&self, key: &str) -> Result<Option<u32>, AppError> {
+        let Some(value) = self.int(key)? else {
+            return Ok(None);
+        };
+
+        u32::try_from(value)
+            .map(Some)
+            .map_err(|_| AppError::business(format!("参数 {key} 不能为负数")))
     }
 
     /// 整数条件：无法解析时返回 400，避免静默忽略过滤条件。
@@ -131,13 +135,26 @@ mod tests {
 
     #[test]
     fn page_fields_are_parsed_and_normalized_later() {
-        let query = QueryString::parse(Some("pageNum=2&pageSize=20&sortField=id&sortOrder=desc"));
-        let page = query.page();
+        let query = QueryString::parse(Some("pageNum=2&pageSize=20"));
+        let page = query.page().expect("解析分页参数");
 
         assert_eq!(page.page_num, Some(2));
         assert_eq!(page.page_size, Some(20));
-        assert_eq!(page.sort_field.as_deref(), Some("id"));
-        assert_eq!(page.sort_order.as_deref(), Some("desc"));
+    }
+
+    #[test]
+    fn invalid_page_fields_are_rejected_instead_of_silently_ignored() {
+        let query = QueryString::parse(Some("pageNum=abc"));
+        assert!(matches!(
+            query.page(),
+            Err(AppError::Business(message)) if message == "参数 pageNum 必须是整数"
+        ));
+
+        let query = QueryString::parse(Some("pageSize=-1"));
+        assert!(matches!(
+            query.page(),
+            Err(AppError::Business(message)) if message == "参数 pageSize 不能为负数"
+        ));
     }
 
     #[test]
@@ -147,7 +164,7 @@ mod tests {
         assert_eq!(query.text("keyword"), None);
         assert_eq!(query.int("status").expect("空串不算错误"), None);
         assert_eq!(query.text("unknown"), None);
-        assert_eq!(query.page().page_num, None);
+        assert_eq!(query.page().expect("空串不算错误").page_num, None);
     }
 
     #[test]

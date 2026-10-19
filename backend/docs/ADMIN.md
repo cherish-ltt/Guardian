@@ -22,6 +22,10 @@ src/middleware/audit.rs                       写操作留痕
 
 ## 接口清单
 
+列表接口统一用 `pageNum` / `pageSize` 分页（页码从 1 开始，`pageSize` 上限 100，
+排序由各接口的 SQL 固定给出）。`pageNum` / `pageSize` 与 `status` 等过滤参数同语义：
+非整数或负数一律 `400`，不静默回落默认值。
+
 ### 认证（`/auth`）
 
 | 方法 | 路径 | 权限 | 说明 |

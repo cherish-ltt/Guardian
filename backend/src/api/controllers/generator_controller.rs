@@ -50,7 +50,7 @@ async fn list(
     let rows = container
         .generator_service
         .tables(&KeywordQuery {
-            page: query.page(),
+            page: query.page()?,
             keyword: query.text("keyword"),
         })
         .await?;

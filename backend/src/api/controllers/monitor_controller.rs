@@ -56,7 +56,7 @@ async fn list_oper_logs(
     let rows = container
         .admin_service
         .list_oper_logs(&OperLogQuery {
-            page: query.page(),
+            page: query.page()?,
             keyword: query.text("keyword"),
             result: query.int("result")?,
         })
@@ -141,7 +141,7 @@ async fn list_login_logs(
     let rows = container
         .admin_service
         .list_login_logs(&LoginLogQuery {
-            page: query.page(),
+            page: query.page()?,
             keyword: query.text("keyword"),
             status: query.int("status")?,
         })

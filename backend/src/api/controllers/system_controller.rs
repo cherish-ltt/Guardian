@@ -65,8 +65,7 @@ pub async fn root(
     path = "/api/v1/system/health",
     tag = "System",
     responses(
-        (status = 200, description = "Health check passed", body = DocHealthResponse),
-        (status = 503, description = "Service degraded or database unavailable", body = DocHealthResponse)
+        (status = 200, description = "Liveness probe passed; database not checked", body = DocHealthResponse)
     )
 ))]
 pub async fn health(

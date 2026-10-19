@@ -162,7 +162,7 @@ async fn remove(
 
 fn filter_of(query: &QueryString) -> Result<UserQuery, AppError> {
     Ok(UserQuery {
-        page: query.page(),
+        page: query.page()?,
         keyword: query.text("keyword"),
         status: query.int("status")?,
         dept_id: query.int("deptId")?,

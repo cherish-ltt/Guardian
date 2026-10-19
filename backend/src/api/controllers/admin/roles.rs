@@ -144,7 +144,7 @@ async fn remove(
 
 pub(crate) fn status_query(query: &QueryString) -> Result<StatusQuery, AppError> {
     Ok(StatusQuery {
-        page: query.page(),
+        page: query.page()?,
         keyword: query.text("keyword"),
         status: query.int("status")?,
     })

@@ -1,10 +1,11 @@
-/// 分页请求。与 Spring 版 `PageQuery` 一致：页码从 1 开始，每页最多 100 条。
+/// 分页请求。页码从 1 开始，每页最多 100 条。
+///
+/// 排序由各列表的 SQL 固定给出（如用户列表按 `id`）：接口不暴露任意列排序，
+/// 避免把用户输入的列名拼进 SQL。
 #[derive(Debug, Clone, Default)]
 pub struct PageQuery {
     pub page_num: Option<u32>,
     pub page_size: Option<u32>,
-    pub sort_field: Option<String>,
-    pub sort_order: Option<String>,
 }
 
 pub const DEFAULT_PAGE_NUM: u32 = 1;
@@ -96,8 +97,6 @@ mod tests {
         let page = Page::from_query(Some(&PageQuery {
             page_num: Some(0),
             page_size: Some(0),
-            sort_field: None,
-            sort_order: None,
         }));
         assert_eq!(page.page_num(), 1);
         assert_eq!(page.page_size(), 10);
@@ -108,8 +107,6 @@ mod tests {
         let page = Page::from_query(Some(&PageQuery {
             page_num: Some(3),
             page_size: Some(1000),
-            sort_field: None,
-            sort_order: None,
         }));
         assert_eq!(page.page_size(), MAX_PAGE_SIZE);
         assert_eq!(page.page_num(), 3);

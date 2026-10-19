@@ -2328,14 +2328,14 @@ async fn raw_multibyte_query_values_are_decoded_without_panicking() {
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert_eq!(body["message"], "参数 status 必须是整数");
 
-    // 分页参数非法时回落默认值（与 int() 对筛选参数的处理不同），仍正常返回。
+    // 分页参数与筛选参数同语义：非法值一律 400，不再静默回落默认值。
     let (status, body) = send(
         app.clone(),
         get_with_bearer("/api/v1/system/users?pageNum=%中", &token),
     )
     .await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(body["data"]["pageNum"], 1);
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["message"], "参数 pageNum 必须是整数");
 
     // 合法转义与字面多字节混排（含 emoji）都能解码，其余参数照常工作。
     let (status, body) = send(

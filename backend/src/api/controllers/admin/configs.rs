@@ -41,7 +41,7 @@ async fn list(
     let rows = container
         .admin_service
         .list_configs(&KeywordQuery {
-            page: query.page(),
+            page: query.page()?,
             keyword: query.text("keyword"),
         })
         .await?;

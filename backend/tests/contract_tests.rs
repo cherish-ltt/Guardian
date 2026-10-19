@@ -559,6 +559,18 @@ async fn invalid_query_parameters_are_rejected_with_400() {
             "/api/v1/system/dict/types?status=abc",
             "参数 status 必须是整数",
         ),
+        (
+            "/api/v1/system/users?pageNum=abc",
+            "参数 pageNum 必须是整数",
+        ),
+        (
+            "/api/v1/system/roles?pageSize=abc",
+            "参数 pageSize 必须是整数",
+        ),
+        (
+            "/api/v1/monitor/login-logs?pageNum=-1",
+            "参数 pageNum 不能为负数",
+        ),
     ] {
         let (status, body) = send(app.clone(), get_with_bearer(path, &token)).await;
 
