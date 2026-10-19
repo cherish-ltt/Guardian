@@ -182,7 +182,7 @@ SEED_USERS=ops_admin:运维管理员:ops@example.com:2
 | `.env` | `DATABASE_URL` 指向本地 `guardian.db` | 指向部署目录下的库文件，或删除该文件后重新初始化 |
 | `.env` | `SEED_ADMIN_PASSWORD` | 换成强口令；首个账号登录后立即改密 |
 | `.env` | `SEED_USERS`（不设置会播种三个演示账号） | 换成真实管理员账号，或只留一个账号并在首次登录后改密 |
-| `sys_config` | `sys.user.initPassword`（内置演示值 `Yy@123456`） | 改成强口令，或删除该行让新增用户必须显式传口令 |
+| `sys_config` | `sys.user.initPassword`（内置演示值 `Yy@123456`） | 改成强口令；新增用户未传口令时用它，参数被删或被清空才回退到 `SEED_ADMIN_PASSWORD` |
 | `sys_user` | 内置演示账号 `linjh`、`heyj`（用 `SEED_USERS` 播种自己的账号时不会产生） | 删除（连同 `sys_user_role` / `sys_user_post` 关联） |
 | `sys_user` | `admin` 的口令 | 播种口令是 `.env` 里的公开默认值，首次登录后立即修改 |
 | `sys_dept` / `sys_post` | 演示组织（Guardian 科技集团等 11 个部门、11 位负责人）与 9 个岗位 | 替换为真实组织与岗位 |
@@ -204,7 +204,8 @@ SEED_USERS=ops_admin:运维管理员:ops@example.com:2
 - `sys_dict_type` / `sys_dict_data`：业务下拉数据，按需替换为真实字典。
 
 另外，示例模块（`examples`）与转账示例接口（`transactions`，含 `dev-*` 调试入口）
-在真实项目中应当替换或删除：`dev-login` / `dev-transfer` 只在 debug 构建注册，release 构建不存在。
+在真实项目中应当替换或删除：`/examples/*`、`dev-login`、`dev-transfer` 都只在 debug 构建注册，
+release 构建不存在这些路由（访问返回 404）。
 
 按来源 IP 的额度、限流与背压都是**进程级**的，多实例部署需要网关或共享存储兜底；
 TLS、连接层保护与磁盘配额由部署设施负责。完整边界与反向代理 / CDN 下的真实客户端 IP 获取见
@@ -217,7 +218,7 @@ TLS、连接层保护与磁盘配额由部署设施负责。完整边界与反�
 - `GET /`
 - `GET /api/v1/system/health`、`GET /api/v1/system/ready`、`GET /api/v1/health`
 - `POST /api/v1/auth/dev-login`（仅调试构建）、`GET /api/v1/auth/me`
-- `POST /api/v1/examples/echo`、`GET /api/v1/examples`、`GET /api/v1/examples/{id}`
+- `POST /api/v1/examples/echo`、`GET /api/v1/examples`、`GET /api/v1/examples/{id}`（仅调试构建）
 - `POST /api/v1/transactions/dev-transfer`（仅调试构建）、`GET /api/v1/transactions`、`GET /api/v1/transactions/{id}`
 
 后台管理接口（`/api/v1/auth`、`/api/v1/system`、`/api/v1/monitor`、`/api/v1/dashboard`、`/api/v1/tool/generator`）

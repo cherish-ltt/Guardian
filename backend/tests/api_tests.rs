@@ -418,6 +418,23 @@ async fn list_examples_rejects_out_of_range_paging() {
     assert_eq!(status, StatusCode::OK);
 }
 
+/// release 构建不注册示例路由：确认这些接口不会在正式包里对外暴露。
+#[cfg(not(debug_assertions))]
+#[tokio::test]
+async fn example_routes_are_absent_in_release_builds() {
+    let app = setup_app().await;
+
+    for (method, path) in [
+        ("GET", "/api/v1/examples"),
+        ("GET", "/api/v1/examples/example_001"),
+        ("POST", "/api/v1/examples/echo"),
+    ] {
+        let (status, _) = send(app.clone(), request(method, path, None, None)).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{method} {path}");
+    }
+}
+
+#[cfg(debug_assertions)]
 #[tokio::test]
 async fn example_detail_requires_bearer_token() {
     let app = setup_app().await;

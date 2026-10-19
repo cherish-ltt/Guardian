@@ -3,8 +3,11 @@ use std::sync::Arc;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
-    routing::{get, post},
 };
+
+// release 构建不注册示例路由，路由方法随之裁剪。
+#[cfg(debug_assertions)]
+use axum::routing::{get, post};
 
 use crate::{
     api::{
@@ -24,11 +27,18 @@ use crate::docs::{
     DocErrorResponse, DocExampleDetailResponse, DocExampleEchoResponse, DocExampleListResponse,
 };
 
+/// 示例接口只在 debug 构建注册：release 下不该对外暴露没有业务含义的读写入口。
 pub fn router() -> Router<Arc<Container>> {
-    Router::new()
+    #[cfg(debug_assertions)]
+    let router = Router::new()
         .route("/examples/echo", post(create_echo))
         .route("/examples", get(list_examples))
-        .route("/examples/{id}", get(get_example))
+        .route("/examples/{id}", get(get_example));
+
+    #[cfg(not(debug_assertions))]
+    let router = Router::new();
+
+    router
 }
 
 #[cfg_attr(feature = "docs", utoipa::path(

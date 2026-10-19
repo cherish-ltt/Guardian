@@ -28,6 +28,18 @@ const INIT_PASSWORD_KEY: &str = "sys.user.initPassword";
 /// 导出上限与 Spring 版一致。
 pub(crate) const EXPORT_LIMIT: u32 = 5000;
 
+impl AdminService {
+    /// 新增用户未传口令时的回退口令：优先 `sys.user.initPassword`，
+    /// 参数未配置（或为空）时才用 `.env` 的 `SEED_ADMIN_PASSWORD`。
+    async fn initial_password(&self) -> Result<String, AppError> {
+        let configured = SeaOrmConfigRepository
+            .config_value(&self.database, INIT_PASSWORD_KEY)
+            .await?;
+
+        Ok(trim_to_null(configured).unwrap_or_else(|| self.default_password.clone()))
+    }
+}
+
 #[async_trait]
 impl UserAdminUseCase for AdminService {
     async fn user_options(
@@ -147,10 +159,10 @@ impl UserAdminUseCase for AdminService {
             return Err(AppError::business("登录账号已存在"));
         }
 
-        let hashed = password::hash_password(&default_string(
-            command.password.clone(),
-            &self.default_password,
-        ))?;
+        // 未传口令时取系统参数 `sys.user.initPassword`；参数未配置才回退到
+        // `.env` 的 SEED_ADMIN_PASSWORD，保持与文档、前端提示一致。
+        let fallback = self.initial_password().await?;
+        let hashed = password::hash_password(&default_string(command.password.clone(), &fallback))?;
         let command = UserWriteCommand {
             username: Some(username),
             nickname: Some(nickname),

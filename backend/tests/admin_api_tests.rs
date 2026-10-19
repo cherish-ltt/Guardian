@@ -355,8 +355,8 @@ async fn user_write_flow_covers_create_update_status_password_and_delete() {
     assert_eq!(status, StatusCode::OK);
     let id = created["data"]["id"].as_i64().expect("新用户 ID");
 
-    // 新建用户使用默认口令，可直接登录。
-    let newbie_token = login(&app, store.as_ref(), "newbie", DEMO_PASSWORD).await;
+    // 新建用户未传口令时用系统参数 `sys.user.initPassword`，可直接登录。
+    let newbie_token = login(&app, store.as_ref(), "newbie", "Yy@123456").await;
     let (_, me) = send(
         app.clone(),
         get_with_bearer("/api/v1/auth/me", &newbie_token),
@@ -2349,4 +2349,44 @@ async fn raw_multibyte_query_values_are_decoded_without_panicking() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["code"], 200);
     assert_eq!(body["data"]["total"], 0);
+}
+
+/// 新增用户未传口令时取系统参数 `sys.user.initPassword`（种子值为 `Yy@123456`），
+/// 而不是 `.env` 的 `SEED_ADMIN_PASSWORD`。这条与 `docs/ADMIN.md` 的说明、
+/// 前端「初始密码取自系统参数」的提示一致。
+#[tokio::test]
+async fn created_user_password_follows_the_initial_password_config() {
+    let (app, store) = setup_app_with_store().await;
+    let token = admin_token(&app, store.as_ref()).await;
+
+    let (status, _) = send(
+        app.clone(),
+        post_json_with_bearer(
+            "/api/v1/system/users",
+            &token,
+            json!({ "username": "viaconfig", "nickname": "参数口令", "deptId": 6, "roleIds": [3] }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    login(&app, store.as_ref(), "viaconfig", "Yy@123456").await;
+
+    // 用 .env 里的播种口令登不进去，证明回退顺序不是「先 .env」。
+    let (_, captcha) = send(app.clone(), get("/api/v1/auth/captcha")).await;
+    let uuid = captcha["data"]["uuid"].as_str().expect("验证码标识");
+    let (status, _) = send(
+        app.clone(),
+        post_json(
+            "/api/v1/auth/login",
+            json!({
+                "username": "viaconfig",
+                "password": DEMO_PASSWORD,
+                "captcha": take_captcha(store.as_ref(), uuid),
+                "captchaUuid": uuid,
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
 }

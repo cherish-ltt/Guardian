@@ -80,7 +80,7 @@ npm run dev                    # http://localhost:5173，/api/v1 代理到后端
 ## 验证命令
 
 ```bash
-# 后端（与 CI、AGENTS.md、docs/TESTING.md 一致；当前 default 为空，
+# 后端（与 CI、AGENTS.md、backend/docs/TESTING.md 一致；当前 default 为空，
 # 唯一可选 feature 是 docs，所以 --features docs 就是全量构建）
 cd backend
 cargo fmt --all -- --check

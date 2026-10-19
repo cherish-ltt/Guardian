@@ -196,7 +196,7 @@ match_block_trailing_comma = true
 ```toml
 # ── Clippy Configuration ──
 # 本文件只配置「lint 的阈值 / 开关」；阈值只有在对应 lint 被启用时才会生效，
-# 已启用的 lint 列在 Cargo.toml 的 [lints.clippy]（作用于本包全部 target）。
+# 启用位置是 src/lib.rs 顶部的 #![warn(...)]（见下方说明）。
 
 # clippy::cognitive_complexity 的阈值（已启用）
 cognitive-complexity-threshold = 15
@@ -215,6 +215,10 @@ msrv = "1.99.0"
 - **只写阈值不启用 lint 等于阈值不生效**：`cognitive_complexity` 属于 nursery、`too_many_lines` 属于
   pedantic、`unwrap_used` 属于 restriction，三者默认都是 `allow`。新增阈值时必须同时在
   `src/lib.rs` 启用对应 lint，否则就是一份“看起来很严”的假配置。
+- 启用点是 `#![warn(...)]` 而不是 `Cargo.toml` 的 `[lints.clippy]`：后者只对本包（crate）生效，
+  而 `src/main.rs` 是独立的 binary crate root，用 `[lints]` 会漏掉它。写在 `lib.rs` 的内联属性
+  也只覆盖 lib 及其子模块，所以 `src/main.rs` 目前**不受这两条 lint 约束**——它的代码量很小，
+  真正需要覆盖时把属性也加到 `src/main.rs` 顶部。
 - 故意**不启用**的两个 lint：`too_many_lines`（pedantic，30 行阈值会把配置快照、中间件装配
   这类线性代码全部判为超标，拆分反而降低可读性）与 `expect_used`（restriction，在集成测试的
   辅助函数里噪声过大）。改代码而不是调阈值。
@@ -580,8 +584,8 @@ msrv = "1.99.0"
   `tests/admin_api_tests.rs` 与 `tests/monitor_api_tests.rs` 各有一条断言，
   调整采集字段或解析规则时同步这两处。
 - 地名库是**可选**的：`IP_LOCATION_DB_PATH` 留空时不查库（地点只有三档），配置了却加载不了
-  必须启动失败，不得静默降级。库只加载 IPv4，新增 IPv6 支持要同时换库文件并调整
-  `IpLocation::resolve`。修改解析口径要同步 `docs/ADMIN.md` 的字段表、
+  必须启动失败，不得静默降级。库按 IPv4 / IPv6 分别配置（`IP_LOCATION_DB_PATH` 与
+  `IP_LOCATION_V6_DB_PATH`，各用一个 `Searcher`），两个都可留空。修改解析口径要同步 `docs/ADMIN.md` 的字段表、
   `docs/DEPLOYMENT.md` 的「离线 IP 地名库」与 `src/infrastructure/ip_location.rs` 的单测。
 
 ### 10.17 生产部署文档

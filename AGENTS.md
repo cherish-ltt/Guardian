@@ -31,7 +31,7 @@
   `frontend/package-lock.json`）一起改到同一个 `X.Y.Z`，**即使本次只有一端有改动**也要一起改，
   不允许两端版本号出现分叉。
 - 版本发布说明统一放在仓库根 [docs/version](docs/version) 下的 `vX.Y.Z.md`
-  （如 [docs/version/v0.4.0.md](docs/version/v0.4.0.md)）：
+  （如 [docs/version/v0.4.1.md](docs/version/v0.4.1.md)）：
   - 内容按「后端」「前端」两节分别罗列本次变动，没有改动的部分保留小节标题并写「无」；
   - `release.yml` 会读 `docs/version/<tag>.md` 作为 Release 正文，文件缺失时发布失败；
   - 新增版本时必须先补该文件再打 tag，并同步 [backend/docs/CHANGELOG.md](backend/docs/CHANGELOG.md)。

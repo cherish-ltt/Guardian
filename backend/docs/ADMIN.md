@@ -52,7 +52,7 @@ src/middleware/audit.rs                       写操作留痕
 | GET | `/system/users` | `system:user:list` | 分页列表，支持 `keyword` / `status` / `deptId` / `postId`，受数据范围约束 |
 | GET | `/system/users/options` | 同上 | 表单下拉（角色、岗位、部门树、初始密码，只读权限返回空） |
 | GET | `/system/users/export` | 同上 | `users.csv` |
-| POST | `/system/users` | `system:user:add` | 新增（口令留空用 `sys.user.initPassword`） |
+| POST | `/system/users` | `system:user:add` | 新增（口令留空取系统参数 `sys.user.initPassword`，参数为空才回退 `SEED_ADMIN_PASSWORD`） |
 | PUT | `/system/users/{id}` | `system:user:edit` | 修改（`roleIds` / `postIds` 全量替换） |
 | PUT | `/system/users/{id}/status` | `system:user:edit` | 启用 / 停用，内置管理员不可停用 |
 | PUT | `/system/users/{id}/password` | `system:user:resetPwd` | 重置口令 |
@@ -114,7 +114,11 @@ src/middleware/audit.rs                       写操作留痕
 ### 其它
 
 `GET /api/v1/health`（新增：`status` / `time` / `serviceName`）、骨架既有的
-`GET /api/v1/system/health`、`GET /api/v1/system/ready`、示例与事务接口保持不变。
+`GET /api/v1/system/health`、`GET /api/v1/system/ready` 保持不变。
+
+`/api/v1/examples/*`、`/api/v1/auth/dev-login`、`/api/v1/transactions/dev-transfer`
+都只在 debug 构建注册，release 构建访问返回 404；`/api/v1/transactions`、
+`/api/v1/transactions/{id}` 两个只读事务示例在两种构建下都存在。
 
 ## 权限与数据范围
 
