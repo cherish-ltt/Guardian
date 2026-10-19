@@ -15,7 +15,7 @@ export function inferConfigKind(key: string, value: string, remark = ''): Config
   // 备注里写了「可选 a / b / c」时用分段选择
   const hint = remark.match(/可选[:：]?\s*([A-Za-z0-9_\-\s/|,、]+)/)
   if (hint) {
-    const options = hint[1].split(/[\/|,、\s]+/).map(s => s.trim()).filter(Boolean)
+    const options = hint[1].split(/[/|,、\s]+/).map(s => s.trim()).filter(Boolean)
     if (options.length >= 2 && options.length <= 6 && options.includes(v)) return { kind: 'choice', options }
   }
   if (/^-?\d+(\.\d+)?$/.test(v)) return { kind: 'number', decimals: v.includes('.') ? v.split('.')[1].length : 0 }

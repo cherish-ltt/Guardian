@@ -120,3 +120,17 @@ repos:
         files: '^backend/.*\.rs$'
         pass_filenames: false
         # stages: [pre-push]  # 如需移至推送前执行，取消注释此行
+
+  # ============================================================
+  # 5. 前端本地钩子：lint
+  # 与 CI 的 `npm run lint` 同一入口；node_modules 未安装时跳过（pre-commit
+  # 不应替用户装依赖），由 CI 兜底。
+  # ============================================================
+  - repo: local
+    hooks:
+      - id: frontend-lint
+        name: 前端 lint
+        entry: bash -c 'cd frontend && [ -d node_modules ] && npm run --silent lint || echo "跳过：frontend/node_modules 未安装"'
+        language: system
+        files: '^frontend/src/.*\.(ts|vue)$'
+        pass_filenames: false

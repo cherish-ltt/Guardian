@@ -57,8 +57,9 @@ npm run build
 | `src/components/GithubLink.vue` | 顶栏的 GitHub 仓库入口（独立组件，可按需摘除） |
 | `src/composables` | 列表、字典 / 部门缓存、外观、动效、焦点与确认框 |
 | `src/styles` | 令牌、基础、材质、控件、外壳、页面六层样式 |
-| `src/views` | 登录、工作台、10 个管理页、无权限与未匹配页面 |
+| `src/views` | 登录与两步验证、工作台、个人资料、10 个管理页、无权限与未匹配页面 |
 | `scripts/session-regression.py` | 真实浏览器会话、路由竞态与低权限回归 |
+| `scripts/account-regression.mjs` | 资料、2FA 绑定与恢复码的浏览器回归 |
 
 ## 扩展约定
 
@@ -83,25 +84,33 @@ npm run build
 ```bash
 npm install --no-save --package-lock=false @playwright/test@1.64.1
 npx playwright install chromium
-GUARDIAN_TEST_URL=http://localhost:5173 node scripts/account-regression.mjs
+GUARDIAN_TEST_URL=http://localhost:5173 GUARDIAN_TEST_PASSWORD='<测试管理员口令>' node scripts/account-regression.mjs
 ```
 
-需要未启用 2FA 的测试管理员，密码可用 `GUARDIAN_TEST_PASSWORD` 覆盖；验证资料保存、绑定、两步登录（登录框保持三项、跳转独立验证页）、恢复码登录/更新/关闭和移动端布局。
+需要未启用 2FA 的测试管理员；`GUARDIAN_TEST_PASSWORD` **必须**提供（脚本不内置口令），
+验证资料保存、绑定、两步登录（登录框保持三项、跳转独立验证页）、恢复码登录/更新/关闭和移动端布局。
 
 已有 Python Playwright 与 Chromium、前后端均启动时，可运行原有会话回归：
 
 ```bash
-python3 scripts/session-regression.py
+GUARDIAN_TEST_PASSWORD='<测试管理员口令>' python3 scripts/session-regression.py
 ```
 
 建议连接独立本地校验库；脚本创建并删除自身的角色 / 用户夹具，不清空任何表。
-管理员密码可用 `GUARDIAN_TEST_PASSWORD` 覆盖；脚本需要 Vite 开发服务器来访问应用实际加载的 HTTP 模块。
+`GUARDIAN_TEST_PASSWORD` **必须**提供；脚本需要 Vite 开发服务器来访问应用实际加载的 HTTP 模块。
+
+两个脚本都不内置口令，登录用的验证码由 `scripts/captcha_solver.py` 从 `/auth/captcha`
+返回的 SVG 图片里还原（明文只留在服务端），因此需要本机有 `python3`。渲染器改动时要同步
+更新求解器里的字模与几何常量。
 
 ## 许可与上游
 
 - 本目录代码派生自 `scaffold-master` 的 `scaffold-vue`，沿用上游 MIT 许可并保留版权声明，
   见 [LICENSE](LICENSE)；本仓库整体采用 `MIT OR Apache-2.0` 双许可，见 [根目录说明](../README.md)。
-- GSAP 依赖遵循其 [Standard "No Charge" License](https://gsap.com/community/standard-license/)。
+- 第三方依赖（`vue`、`vue-router`、`gsap`、`qrcode` 等）各自遵循其自身许可证，**不属于本项目
+  MIT 授权范围**；使用与再分发时须遵守对应条款并保留原有版权与许可声明。
+- GSAP 依赖遵循其 [Standard "No Charge" License](https://gsap.com/community/standard-license/)，
+  该许可与 MIT 不同，商业使用前请自行核对其条款。
 - 主题、密度与减少动效规则来自上游 `scaffold-master` 的 `DESIGN.md`（未随本仓库分发），
   前后端链路见同一仓库的 `PROJECT_MAP.md`；本仓库的落地位置是 `src/styles/tokens.css` 与
   `src/composables/appearance.ts`。
