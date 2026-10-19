@@ -25,11 +25,12 @@ use crate::{
     response::{ApiResponse, csv_attachment},
 };
 
-/// 角色已授权菜单：`{"menuIds": [...]}`。
+/// 角色已授权菜单与自定义数据范围：`{"menuIds": [...], "deptIds": [...]}`。
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct RoleMenusResponse {
     menu_ids: Vec<i64>,
+    dept_ids: Vec<i64>,
 }
 
 pub fn router() -> Router<Arc<Container>> {
@@ -93,8 +94,9 @@ async fn menus(
 ) -> Result<ApiResponse<RoleMenusResponse>, AppError> {
     user.require("system:role:list")?;
     let menu_ids = container.admin_service.role_menus(id).await?;
+    let dept_ids = container.admin_service.role_depts(id).await?;
 
-    Ok(ok(RoleMenusResponse { menu_ids }))
+    Ok(ok(RoleMenusResponse { menu_ids, dept_ids }))
 }
 
 async fn create(

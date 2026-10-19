@@ -19,6 +19,9 @@ pub trait RoleAdminUseCase: Send + Sync {
 
     async fn role_menus(&self, role_id: i64) -> Result<Vec<i64>, AppError>;
 
+    /// 角色的自定义数据范围部门：`dataScope = CUSTOM` 时生效。
+    async fn role_depts(&self, role_id: i64) -> Result<Vec<i64>, AppError>;
+
     async fn create_role(
         &self,
         command: RoleWriteCommand,

@@ -654,6 +654,53 @@ async fn role_flow_covers_menus_graph_and_guards() {
     .await;
     assert_eq!(updated["data"]["menuIds"], json!([101]));
 
+    // CUSTOM 必须带部门，且写入后可读回；切回其他范围时清空。
+    let (status, body) = send(
+        app.clone(),
+        put_json_with_bearer(
+            &format!("/api/v1/system/roles/{role_id}"),
+            &token,
+            json!({ "dataScope": "CUSTOM" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["message"], "自定义数据权限必须选择部门");
+
+    let (status, _) = send(
+        app.clone(),
+        put_json_with_bearer(
+            &format!("/api/v1/system/roles/{role_id}"),
+            &token,
+            json!({ "dataScope": "CUSTOM", "deptIds": [5, 6] }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, custom) = send(
+        app.clone(),
+        get_with_bearer(&format!("/api/v1/system/roles/{role_id}/menus"), &token),
+    )
+    .await;
+    assert_eq!(custom["data"]["deptIds"], json!([5, 6]));
+
+    let (status, _) = send(
+        app.clone(),
+        put_json_with_bearer(
+            &format!("/api/v1/system/roles/{role_id}"),
+            &token,
+            json!({ "dataScope": "SELF" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, cleared) = send(
+        app.clone(),
+        get_with_bearer(&format!("/api/v1/system/roles/{role_id}/menus"), &token),
+    )
+    .await;
+    assert_eq!(cleared["data"]["deptIds"], json!([]));
+
     // 内置角色不可修改 / 删除。
     let (status, body) = send(
         app.clone(),
@@ -1831,6 +1878,67 @@ async fn login_requires_a_matching_captcha() {
     )
     .await;
     assert_eq!(logs["data"]["total"], 1, "只有成功登录留下了记录");
+}
+
+/// 角色 / 岗位关联必须指向真实存在的记录，不能留下悬空关联行。
+#[tokio::test]
+async fn user_relations_must_point_to_existing_records() {
+    let (app, store) = setup_app_with_store().await;
+    let token = admin_token(&app, store.as_ref()).await;
+
+    let (status, body) = send(
+        app.clone(),
+        post_json_with_bearer(
+            "/api/v1/system/users",
+            &token,
+            json!({
+                "username": "dangling",
+                "nickname": "悬空关联",
+                "password": "Dd@123456",
+                "deptId": 5,
+                "roleIds": [9999],
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["message"], "角色不存在或已停用");
+
+    let (status, body) = send(
+        app.clone(),
+        post_json_with_bearer(
+            "/api/v1/system/users",
+            &token,
+            json!({
+                "username": "dangling",
+                "nickname": "悬空关联",
+                "password": "Dd@123456",
+                "deptId": 5,
+                "postIds": [9999],
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["message"], "岗位不存在或已删除");
+
+    // 编辑同样校验，且失败时整笔回滚（昵称不会被改掉）。
+    let (status, _) = send(
+        app.clone(),
+        put_json_with_bearer(
+            "/api/v1/system/users/2",
+            &token,
+            json!({ "nickname": "不该生效", "roleIds": [9999] }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let (_, page) = send(
+        app.clone(),
+        get_with_bearer("/api/v1/system/users?keyword=linjh", &token),
+    )
+    .await;
+    assert_ne!(page["data"]["rows"][0]["nickname"], "不该生效");
 }
 
 /// 密码阶段连续失败 5 次后锁定 5 分钟：第 6 次连正确口令也不放行。

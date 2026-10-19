@@ -352,6 +352,8 @@ pub struct RoleWriteCommand {
     pub status: Option<i64>,
     pub remark: Option<String>,
     pub menu_ids: Option<Vec<i64>>,
+    /// 仅 `dataScope = CUSTOM` 时有意义：角色可见的部门范围。
+    pub dept_ids: Option<Vec<i64>>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]

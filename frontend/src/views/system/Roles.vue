@@ -4,8 +4,8 @@ import { useRoute, useRouter } from 'vue-router'
 import Icon from '@/components/Icon.vue'
 import { Button, Drawer, Field, Segmented, Select, StatusTag, Switch, Tag, TextInput, type Column } from '@/components/ui'
 import {
-  DictSelect, FormDialog, ListPage, PermissionButton, PermissionMatrix, PermissionTrace, PermissionTree,
-  type MatrixRole,
+  DeptPicker, DictSelect, FormDialog, ListPage, PermissionButton, PermissionMatrix, PermissionTrace,
+  PermissionTree, type MatrixRole,
 } from '@/components/business'
 import { invalidatePermissionGraph } from '@/composables/permissionGraph'
 import { systemApi } from '@/api'
@@ -126,8 +126,8 @@ watch(view, async (next, prev) => {
 }, { immediate: true })
 
 /* ── 新增 / 编辑 ── */
-interface RoleForm { id?: number; name: string; code: string; dataScope: string; sort: number | null; status: number; remark: string }
-const emptyForm = (): RoleForm => ({ name: '', code: '', dataScope: 'SELF', sort: 10, status: 1, remark: '' })
+interface RoleForm { id?: number; name: string; code: string; dataScope: string; sort: number | null; status: number; remark: string; deptIds: number[] }
+const emptyForm = (): RoleForm => ({ name: '', code: '', dataScope: 'SELF', sort: 10, status: 1, remark: '', deptIds: [] })
 const dialog = ref(false)
 const saving = ref(false)
 const form = reactive<RoleForm>(emptyForm())
@@ -140,10 +140,17 @@ function openCreate() {
   dialog.value = true
 }
 
-function openEdit(row: RoleRow) {
-  Object.assign(form, { id: row.id, name: row.name, code: row.code, dataScope: scopeCodeOf(row.dataScope), sort: row.sort, status: row.status, remark: row.remark ?? '' })
+async function openEdit(row: RoleRow) {
+  Object.assign(form, { id: row.id, name: row.name, code: row.code, dataScope: scopeCodeOf(row.dataScope), sort: row.sort, status: row.status, remark: row.remark ?? '', deptIds: [] })
   errors.value = {}
   dialog.value = true
+  if (form.dataScope !== 'CUSTOM') return
+  try {
+    const assigned = await systemApi.roles.menus(row.id)
+    form.deptIds = (assigned.deptIds ?? []).map(Number)
+  } catch (error) {
+    toastError(error, '数据权限加载失败')
+  }
 }
 
 async function submit() {
@@ -151,9 +158,21 @@ async function submit() {
     name: [required('请输入角色名称')],
     code: [required('请输入角色编码'), pattern(/^[a-z][a-z0-9_]*$/, '小写字母开头，仅含小写字母、数字、下划线')],
   })
+  if (form.dataScope === 'CUSTOM' && !form.deptIds.length) {
+    errors.value = { ...errors.value, dataScope: '自定义数据权限必须选择部门' }
+    return
+  }
   if (Object.keys(errors.value).length) return
   saving.value = true
-  const payload = { name: form.name.trim(), code: form.code.trim(), dataScope: form.dataScope, sort: form.sort ?? 0, status: form.status, remark: form.remark }
+  const payload = {
+    name: form.name.trim(),
+    code: form.code.trim(),
+    dataScope: form.dataScope,
+    sort: form.sort ?? 0,
+    status: form.status,
+    remark: form.remark,
+    ...(form.dataScope === 'CUSTOM' ? { deptIds: form.deptIds } : {}),
+  }
   try {
     if (form.id) {
       await systemApi.roles.update(form.id, payload)
@@ -191,6 +210,8 @@ const permTab = ref<'menu' | 'data'>('menu')
 const menuTree = ref<Menu[]>([])
 const checked = ref<number[]>([])
 const scope = ref('SELF')
+const customDeptIds = ref<number[]>([])
+const customDeptOpen = ref(false)
 const permSaving = ref(false)
 const permLoading = ref(false)
 const permBody = ref<HTMLElement | null>(null)
@@ -220,6 +241,7 @@ async function openPermission(row: RoleRow) {
     const [tree, assigned] = await Promise.all([systemApi.menus.tree(), systemApi.roles.menus(row.id)])
     menuTree.value = tree as unknown as Menu[]
     checked.value = (assigned.menuIds ?? []).map(Number)
+    customDeptIds.value = (assigned.deptIds ?? []).map(Number)
   } catch (error) {
     toastError(error, '权限数据加载失败')
   } finally {
@@ -229,9 +251,17 @@ async function openPermission(row: RoleRow) {
 
 async function savePermission() {
   if (!permRole.value) return
+  if (scope.value === 'CUSTOM' && !customDeptIds.value.length) {
+    pushToast('自定义数据权限必须选择部门', 'danger')
+    return
+  }
   permSaving.value = true
   try {
-    await systemApi.roles.update(permRole.value.id, { menuIds: checked.value, dataScope: scope.value })
+    await systemApi.roles.update(permRole.value.id, {
+      menuIds: checked.value,
+      dataScope: scope.value,
+      ...(scope.value === 'CUSTOM' ? { deptIds: customDeptIds.value } : {}),
+    })
     invalidatePermissionGraph()
     pushToast('权限已保存，相关用户重新登录后生效')
     permRole.value = null
@@ -315,6 +345,9 @@ async function savePermission() {
       <Field label="数据权限">
         <Select v-model="form.dataScope" :options="scopeOptions" />
       </Field>
+      <Field v-if="form.dataScope === 'CUSTOM'" label="可见部门" required :error="errors.dataScope" hint="按部门树勾选，角色只能看到这些部门的数据" span>
+        <DeptPicker v-model="form.deptIds" />
+      </Field>
       <Field label="显示排序">
         <TextInput v-model="form.sort" type="number" />
       </Field>
@@ -356,6 +389,9 @@ async function savePermission() {
             <span class="scope-desc">{{ s.desc }}</span>
           </span>
         </button>
+        <div v-if="scope === 'CUSTOM'" class="scope-custom">
+          <DeptPicker v-model="customDeptIds" />
+        </div>
       </div>
       </div>
 

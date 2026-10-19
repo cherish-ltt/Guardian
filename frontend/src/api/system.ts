@@ -52,6 +52,8 @@ export interface RoleWriteRequest {
   status?: number
   remark?: string
   menuIds?: number[]
+  /** 仅 dataScope = CUSTOM 时有意义 */
+  deptIds?: number[]
 }
 
 export interface MenuWriteRequest {
@@ -192,7 +194,7 @@ export function createSystemApi(client: HttpClient) {
     },
     roles: {
       ...crudPage<Record<string, unknown>, RoleWriteRequest>(client, '/system/roles'),
-      menus: (id: number) => client.get<{ menuIds: number[] }>(`/system/roles/${id}/menus`),
+      menus: (id: number) => client.get<{ menuIds: number[]; deptIds: number[] }>(`/system/roles/${id}/menus`),
       export: (query?: QueryParams) => client.download('/system/roles/export', query),
     },
     permissions: {

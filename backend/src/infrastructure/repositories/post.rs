@@ -40,6 +40,11 @@ pub trait PostRepository: Send + Sync {
     where
         C: ConnectionTrait;
 
+    /// 给定 ID 中实际存在且未删除的岗位数：用户保存岗位时用它拦下无效关联。
+    async fn count_post_ids<C>(&self, db: &C, ids: &[i64]) -> Result<i64, AppError>
+    where
+        C: ConnectionTrait;
+
     async fn count_post_code<C>(&self, db: &C, post_code: &str) -> Result<i64, AppError>
     where
         C: ConnectionTrait;
@@ -145,6 +150,22 @@ impl PostRepository for SeaOrmPostRepository {
                 name: text(row, "name").unwrap_or_default(),
             })
             .collect())
+    }
+
+    async fn count_post_ids<C>(&self, db: &C, ids: &[i64]) -> Result<i64, AppError>
+    where
+        C: ConnectionTrait,
+    {
+        if ids.is_empty() {
+            return Ok(0);
+        }
+        let placeholders = vec!["?"; ids.len()].join(", ");
+        let sql = format!(
+            "SELECT COUNT(*) AS value FROM sys_post WHERE deleted = 0 AND id IN ({placeholders})"
+        );
+        let values = ids.iter().map(|id| (*id).into()).collect();
+
+        query_count(db, &sql, values).await
     }
 
     async fn count_post_code<C>(&self, db: &C, post_code: &str) -> Result<i64, AppError>

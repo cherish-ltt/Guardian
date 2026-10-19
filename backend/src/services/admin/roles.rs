@@ -72,6 +72,12 @@ impl RoleAdminUseCase for AdminService {
             .await
     }
 
+    async fn role_depts(&self, role_id: i64) -> Result<Vec<i64>, AppError> {
+        SeaOrmRoleRepository
+            .role_dept_ids(&self.database, role_id)
+            .await
+    }
+
     async fn create_role(
         &self,
         command: RoleWriteCommand,
@@ -96,12 +102,14 @@ impl RoleAdminUseCase for AdminService {
             ..command
         };
         let menu_ids = command.menu_ids.clone().unwrap_or_default();
+        let dept_ids = custom_dept_ids(&command)?;
 
         let operator = operator.to_string();
         let id = self
             .in_transaction(|transaction| {
                 let command = command.clone();
                 let menu_ids = menu_ids.clone();
+                let dept_ids = dept_ids.clone();
                 Box::pin(async move {
                     let id = SeaOrmRoleRepository
                         .insert_role(transaction, &command, &operator)
@@ -109,6 +117,11 @@ impl RoleAdminUseCase for AdminService {
                     SeaOrmRoleRepository
                         .replace_role_menus(transaction, id, &menu_ids)
                         .await?;
+                    if let Some(dept_ids) = dept_ids {
+                        SeaOrmRoleRepository
+                            .replace_role_depts(transaction, id, &dept_ids)
+                            .await?;
+                    }
 
                     Ok(id)
                 })
@@ -130,11 +143,13 @@ impl RoleAdminUseCase for AdminService {
             ..command
         };
         let menu_ids = command.menu_ids.clone();
+        let dept_ids = custom_dept_ids(&command)?;
 
         let operator = operator.to_string();
         self.in_transaction(|transaction| {
             let command = command.clone();
             let menu_ids = menu_ids.clone();
+            let dept_ids = dept_ids.clone();
             Box::pin(async move {
                 if SeaOrmRoleRepository
                     .update_role(transaction, id, &command, &operator)
@@ -146,6 +161,11 @@ impl RoleAdminUseCase for AdminService {
                 if let Some(menu_ids) = menu_ids {
                     SeaOrmRoleRepository
                         .replace_role_menus(transaction, id, &menu_ids)
+                        .await?;
+                }
+                if let Some(dept_ids) = dept_ids {
+                    SeaOrmRoleRepository
+                        .replace_role_depts(transaction, id, &dept_ids)
                         .await?;
                 }
 
@@ -170,6 +190,9 @@ impl RoleAdminUseCase for AdminService {
                 SeaOrmRoleRepository
                     .delete_role_menus(transaction, id)
                     .await?;
+                SeaOrmRoleRepository
+                    .replace_role_depts(transaction, id, &[])
+                    .await?;
                 if SeaOrmRoleRepository
                     .soft_delete_role(transaction, id, &operator)
                     .await?
@@ -182,5 +205,23 @@ impl RoleAdminUseCase for AdminService {
             })
         })
         .await
+    }
+}
+
+/// `CUSTOM` 数据范围必须带部门列表，否则静默退化成「仅本人」。
+///
+/// 非 `CUSTOM` 的角色忽略 `deptIds` 并清空既有范围，避免切换范围后残留旧数据。
+fn custom_dept_ids(command: &RoleWriteCommand) -> Result<Option<Vec<i64>>, AppError> {
+    match command.data_scope.as_deref() {
+        Some("CUSTOM") => {
+            let dept_ids = command.dept_ids.clone().unwrap_or_default();
+            if dept_ids.is_empty() {
+                return Err(AppError::business("自定义数据权限必须选择部门"));
+            }
+
+            Ok(Some(dept_ids))
+        },
+        Some(_) => Ok(Some(Vec::new())),
+        None => Ok(None),
     }
 }

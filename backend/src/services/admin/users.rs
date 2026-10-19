@@ -164,6 +164,7 @@ impl UserAdminUseCase for AdminService {
             .in_transaction(|transaction| {
                 let command = command.clone();
                 Box::pin(async move {
+                    ensure_relations(transaction, &command).await?;
                     let id = SeaOrmUserRepository
                         .insert_user(transaction, &command, &operator)
                         .await?;
@@ -216,6 +217,7 @@ impl UserAdminUseCase for AdminService {
             let role_ids = role_ids.clone();
             let post_ids = post_ids.clone();
             Box::pin(async move {
+                ensure_relations(transaction, &command).await?;
                 if SeaOrmUserRepository
                     .update_user(transaction, id, &command, &operator)
                     .await?
@@ -312,4 +314,32 @@ impl UserAdminUseCase for AdminService {
 
         Ok(())
     }
+}
+
+/// 角色 / 岗位关联必须先确认目标存在：`replace_*` 是「先删后插」，
+/// 传错 ID 不会报错，只会留下指向空记录的关联行。
+async fn ensure_relations(
+    db: &sea_orm::DatabaseTransaction,
+    command: &UserWriteCommand,
+) -> Result<(), AppError> {
+    if let Some(role_ids) = command.role_ids.as_deref() {
+        let found = SeaOrmRoleRepository.count_role_ids(db, role_ids).await?;
+        if found as usize != dedup_ids(role_ids).len() {
+            return Err(AppError::business("角色不存在或已停用"));
+        }
+    }
+    if let Some(post_ids) = command.post_ids.as_deref() {
+        let found = SeaOrmPostRepository.count_post_ids(db, post_ids).await?;
+        if found as usize != dedup_ids(post_ids).len() {
+            return Err(AppError::business("岗位不存在或已删除"));
+        }
+    }
+
+    Ok(())
+}
+
+fn dedup_ids(ids: &[i64]) -> Vec<i64> {
+    let mut seen = std::collections::HashSet::new();
+
+    ids.iter().copied().filter(|id| seen.insert(*id)).collect()
 }

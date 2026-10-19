@@ -40,6 +40,11 @@ pub trait RoleRepository: Send + Sync {
     where
         C: ConnectionTrait;
 
+    /// 给定 ID 中实际存在且未删除的角色数：用户保存角色时用它拦下无效关联。
+    async fn count_role_ids<C>(&self, db: &C, ids: &[i64]) -> Result<i64, AppError>
+    where
+        C: ConnectionTrait;
+
     async fn count_role_code<C>(&self, db: &C, code: &str) -> Result<i64, AppError>
     where
         C: ConnectionTrait;
@@ -85,6 +90,21 @@ pub trait RoleRepository: Send + Sync {
         C: ConnectionTrait;
 
     async fn delete_role_menus<C>(&self, db: &C, role_id: i64) -> Result<(), AppError>
+    where
+        C: ConnectionTrait;
+
+    /// 角色的自定义数据范围（`sys_role_dept`）。
+    async fn role_dept_ids<C>(&self, db: &C, role_id: i64) -> Result<Vec<i64>, AppError>
+    where
+        C: ConnectionTrait;
+
+    /// 全量替换角色的自定义数据范围。
+    async fn replace_role_depts<C>(
+        &self,
+        db: &C,
+        role_id: i64,
+        dept_ids: &[i64],
+    ) -> Result<(), AppError>
     where
         C: ConnectionTrait;
 }
@@ -182,6 +202,22 @@ impl RoleRepository for SeaOrmRoleRepository {
                 name: text(row, "name").unwrap_or_default(),
             })
             .collect())
+    }
+
+    async fn count_role_ids<C>(&self, db: &C, ids: &[i64]) -> Result<i64, AppError>
+    where
+        C: ConnectionTrait,
+    {
+        if ids.is_empty() {
+            return Ok(0);
+        }
+        let placeholders = vec!["?"; ids.len()].join(", ");
+        let sql = format!(
+            "SELECT COUNT(*) AS value FROM sys_role WHERE deleted = 0 AND id IN ({placeholders})"
+        );
+        let values = ids.iter().map(|id| (*id).into()).collect();
+
+        query_count(db, &sql, values).await
     }
 
     async fn count_role_code<C>(&self, db: &C, code: &str) -> Result<i64, AppError>
@@ -334,6 +370,47 @@ impl RoleRepository for SeaOrmRoleRepository {
             vec![role_id.into()],
         )
         .await?;
+
+        Ok(())
+    }
+
+    async fn role_dept_ids<C>(&self, db: &C, role_id: i64) -> Result<Vec<i64>, AppError>
+    where
+        C: ConnectionTrait,
+    {
+        let rows = query_all(
+            db,
+            "SELECT dept_id FROM sys_role_dept WHERE role_id = ? ORDER BY dept_id",
+            vec![role_id.into()],
+        )
+        .await?;
+
+        Ok(rows.iter().map(|row| int_or_zero(row, "dept_id")).collect())
+    }
+
+    async fn replace_role_depts<C>(
+        &self,
+        db: &C,
+        role_id: i64,
+        dept_ids: &[i64],
+    ) -> Result<(), AppError>
+    where
+        C: ConnectionTrait,
+    {
+        execute(
+            db,
+            "DELETE FROM sys_role_dept WHERE role_id = ?",
+            vec![role_id.into()],
+        )
+        .await?;
+        for dept_id in dept_ids {
+            execute(
+                db,
+                "INSERT OR IGNORE INTO sys_role_dept (role_id, dept_id) VALUES (?, ?)",
+                vec![role_id.into(), (*dept_id).into()],
+            )
+            .await?;
+        }
 
         Ok(())
     }
