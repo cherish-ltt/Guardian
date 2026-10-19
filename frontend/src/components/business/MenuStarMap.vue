@@ -5,7 +5,7 @@ import RelationGraph, { type GraphLink, type GraphNode } from '@/components/char
 import InsightPanel, { type InsightCard, type InsightChip } from './InsightPanel.vue'
 import PermissionButton from './PermissionButton.vue'
 import Icon from '@/components/Icon.vue'
-import IconButton from '@/components/ui/IconButton.vue'
+import { IconButton } from '@/components/ui'
 import { pathOf } from '@/composables/auth'
 import type { NetLink, NetNode, NetworkData } from '@/composables/neural'
 import { hasPermission } from '@/directives/permission'

@@ -2,9 +2,8 @@
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import RelationGraph, { type GraphLink, type GraphNode } from '@/components/charts/RelationGraph.vue'
-import EmptyState from '@/components/ui/EmptyState.vue'
-import StatusTag from '@/components/ui/StatusTag.vue'
 import PermissionButton from './PermissionButton.vue'
+import { EmptyState, StatusTag } from '@/components/ui'
 import { systemApi, type UserRow } from '@/api'
 import { pathOf } from '@/composables/auth'
 import { toastError } from '@/composables/toast'
@@ -94,7 +93,7 @@ const scene = computed<{ nodes: GraphNode[]; links: GraphLink[] }>(() => {
   const top = 76
   const bottom = Math.min(h * 0.5, h - 260)
   const perCol = Math.max(3, Math.floor((bottom - top) / 50) + 1)
-  const items = [...shown.map(u => ({ id: `u:${u.id}`, label: u.nickname, sub: [u.deptName, u.username].filter(Boolean).join(' · '), interactive: Boolean(usersPath.value) }))]
+  const items = shown.map(u => ({ id: `u:${u.id}`, label: u.nickname, sub: [u.deptName, u.username].filter(Boolean).join(' · '), interactive: Boolean(usersPath.value) }))
   if (more > 0) items.push({ id: 'more', label: `还有 ${more} 人`, sub: '在用户页查看全部', interactive: false })
   if (!items.length && !membersLoading.value) items.push({ id: 'empty', label: canListUsers ? '暂无在岗人员' : `共 ${post.userCount} 人在岗`, sub: canListUsers ? '可在用户管理中为用户指定岗位' : '无用户查询权限，仅显示人数', interactive: false })
   items.forEach((it, i) => {

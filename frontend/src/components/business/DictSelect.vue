@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import Select from '@/components/ui/Select.vue'
+import { Select } from '@/components/ui'
 import { useDict } from '@/composables/dict'
 
 /* 字典下拉：选项来自「字典管理」中的字典数据，值统一为字符串。 */

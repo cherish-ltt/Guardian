@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import Button from '@/components/ui/Button.vue'
-import IconButton from '@/components/ui/IconButton.vue'
+import { Button, IconButton } from '@/components/ui'
 import { hasPermission } from '@/directives/permission'
 
 /* 权限按钮：没有权限码时不渲染（而不是禁用），与后端 @RequiresPermission 使用同一套编码。

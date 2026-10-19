@@ -1,7 +1,5 @@
 <script setup lang="ts">
-import Modal from '@/components/ui/Modal.vue'
-import Segmented from '@/components/ui/Segmented.vue'
-import Button from '@/components/ui/Button.vue'
+import { Modal, Segmented, Button } from '@/components/ui'
 import { appearance, type Density, type ThemeMode } from '@/composables/appearance'
 
 defineProps<{ open: boolean }>()

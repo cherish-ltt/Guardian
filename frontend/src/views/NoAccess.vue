@@ -1,5 +1,5 @@
+import { EmptyState } from '@/components/ui'
 <script setup lang="ts">
-import EmptyState from '@/components/ui/EmptyState.vue'
 </script>
 
 <template>

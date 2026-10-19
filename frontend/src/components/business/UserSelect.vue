@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import Select from '@/components/ui/Select.vue'
+import { Select } from '@/components/ui'
 import { systemApi } from '@/api'
 
 /* 用户下拉：可搜索。valueKey 决定绑定的是用户 ID 还是昵称（部门负责人按昵称存储）。 */

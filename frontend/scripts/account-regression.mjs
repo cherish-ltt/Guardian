@@ -1,13 +1,25 @@
 import { chromium, expect, request } from '@playwright/test'
 import { createHmac, randomBytes } from 'node:crypto'
+import { execFileSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 
 const base = process.env.GUARDIAN_TEST_URL || 'http://127.0.0.1:5173'
-const password = process.env.GUARDIAN_TEST_PASSWORD || 'admin123456'
+const password = process.env.GUARDIAN_TEST_PASSWORD
+if (!password) {
+  throw new Error('请用 GUARDIAN_TEST_PASSWORD 指定测试管理员口令，脚本不内置任何口令')
+}
 const username = `security_${Date.now()}`
 const userPassword = randomBytes(20).toString('hex')
 const api = await request.newContext({ baseURL: `${base}/api/v1/` })
+// `/auth/captcha` 只回传图片，明文留在服务端；求解器与渲染器同源（scripts/captcha_solver.py）。
+function solveCaptcha(image) {
+  return execFileSync('python3', [fileURLToPath(new URL('./captcha_solver.py', import.meta.url))], {
+    input: image,
+    encoding: 'utf8',
+  }).trim()
+}
 const captcha = (await (await api.get('auth/captcha')).json()).data
-const signed = await api.post('auth/login', { data: { username: 'admin', password, captcha: captcha.code, captchaUuid: captcha.uuid } })
+const signed = await api.post('auth/login', { data: { username: 'admin', password, captcha: solveCaptcha(captcha.image), captchaUuid: captcha.uuid } })
 expect(signed.ok()).toBeTruthy()
 const token = (await signed.json()).data.token
 const headers = { Authorization: `Bearer ${token}` }
@@ -28,8 +40,9 @@ async function login(page, factor = '') {
   await page.goto(`${base}/login?redirect=/profile`)
   await page.getByPlaceholder('请输入账号', { exact: true }).fill(username)
   await page.getByPlaceholder('请输入密码', { exact: true }).fill(userPassword)
-  await expect(page.locator('.captcha-code')).not.toBeEmpty()
-  await page.getByPlaceholder('请输入右侧字符', { exact: true }).fill((await page.locator('.captcha-code').innerText()).replace(/\s/g, ''))
+  await expect(page.locator('.captcha-image')).toBeVisible()
+  const image = await page.locator('.captcha-image').getAttribute('src')
+  await page.getByPlaceholder('请输入右侧字符', { exact: true }).fill(solveCaptcha(image))
   expect(await page.locator('input[autocomplete="one-time-code"]').count()).toBe(0)
   await page.getByRole('button', { name: '登录', exact: true }).click()
   if (factor) {

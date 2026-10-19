@@ -2,12 +2,9 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Icon from '@/components/Icon.vue'
-import Button from '@/components/ui/Button.vue'
-import Field from '@/components/ui/Field.vue'
-import TextInput from '@/components/ui/TextInput.vue'
-import Checkbox from '@/components/ui/Checkbox.vue'
 import { ApiError, authApi, portalApi } from '@/api'
 import NeuralNet from '@/components/NeuralNet.vue'
+import { Button, Field, TextInput, Checkbox } from '@/components/ui'
 import { login } from '@/composables/auth'
 import { EASE, afterTwoFrames, gsap, motionSkipped, prefersReducedMotion, trackGlow } from '@/composables/motion'
 import { required, validate } from '@/utils/validate'
@@ -21,7 +18,7 @@ const errors = ref<Partial<Record<keyof typeof form, string>>>({})
 const remember = ref(true)
 const submitting = ref(false)
 const formError = ref('')
-const captchaCode = ref('')
+const captchaImage = ref('')
 const captchaUuid = ref('')
 const captchaLoading = ref(false)
 /* 开关关闭时后端不生成验证码，登录页同步隐藏输入框，也不再做非空校验 */
@@ -103,11 +100,11 @@ async function refreshCaptcha() {
     const res = await authApi.captcha()
     captchaEnabled.value = res.enabled
     captchaUuid.value = res.uuid
-    captchaCode.value = res.code
+    captchaImage.value = res.image
   } catch {
     captchaEnabled.value = true
     captchaUuid.value = ''
-    captchaCode.value = ''
+    captchaImage.value = ''
     formError.value = '无法连接服务，请确认后端已启动'
   } finally {
     captchaLoading.value = false
@@ -292,9 +289,7 @@ onBeforeUnmount(() => {
               <div class="captcha-row">
                 <TextInput v-model="form.captcha" icon="shield" placeholder="请输入右侧字符" :maxlength="6" autocomplete="off" :invalid="!!errors.captcha" />
                 <button type="button" class="captcha-box m-groove" :disabled="captchaLoading" aria-label="看不清，换一张" title="看不清，换一张" @click="refreshCaptcha">
-                  <span v-if="captchaCode" class="captcha-code" aria-hidden="true">
-                    <span v-for="(ch, i) in captchaCode.split('')" :key="i" :style="{ rotate: `${(i % 2 ? 1 : -1) * (6 + i * 3)}deg` }">{{ ch }}</span>
-                  </span>
+                  <img v-if="captchaImage" class="captcha-image" :src="captchaImage" alt="验证码，看不清可点击换一张" draggable="false" />
                   <Icon v-else name="refresh" :size="16" />
                 </button>
               </div>

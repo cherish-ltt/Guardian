@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { nextTick, onMounted, ref, watch } from 'vue'
-import IconButton from '@/components/ui/IconButton.vue'
-import Metric from '@/components/ui/Metric.vue'
 import Icon from '@/components/Icon.vue'
+import { IconButton, Metric } from '@/components/ui'
 import { revealCascade } from '@/composables/motion'
 
 /* ============================================================

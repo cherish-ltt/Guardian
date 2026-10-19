@@ -4,7 +4,7 @@ import RelationGraph, { type GraphLink, type GraphNode } from '@/components/char
 import InsightPanel, { type InsightCard, type InsightChip, type InsightGroup, type InsightTile } from './InsightPanel.vue'
 import AskDock from './AskDock.vue'
 import Icon from '@/components/Icon.vue'
-import IconButton from '@/components/ui/IconButton.vue'
+import { IconButton } from '@/components/ui'
 import { firstTimeInSession } from '@/composables/motion'
 import type { NetLink, NetNode, NetworkData } from '@/composables/neural'
 import { loadPermissionGraph, permissionIndex } from '@/composables/permissionGraph'

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
-import Select from '@/components/ui/Select.vue'
+import { Select } from '@/components/ui'
 import { deptTree, ensureDepts, flattenDepts } from '@/composables/dept'
 import type { Dept } from '@/data'
 

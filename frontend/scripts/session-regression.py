@@ -13,6 +13,8 @@ from urllib.parse import urlparse
 
 from playwright.async_api import async_playwright, expect
 
+from captcha_solver import solve_captcha
+
 
 async def sign_in(page, username, password, destination=None):
     await page.wait_for_url("**/login**")
@@ -54,7 +56,9 @@ async def request_health(page, wait=True):
 
 
 async def main(base_url):
-    password = os.environ.get("GUARDIAN_TEST_PASSWORD", "admin123456")
+    password = os.environ.get("GUARDIAN_TEST_PASSWORD")
+    if not password:
+        raise SystemExit("请用 GUARDIAN_TEST_PASSWORD 指定测试管理员口令，脚本不内置任何口令")
     suffix = str(time.time_ns())
     username, role_code = "ui_read_" + suffix, "ui_role_" + suffix
     fixture_password = secrets.token_urlsafe(18)
@@ -65,7 +69,7 @@ async def main(base_url):
         try:
             captcha = (await (await api.get("auth/captcha")).json())["data"]
             response = await api.post("auth/login", data={"username": "admin", "password": password,
-                "captcha": captcha["code"], "captchaUuid": captcha["uuid"]})
+                "captcha": solve_captcha(captcha["image"]), "captchaUuid": captcha["uuid"]})
             assert response.ok, "测试管理员登录失败"
             token = (await response.json())["data"]["token"]
             await api.dispose()

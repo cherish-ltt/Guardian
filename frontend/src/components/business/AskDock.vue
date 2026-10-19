@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import Icon from '@/components/Icon.vue'
-import IconButton from '@/components/ui/IconButton.vue'
+import { IconButton } from '@/components/ui'
 import { ask, presetQuestions, type AnswerCard, type AnswerChip } from '@/composables/ask'
 import { revealCascade, typeOut } from '@/composables/motion'
 import { toastError } from '@/composables/toast'

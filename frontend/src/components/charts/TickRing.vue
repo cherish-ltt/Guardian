@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import Odometer from '@/components/ui/Odometer.vue'
+import { Odometer } from '@/components/ui'
 import { gsap, motionSkipped, EASE } from '@/composables/motion'
 
 /* 刻度环：60 根径向刻度按顺时针逐根点亮（导 Conduct），

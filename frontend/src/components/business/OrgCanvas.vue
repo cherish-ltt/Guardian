@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import IconButton from '@/components/ui/IconButton.vue'
+import { IconButton } from '@/components/ui'
 import { gsap, motionSkipped, createFrameLoop, EASE } from '@/composables/motion'
 import { useViewportPan } from '@/composables/viewport'
 import type { Dept } from '@/data'

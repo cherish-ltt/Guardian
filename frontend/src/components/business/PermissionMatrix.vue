@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import Icon from '@/components/Icon.vue'
-import Button from '@/components/ui/Button.vue'
+import { Button } from '@/components/ui'
 import { floatBarEnter, floatBarLeave, revealRows } from '@/composables/motion'
 import type { Menu } from '@/data'
 

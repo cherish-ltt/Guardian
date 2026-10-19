@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { Field, TextInput } from '@/components/ui'
 import { FormDialog } from '@/components/business'
-import Field from '@/components/ui/Field.vue'
-import TextInput from '@/components/ui/TextInput.vue'
 import { authApi } from '@/api'
 import { logout } from '@/composables/auth'
 import { pushToast, toastError } from '@/composables/toast'

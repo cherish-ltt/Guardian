@@ -2,7 +2,7 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Icon from '@/components/Icon.vue'
-import Avatar from '@/components/ui/Avatar.vue'
+import { Avatar } from '@/components/ui'
 import { systemApi, type UserRow } from '@/api'
 import { navGroups, pathOf } from '@/composables/auth'
 import { appearance } from '@/composables/appearance'

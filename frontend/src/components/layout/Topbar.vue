@@ -2,9 +2,8 @@
 import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Icon from '@/components/Icon.vue'
-import IconButton from '@/components/ui/IconButton.vue'
-import Avatar from '@/components/ui/Avatar.vue'
 import GithubLink from '@/components/GithubLink.vue'
+import { IconButton, Avatar } from '@/components/ui'
 import { currentUser } from '@/composables/auth'
 import { overlayEnter, overlayLeave } from '@/composables/motion'
 

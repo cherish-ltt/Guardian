@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import Icon from '@/components/Icon.vue'
-import Checkbox from '@/components/ui/Checkbox.vue'
 import type { Menu } from '@/data'
+import { Checkbox } from '@/components/ui'
 
 /* 菜单权限树：目录 / 菜单为树节点（勾选含全部下级），按钮权限渲染为节点下方的标签。 */
 const props = defineProps<{

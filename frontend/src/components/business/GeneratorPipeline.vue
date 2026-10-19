@@ -1,12 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import RelationGraph, { type GraphLink, type GraphNode } from '@/components/charts/RelationGraph.vue'
-import Modal from '@/components/ui/Modal.vue'
-import Button from '@/components/ui/Button.vue'
-import Field from '@/components/ui/Field.vue'
-import TextInput from '@/components/ui/TextInput.vue'
-import Switch from '@/components/ui/Switch.vue'
 import Icon from '@/components/Icon.vue'
+import { Modal, Button, Field, TextInput, Switch } from '@/components/ui'
 import { portalApi, type GeneratorFile } from '@/api'
 import { gsap, EASE, motionSkipped, slideThumb } from '@/composables/motion'
 import { pushToast, toastError } from '@/composables/toast'

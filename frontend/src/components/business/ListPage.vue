@@ -1,13 +1,8 @@
 <script setup lang="ts">
 import { ref, useSlots } from 'vue'
-import PageHeader from '@/components/ui/PageHeader.vue'
-import Panel from '@/components/ui/Panel.vue'
-import DataTable, { type Column } from '@/components/ui/DataTable.vue'
-import Pagination from '@/components/ui/Pagination.vue'
-import IconButton from '@/components/ui/IconButton.vue'
-import Button from '@/components/ui/Button.vue'
 import SearchForm from './SearchForm.vue'
 import type { ListPageState } from '@/composables/list'
+import { Button, DataTable, IconButton, PageHeader, Pagination, Panel, type Column } from '@/components/ui'
 import { floatBarEnter, floatBarLeave } from '@/composables/motion'
 
 /* ============================================================

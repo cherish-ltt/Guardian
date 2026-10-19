@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import Icon from '@/components/Icon.vue'
-import TextInput from '@/components/ui/TextInput.vue'
+import { TextInput } from '@/components/ui'
 import { collectDeptIds, deptTree, ensureDepts, flattenDepts } from '@/composables/dept'
 import type { Dept } from '@/data'
 

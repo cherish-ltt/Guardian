@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import Tag from '@/components/ui/Tag.vue'
+import { Tag } from '@/components/ui'
 import { useDict } from '@/composables/dict'
 
 /* 字典值展示：按字典数据的标签文本与样式渲染，找不到时原样显示。 */

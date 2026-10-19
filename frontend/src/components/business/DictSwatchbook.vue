@@ -1,11 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import Icon from '@/components/Icon.vue'
-import Tag from '@/components/ui/Tag.vue'
-import StatusTag from '@/components/ui/StatusTag.vue'
-import Switch from '@/components/ui/Switch.vue'
-import IconButton from '@/components/ui/IconButton.vue'
 import PermissionButton from './PermissionButton.vue'
+import { Tag, StatusTag, Switch, IconButton } from '@/components/ui'
 import { systemApi } from '@/api'
 import { flipLayout, revealCascade, settlePop } from '@/composables/motion'
 import { invalidateDict } from '@/composables/dict'

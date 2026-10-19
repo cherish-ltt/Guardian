@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import Ruler from '@/components/ui/Ruler.vue'
+import { Ruler } from '@/components/ui'
 import { gsap, motionSkipped, EASE } from '@/composables/motion'
 import type { TimelineBlock } from '@/api'
 

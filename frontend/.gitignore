@@ -8,3 +8,7 @@ dist
 
 # 组件测试的临时编译产物（src/components/__tests__/support.ts 生成）
 .sfc-build
+
+# Python 脚本的字节码缓存
+__pycache__/
+*.pyc

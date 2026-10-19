@@ -24,10 +24,11 @@ export interface Enrollment { secret: string; otpauthUrl: string; expiresIn: num
 export interface RecoveryCodes { recoveryCodes: string[] }
 
 export interface CaptchaResponse {
-  /** 参数 sys.account.captchaEnabled 为 false 时为 false，此时 uuid / code 为空串 */
+  /** 参数 sys.account.captchaEnabled 为 false 时为 false，此时 uuid / image 为空串 */
   enabled: boolean
   uuid: string
-  code: string
+  /** `data:image/svg+xml;base64,...`，直接放进 `<img src>`；明文只留在服务端 */
+  image: string
 }
 
 export interface LoginResponse {
