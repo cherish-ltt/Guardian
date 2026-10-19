@@ -11,17 +11,32 @@ import sys
 THRESHOLD = 80.0
 
 
-def main(path: str) -> int:
-    with open(path, encoding="utf-8") as handle:
-        data = json.load(handle)
+def fail(message: str) -> int:
+    print(message, file=sys.stderr)
+    return 1
 
-    lines = data["data"][0]["totals"]["lines"]
-    percent = float(lines["percent"])
-    print(f"行覆盖率 {percent:.2f}%（{lines['covered']}/{lines['count']}）")
+
+def main(path: str) -> int:
+    try:
+        with open(path, encoding="utf-8") as handle:
+            data = json.load(handle)
+    except OSError as error:
+        return fail(f"读不到覆盖率报告 {path}：{error}")
+    except json.JSONDecodeError as error:
+        return fail(f"覆盖率报告 {path} 不是合法 JSON：{error}")
+
+    try:
+        lines = data["data"][0]["totals"]["lines"]
+        percent = float(lines["percent"])
+        covered = lines["covered"]
+        count = lines["count"]
+    except (KeyError, IndexError, TypeError) as error:
+        return fail(f"覆盖率报告 {path} 结构不符合 llvm-cov 输出：{error!r}")
+
+    print(f"行覆盖率 {percent:.2f}%（{covered}/{count}）")
 
     if percent < THRESHOLD:
-        print(f"行覆盖率低于 {THRESHOLD:.0f}% 门槛", file=sys.stderr)
-        return 1
+        return fail(f"行覆盖率低于 {THRESHOLD:.0f}% 门槛")
     return 0
 
 

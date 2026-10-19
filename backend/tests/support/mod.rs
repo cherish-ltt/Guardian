@@ -49,6 +49,14 @@ pub async fn setup_app_with_store() -> (Router, Arc<MemoryAuthStore>) {
     (create_app(container), store)
 }
 
+/// 需要直接检查数据库状态（如 auth_version）的用例用这个。
+pub async fn setup_app_with_container() -> (Router, Arc<MemoryAuthStore>, Arc<Container>) {
+    let store = Container::memory_auth_store();
+    let container = setup_container_with_store(Vec::new(), store.clone()).await;
+
+    (create_app(container.clone()), store, container)
+}
+
 /// 可信代理链只在验证「网关透传的真实客户端 IP 会被采信」时显式配置。
 pub async fn setup_app_with_trusted_proxies(trusted_proxies: Vec<IpNet>) -> Router {
     create_app(setup_container(trusted_proxies).await)

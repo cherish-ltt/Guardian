@@ -321,7 +321,7 @@ impl RandomBytes {
 
 #[cfg(test)]
 mod tests {
-    use super::{CHARS, LENGTH, random_code, render_image};
+    use super::{CHARS, GLYPHS, LENGTH, random_code, render_image};
 
     #[test]
     fn code_uses_the_declared_alphabet() {
@@ -345,6 +345,25 @@ mod tests {
 
         assert!(image.starts_with("data:image/svg+xml;base64,"));
         assert!(image.len() > 100);
+    }
+
+    /// 字形缺失时渲染会静默跳过该字符，图上看不到、用户必然输错。
+    #[test]
+    fn every_character_has_a_complete_glyph() {
+        for ch in CHARS {
+            let Some((_, rows)) = GLYPHS.iter().find(|(glyph, _)| glyph == ch) else {
+                panic!("字符 {} 缺少字形", *ch as char);
+            };
+            assert_eq!(rows.len(), 7, "字符 {} 行数不对", *ch as char);
+            for row in rows.iter() {
+                assert_eq!(row.len(), 5, "字符 {} 的列数不对", *ch as char);
+                assert!(
+                    row.bytes().all(|cell| cell == b'#' || cell == b'.'),
+                    "字符 {} 含非法点阵字符",
+                    *ch as char
+                );
+            }
+        }
     }
 
     #[test]

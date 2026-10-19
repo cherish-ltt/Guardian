@@ -96,12 +96,10 @@ jobs:
       - name: Build the project
         run: cargo build --verbose
 
-      - name: Run tests
-        run: cargo test --features docs --verbose
-
-      # AGENTS.md 10.1 要求行覆盖率 >= 80%，此前只在文档里约定、CI 没有护栏。
+      # 用 llvm-cov 跑测试：它本身就是一次完整测试执行，再单独 cargo test 等于跑两遍。
+      # AGENTS.md 10.1 要求行覆盖率 >= 80%，此前只在文档里约定、CI 没有护栏；
       # 门槛按全局行覆盖率卡，不按文件。
-      - name: Check coverage threshold
+      - name: Run tests with coverage
         run: |
           set -euo pipefail
           cargo llvm-cov --features docs --summary-only --json --output-path coverage.json

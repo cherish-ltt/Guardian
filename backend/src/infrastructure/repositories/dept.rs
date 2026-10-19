@@ -54,6 +54,11 @@ pub trait DeptRepository: Send + Sync {
     where
         C: ConnectionTrait;
 
+    /// 给定 ID 中实际存在（未删除）的部门数量，用于校验关联是否悬空。
+    async fn count_dept_ids<C>(&self, db: &C, ids: &[i64]) -> Result<i64, AppError>
+    where
+        C: ConnectionTrait;
+
     async fn count_dept_users<C>(&self, db: &C, dept_id: i64) -> Result<i64, AppError>
     where
         C: ConnectionTrait;
@@ -203,6 +208,22 @@ impl DeptRepository for SeaOrmDeptRepository {
             vec![dept_id.into()],
         )
         .await
+    }
+
+    async fn count_dept_ids<C>(&self, db: &C, ids: &[i64]) -> Result<i64, AppError>
+    where
+        C: ConnectionTrait,
+    {
+        if ids.is_empty() {
+            return Ok(0);
+        }
+        let placeholders = vec!["?"; ids.len()].join(", ");
+        let sql = format!(
+            "SELECT COUNT(*) AS value FROM sys_dept WHERE deleted = 0 AND id IN ({placeholders})"
+        );
+        let values = ids.iter().map(|id| (*id).into()).collect();
+
+        query_count(db, &sql, values).await
     }
 
     async fn count_dept_users<C>(&self, db: &C, dept_id: i64) -> Result<i64, AppError>

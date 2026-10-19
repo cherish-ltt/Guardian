@@ -58,6 +58,28 @@ impl AccountRepository {
         Ok(())
     }
 
+    /// 只递增会话版本，不碰其他列：`save_security` 是整行覆盖，
+    /// 用在「只改一个字段」的场景会把并发写入的其他字段一起写回旧值。
+    pub async fn bump_auth_version<C: ConnectionTrait>(
+        db: &C,
+        user_id: i64,
+    ) -> Result<(), AppError> {
+        execute(
+            db,
+            "INSERT OR IGNORE INTO sys_user_security (user_id) VALUES (?)",
+            vec![user_id.into()],
+        )
+        .await?;
+        execute(
+            db,
+            "UPDATE sys_user_security SET auth_version = auth_version + 1 WHERE user_id = ?",
+            vec![user_id.into()],
+        )
+        .await?;
+
+        Ok(())
+    }
+
     pub async fn profile<C: ConnectionTrait>(db: &C, username: &str) -> Result<Profile, AppError> {
         let row = query_opt(db, "SELECT u.nickname, u.phone, u.email, d.dept_name FROM sys_user u LEFT JOIN sys_dept d ON d.id = u.dept_id WHERE u.username = ? AND u.deleted = 0 AND u.status = 1", vec![username.into()]).await?.ok_or_else(|| AppError::session_expired("未认证或登录已过期"))?;
         Ok(Profile {

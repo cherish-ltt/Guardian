@@ -11,6 +11,7 @@ use crate::{
         services::admin::users::UserAdminUseCase,
     },
     infrastructure::repositories::{
+        account::AccountRepository,
         config::{ConfigRepository, SeaOrmConfigRepository},
         dept::{DeptRepository, SeaOrmDeptRepository},
         post::{PostRepository, SeaOrmPostRepository},
@@ -295,17 +296,31 @@ impl UserAdminUseCase for AdminService {
         let target = SeaOrmUserRepository
             .find_username(&self.database, id)
             .await?;
-        if SeaOrmUserRepository
-            .reset_user_password(&self.database, id, &hashed, operator)
-            .await?
-            == 0
+        let operator = operator.to_string();
+        self.in_transaction(|transaction| {
+            let hashed = hashed.clone();
+            let operator = operator.clone();
+            Box::pin(async move {
+                if SeaOrmUserRepository
+                    .reset_user_password(transaction, id, &hashed, &operator)
+                    .await?
+                    == 0
+                {
+                    return Err(AppError::business("用户不存在或已删除"));
+                }
+                // 重置口令通常发生在「怀疑账号被盗」之后：旧会话必须立即失效。
+                // 光删令牌不够——Redis 清理失败或令牌索引缺失时，旧 JWT 仍能验签通过；
+                // 递增 auth_version 让 authenticate 的版本校验兜住这种残留。
+                AccountRepository::bump_auth_version(transaction, id).await
+            })
+        })
+        .await?;
+
+        // 缓存清理在事务外：数据库版本已生效，Redis 故障不该回滚口令重置。
+        if let Some(username) = target
+            && let Err(error) = self.auth_store.revoke_user_tokens(&username).await
         {
-            return Err(AppError::business("用户不存在或已删除"));
-        }
-        // 重置口令通常发生在「怀疑账号被盗」之后：旧会话必须立即失效，
-        // 否则攻击者手里的令牌还能用到 TTL 到期。
-        if let Some(username) = target {
-            self.auth_store.revoke_user_tokens(&username).await?;
+            tracing::warn!(%error, "auth version bumped; Redis session cleanup deferred to TTL");
         }
 
         Ok(())

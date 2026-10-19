@@ -30,7 +30,7 @@ src/middleware/audit.rs                       写操作留痕
 
 | 方法 | 路径 | 权限 | 说明 |
 | --- | --- | --- | --- |
-| GET | `/auth/captcha` | 公开 | 4 位验证码，明文回显给登录页，Redis TTL 300s；参数 `sys.account.captchaEnabled=false` 时返回 `enabled=false` 且不生成验证码 |
+| GET | `/auth/captcha` | 公开 | 返回 `uuid` 与内联 SVG 图片（`image` 为 `data:image/svg+xml;base64,...`），明文只留在服务端缓存里比对，Redis TTL 300s；参数 `sys.account.captchaEnabled=false` 时返回 `enabled=false` 且不生成验证码 |
 | POST | `/auth/login` | 公开 | 校验码 → 口令 → 账号状态；未启用 2FA 直接返回 JWT 与 `expiresIn`，启用则返回一次性挑战 |
 | POST | `/auth/login/2fa` | 公开 | 用挑战 + 动态码/恢复码完成登录，签发 JWT 与会话 |
 | POST | `/auth/logout` | 登录态 | 删除 Redis 会话令牌，令牌随后失效 |

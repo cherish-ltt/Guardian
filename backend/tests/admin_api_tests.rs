@@ -7,11 +7,12 @@ mod support;
 use axum::http::StatusCode;
 use serde_json::{Value, json};
 
+use guardian_backend::infrastructure::repositories::account::AccountRepository;
 use guardian_backend::infrastructure::services::auth_store::MemoryAuthStore;
 use support::{
     DEMO_PASSWORD, admin_token, delete_with_bearer, get, get_with_bearer, login, post_json,
-    post_json_with_bearer, put_json_with_bearer, send, setup_app_with_store,
-    setup_app_with_store_with_trusted_proxies, take_captcha,
+    post_json_with_bearer, put_json_with_bearer, send, setup_app_with_container,
+    setup_app_with_store, setup_app_with_store_with_trusted_proxies, take_captcha,
 };
 
 #[tokio::test]
@@ -329,6 +330,47 @@ async fn users_page_supports_paging_filters_and_options() {
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert_eq!(body["message"], "参数 status 必须是整数");
+}
+
+#[tokio::test]
+async fn reset_password_bumps_auth_version_so_old_tokens_die() {
+    let (app, store, container) = setup_app_with_container().await;
+    let token = admin_token(&app, store.as_ref()).await;
+
+    let (_, created) = send(
+        app.clone(),
+        post_json_with_bearer(
+            "/api/v1/system/users",
+            &token,
+            json!({ "username": "rotate", "nickname": "改密对象", "deptId": 6, "roleIds": [3] }),
+        ),
+    )
+    .await;
+    let id = created["data"]["id"].as_i64().expect("新用户 ID");
+
+    let before = AccountRepository::security(&container.database, id)
+        .await
+        .expect("读取安全状态")
+        .auth_version;
+
+    let (status, _) = send(
+        app.clone(),
+        put_json_with_bearer(
+            &format!("/api/v1/system/users/{id}/password"),
+            &token,
+            json!({ "password": "Zz@654321" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let after = AccountRepository::security(&container.database, id)
+        .await
+        .expect("读取安全状态")
+        .auth_version;
+    // 光删 Redis 令牌不够：索引缺失或清理失败时旧 JWT 仍能验签通过，
+    // 版本号是兜底的第二道闸。
+    assert_eq!(after, before + 1, "重置口令必须递增 auth_version");
 }
 
 #[tokio::test]
@@ -779,6 +821,19 @@ async fn role_flow_covers_menus_graph_and_guards() {
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert_eq!(body["message"], "自定义数据权限必须选择部门");
+
+    // 不存在的部门不能被写进 sys_role_dept，否则会留下悬空关联。
+    let (status, body) = send(
+        app.clone(),
+        put_json_with_bearer(
+            &format!("/api/v1/system/roles/{role_id}"),
+            &token,
+            json!({ "dataScope": "CUSTOM", "deptIds": [99999] }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["message"], "部门不存在或已删除");
 
     let (status, _) = send(
         app.clone(),

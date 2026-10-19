@@ -9,7 +9,10 @@ use crate::{
         },
         services::admin::roles::RoleAdminUseCase,
     },
-    infrastructure::repositories::role::{RoleRepository, SeaOrmRoleRepository},
+    infrastructure::repositories::{
+        dept::{DeptRepository, SeaOrmDeptRepository},
+        role::{RoleRepository, SeaOrmRoleRepository},
+    },
     services::admin::{AdminService, default_int, default_string, required, trim_to_null},
     util::csv,
 };
@@ -111,6 +114,9 @@ impl RoleAdminUseCase for AdminService {
                 let menu_ids = menu_ids.clone();
                 let dept_ids = dept_ids.clone();
                 Box::pin(async move {
+                    if let Some(dept_ids) = dept_ids.as_deref() {
+                        ensure_depts_exist(transaction, dept_ids).await?;
+                    }
                     let id = SeaOrmRoleRepository
                         .insert_role(transaction, &command, &operator)
                         .await?;
@@ -151,6 +157,9 @@ impl RoleAdminUseCase for AdminService {
             let menu_ids = menu_ids.clone();
             let dept_ids = dept_ids.clone();
             Box::pin(async move {
+                if let Some(dept_ids) = dept_ids.as_deref() {
+                    ensure_depts_exist(transaction, dept_ids).await?;
+                }
                 if SeaOrmRoleRepository
                     .update_role(transaction, id, &command, &operator)
                     .await?
@@ -206,6 +215,30 @@ impl RoleAdminUseCase for AdminService {
         })
         .await
     }
+}
+
+/// 自定义数据范围里的部门必须真实存在，否则会在 `sys_role_dept` 留下悬空关联。
+async fn ensure_depts_exist(
+    db: &sea_orm::DatabaseTransaction,
+    dept_ids: &[i64],
+) -> Result<(), AppError> {
+    let unique: Vec<i64> = {
+        let mut seen = std::collections::HashSet::new();
+        dept_ids
+            .iter()
+            .copied()
+            .filter(|id| seen.insert(*id))
+            .collect()
+    };
+    if unique.is_empty() {
+        return Ok(());
+    }
+    let found = SeaOrmDeptRepository.count_dept_ids(db, &unique).await?;
+    if found as usize != unique.len() {
+        return Err(AppError::business("部门不存在或已删除"));
+    }
+
+    Ok(())
 }
 
 /// `CUSTOM` 数据范围必须带部门列表，否则静默退化成「仅本人」。

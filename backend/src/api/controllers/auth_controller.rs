@@ -49,7 +49,7 @@ pub fn router() -> Router<Arc<Container>> {
     router
 }
 
-/// 登录验证码：`code` 明文回显给登录页展示（与 Spring 版一致）。
+/// 登录验证码：只回传内联 SVG 图片，明文留在服务端缓存里比对，不回显给客户端。
 #[cfg_attr(feature = "docs", utoipa::path(
     get,
     path = "/api/v1/auth/captcha",
