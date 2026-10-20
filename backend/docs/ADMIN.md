@@ -105,8 +105,8 @@ src/middleware/audit.rs                       写操作留痕
 | GET | `/tool/generator/tables` | `tool:gen:list` | 已导入的生成配置（`keyword`） |
 | GET | `/tool/generator/importable-tables` | 同上 | 数据库表候选（`imported` 标记是否已导入） |
 | POST | `/tool/generator/import` | 同上 | 按 `tableNames` 导入，重复导入复用已有配置 |
-| GET | `/tool/generator/tables/{id}/columns` | 同上 | 字段配置（`javaType` / `formType` / 增删改查开关） |
-| GET | `/tool/generator/tables/{id}/preview` | 同上 | 7 个文件的代码预览（默认展开 Controller） |
+| GET | `/tool/generator/tables/{id}/columns` | 同上 | 字段配置（`rustField` / `rustType` / `nullable` / `formType` / 增删改查开关） |
+| GET | `/tool/generator/tables/{id}/preview` | 同上 | 10 个文件的代码预览（`activeFile` 为默认展开的控制器路径） |
 | PUT | `/tool/generator/tables/{id}` | 同上 | 只接受 `tableComment` 与 `synced` |
 | POST | `/tool/generator/tables/{id}/generate` | 同上 | 生成结果提示 |
 | GET | `/tool/generator/tables/{id}/download` | 同上 | ZIP（条目为完整相对路径） |
@@ -270,8 +270,13 @@ Redis 超时/错误/坏数据触发短暂熔断，回源 SQLite；故障时不�
 | 5xx 文案 | `系统内部错误` | 同前 | 4xx 文案逐字透出（「账号或密码错误」等） |
 | 请求体非法 | Spring 抛 `HttpMessageNotReadableException` | `ApiJson` 统一转 400「请求体格式错误」 | 前端 `http.ts` 只认 `message` |
 | 生成器 `formType` | 按 MySQL 列类型（`varchar` → 文本框） | SQLite 只有 `TEXT`，按 `text` → 文本域 | SQLite 无长度信息，无法区分 `varchar` / `text` |
-| 生成器模板 | Java 文本块 | 逐字对齐的 Rust 字符串 | 集成测试按字节断言 7 个文件的内容 |
-| 生成产物包名 | `com.scaffold.*` | 同前 | 生成器输出与参考实现逐字一致，不因本项目改名而漂移 |
+| 生成器模板 | Java 文本块：`domain` / `mapper` / `service` / `controller` 四个 Java 类 + 前端 api / 页面 + 菜单 SQL | 按本项目 axum 分层生成 Rust：sea-orm 实体、领域模型、用例接口、仓储、服务、控制器 + 前端 api / 页面 + 菜单 SQL + 接入说明，共 10 个文件 | 本项目已迁到 axum，Java 产物放不进项目也用不上 |
+| 生成器字段命名 | `javaField` / `javaType`（`Long` / `BigDecimal` / `LocalDateTime`） | `rustField` / `rustType`（`i64` / `i32` / `f64` / `String`） | 产物是 Rust，字段名与类型都按 Rust 语义 |
+| 生成器业务名 | `sys_user` → `userRole`（camelCase） | `sys_user` → `user`（snake_case） | Rust 模块、函数与前端目录都用 snake_case |
+| 生成器默认展开 | `<类名>Controller.java` | `backend/src/api/controllers/<表名>.rs` | 产物不再有类名，`activeFile` 取完整路径 |
+| 生成器可空列 | 一律生成引用类型，空值靠约定 | `nullable` 列生成 `Option<T>` | 生成物要与数据库的 NULL 语义一致 |
+| 生成器前端产物 | `frontend/src/api/<模块>/<业务名>.ts`、`views/<模块>/<业务名>/index.vue` | `frontend/src/api/<业务名>.ts`、`views/<模块>/<类名>.vue` | 与本项目前端现有布局（api 平铺、页面按模块 PascalCase）一致 |
+| 生成器写操作 | 模板只有空类体，业务逻辑靠手工补 | 列表查询已接好，新增 / 修改 / 删除在服务层留 `todo!` | 不静默返回伪成功，缺失实现显式暴露 |
 | 时间字段 | `DATETIME` | `TEXT` 本地时间字符串 | SQLite 无原生日期类型 |
 | 留痕来源 IP | 操作日志按 `x-forwarded-for` → `x-real-ip` 取；登录日志不写 | 两者都取保护层按可信代理解出的真实对端（未命中可信代理时忽略转发头） | 转发头可被调用方伪造，日志里的来源必须可追溯；部署时需配置 `MIDDLEWARE_TRUSTED_PROXIES`，见 [生产部署](../../docs/DEPLOYMENT.md) |
 | 登录日志客户端 | 只写账号与结果 | 另写 IP、地点、浏览器、操作系统 | 排查需要知道「谁从哪里用什么客户端登录」；`User-Agent` 用 woothee 规则表解析，版本号不写入 |
@@ -284,6 +289,6 @@ Redis 超时/错误/坏数据触发短暂熔断，回源 SQLite；故障时不�
 
 - `tests/admin_api_tests.rs`：认证全流程（含登录 / 退出日志的来源与浏览器采集）、七个系统管理页面的 CRUD / 树 / 导出 / 权限 403 / 数据范围 / 404 / 405 文案。
 - `tests/monitor_api_tests.rs`：留痕内容（含可信代理下的来源 IP）与脱敏、日志统计 / 时间线 / 热力图 / 导出 / 删除清空、工作台聚合。
-- `tests/generator_api_tests.rs`：候选表与导入幂等、字段元数据、7 个生成文件的内容、ZIP 条目、留痕动作。
+- `tests/generator_api_tests.rs`：候选表与导入幂等、字段元数据、10 个生成文件的内容、ZIP 条目、留痕动作。
 
 测试要求与命令见 [测试与构建检查](TESTING.md)。
