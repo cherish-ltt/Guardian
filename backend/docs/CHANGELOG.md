@@ -7,7 +7,22 @@
 
 > `0.1.0` 是本项目（Guardian）的首个版本，架构骨架来自
 > [AxumServiceScaffold](https://github.com/cherish-ltt/AxumServiceScaffold)。
-> 下方 `0.6.0` 及更早的条目属于上游项目的历史记录，版本号与本项目不连续。
+> 下方 `0.5.0` 及更早的条目属于上游项目的历史记录，版本号与本项目不连续。
+
+## [0.6.0] - 2026-10-20
+
+代码生成器改为产出本项目的 axum + sea-orm 分层骨架，不再生成 Spring/Java 代码。
+分前后端的发布说明见 [docs/version/v0.6.0.md](../../docs/version/v0.6.0.md)。
+
+### 变更
+
+- 生成器 7 个 Java 模板换成 10 个产物：sea-orm 实体、领域模型、`XxxUseCase`、仓储接口、
+  用例实现、axum 控制器、前端 api / 页面、菜单 SQL、接入说明。写操作在服务层留 `todo!`。
+- `gen_table_column` 的 `java_field` / `java_type` 改名为 `rust_field` / `rust_type`，
+  类型值改为 Rust 类型；迁移 `0007` 转换存量行。
+- 业务名从 camelCase 改为 snake_case，影响生成产物路径。
+- `GenPreview.activeFile` 返回默认展开文件的完整路径，不再是文件名。
+- `docs/ADMIN.md` 与 `AGENTS.md` 的生成器契约条款同步更新。
 
 ## [0.5.2] - 2026-10-19
 
@@ -288,7 +303,8 @@
     各页面均支持 CSV 导出；
   - 监控：操作日志与登录日志的列表、统计、时间线、热力图、导出、删除与清空；
   - 工作台：统计卡、登录趋势、近 7 天操作量、近期动态、角色分布；
-  - 代码生成：候选表、导入、字段配置、代码预览、生成与 ZIP 下载（7 个文件与 Spring 模板逐字对齐）。
+  - 代码生成：候选表、导入、字段配置、代码预览、生成与 ZIP 下载（产物为本项目的 axum + sea-orm 分层骨架，
+    见 [v0.6.0 发布说明](../../docs/version/v0.6.0.md)）。
 - **迁移与实体**：`migrations/0002_create_system_tables.sql` 建 17 张系统表，`src/entities` 补齐对应实体，
   `src/infrastructure/databases/seed.rs` 幂等播种部门 / 岗位 / 角色 / 菜单 / 字典 / 参数与演示账号。
 - **会话与验证码存 Redis**：`AuthStore` 抽象 + `MemoryAuthStore`（测试）与 `RedisAuthStore`（生产），
