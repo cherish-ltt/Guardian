@@ -533,7 +533,7 @@ fn menu_sql(class_name: &str, module: &str, business: &str) -> String {
         "-- {class_name} 菜单权限\n\
          INSERT INTO sys_menu (id, parent_id, menu_name, menu_type, path, component, permission, sort, visible, status, create_by, update_by)\n\
          SELECT COALESCE(MAX(id), 0) + 1, 0, '{class_name}管理', 'menu', '/{module}/{business}', \
-         '{module}/{class_name}', '{module}:{business}:list', 1, 1, 1, 'system', 'system'\n\
+         '{module}/{business}/index', '{module}:{business}:list', 1, 1, 1, 'system', 'system'\n\
          FROM sys_menu;\n"
     )
 }
@@ -593,7 +593,9 @@ fn readme_code(module: &str, class_name: &str, table_name: &str, business: &str)
          ## 6. 权限与菜单\n\n\
          执行 `sql/{table_name}_menu.sql` 写入菜单，权限码为 `{module}:{business}:list`、\n\
          `{module}:{business}:add`、`{module}:{business}:edit`、`{module}:{business}:remove`，\n\
-         需要同步授予角色；菜单的 `component` 指向 `{module}/{class_name}`，与页面文件对应。\n\n\
+         需要同步授予角色。菜单的 `component` 是 `{module}/{business}/index`，与现有菜单同形；\n\
+         前端要在 `frontend/src/composables/auth.ts` 的 `COMPONENT_MAP` 里登记这一项，\n\
+         指向 `@/views/{module}/{class_name}.vue`，否则动态路由找不到页面。\n\n\
          ## 7. 操作留痕\n\n\
          在 `backend/src/middleware/audit.rs` 的 `AUDIT_ROUTES` 补「方法 + 路径段模式 + 模块 + 动作」，\n\
          并在 `tests/monitor_api_tests.rs` 里断言。\n"
@@ -870,7 +872,7 @@ mod tests {
             menu_sql("SysPost", "system", "post"),
             "-- SysPost 菜单权限\n\
              INSERT INTO sys_menu (id, parent_id, menu_name, menu_type, path, component, permission, sort, visible, status, create_by, update_by)\n\
-             SELECT COALESCE(MAX(id), 0) + 1, 0, 'SysPost管理', 'menu', '/system/post', 'system/SysPost', 'system:post:list', 1, 1, 1, 'system', 'system'\n\
+             SELECT COALESCE(MAX(id), 0) + 1, 0, 'SysPost管理', 'menu', '/system/post', 'system/post/index', 'system:post:list', 1, 1, 1, 'system', 'system'\n\
              FROM sys_menu;\n"
         );
     }

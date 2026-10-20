@@ -361,7 +361,7 @@ async fn preview_lists_ten_files_with_controller_active() {
         files[8]["code"].as_str().expect("菜单 SQL"),
         "-- SysPost 菜单权限\n\
          INSERT INTO sys_menu (id, parent_id, menu_name, menu_type, path, component, permission, sort, visible, status, create_by, update_by)\n\
-         SELECT COALESCE(MAX(id), 0) + 1, 0, 'SysPost管理', 'menu', '/system/post', 'system/SysPost', 'system:post:list', 1, 1, 1, 'system', 'system'\n\
+         SELECT COALESCE(MAX(id), 0) + 1, 0, 'SysPost管理', 'menu', '/system/post', 'system/post/index', 'system:post:list', 1, 1, 1, 'system', 'system'\n\
          FROM sys_menu;\n"
     );
 
