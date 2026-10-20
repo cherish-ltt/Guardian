@@ -10,11 +10,11 @@ import { copyText } from '@/utils/clipboard'
 
 /* ============================================================
    代码生成流水线：① 表信息 → ② 字段映射 → ③ 代码预览，一个弹窗走完。
-   字段映射用关系图把「数据库字段 → Java 属性 → 页面呈现」连起来，脉冲沿生成方向流动；
+   字段映射用关系图把「数据库字段 → Rust 字段 → 页面呈现」连起来，脉冲沿生成方向流动；
    代码预览按行级联显现。字段级配置沿用现有接口（只读展示），表说明与确认状态可保存。
    ============================================================ */
 export interface GenTable { id: number; tableName: string; tableComment: string; className: string; module: string; businessName: string; synced: boolean }
-interface ColumnRow { id: number; col: string; comment: string; javaField: string; javaType: string; jdbcType: string; insert: boolean; edit: boolean; list: boolean; query: boolean; queryType: string; formType: string; required: boolean }
+interface ColumnRow { id: number; col: string; comment: string; rustField: string; rustType: string; jdbcType: string; insert: boolean; edit: boolean; list: boolean; query: boolean; queryType: string; formType: string; required: boolean }
 
 const props = defineProps<{ table: GenTable | null; step?: 1 | 2 | 3 }>()
 const emit = defineEmits<{ (e: 'close'): void; (e: 'saved'): void; (e: 'generate', table: GenTable): void }>()
@@ -43,7 +43,7 @@ watch(() => props.table, async (table) => {
     const [cols, preview] = await Promise.all([portalApi.generator.tables.columns(table.id), portalApi.generator.tables.preview(table.id)])
     columns.value = cols as unknown as ColumnRow[]
     files.value = preview.files
-    activePath.value = preview.files.find(f => f.name === preview.activeFile)?.path ?? preview.files[0]?.path ?? ''
+    activePath.value = preview.activeFile
   } catch (error) {
     toastError(error, '生成配置加载失败')
   } finally {
@@ -73,12 +73,12 @@ const mapping = computed<{ nodes: GraphNode[]; links: GraphLink[] }>(() => {
   const links: GraphLink[] = []
   const gap = Math.min(40, (h - 48) / Math.max(1, cols.length - 1))
   const y0 = h / 2 - (gap * (cols.length - 1)) / 2
-  const xDb = w * 0.24, xJava = w * 0.5, xOut = w * 0.78
+  const xDb = w * 0.24, xRust = w * 0.5, xOut = w * 0.78
   cols.forEach((c, i) => {
     const y = y0 + i * gap
     nodes.push({ id: `db:${c.id}`, x: xDb, y, label: c.col, sub: c.jdbcType + (c.required ? ' · 必填' : ''), kind: 'item', align: 'right', cat: 2, delay: i * 0.04, title: c.comment })
-    nodes.push({ id: `java:${c.id}`, x: xJava, y, label: c.javaField, sub: c.javaType, kind: 'item', cat: 3, from: `db:${c.id}`, delay: 0.3 + i * 0.04 })
-    links.push({ a: `db:${c.id}`, b: `java:${c.id}`, flow: 'forward', shape: 'h', cat: 2 })
+    nodes.push({ id: `rust:${c.id}`, x: xRust, y, label: c.rustField, sub: c.rustType, kind: 'item', cat: 3, from: `db:${c.id}`, delay: 0.3 + i * 0.04 })
+    links.push({ a: `db:${c.id}`, b: `rust:${c.id}`, flow: 'forward', shape: 'h', cat: 2 })
   })
   // 右列：去重后的页面呈现目标
   const targets = new Map<string, { label: string; sub: string; cat: number; members: number[] }>()
@@ -96,7 +96,7 @@ const mapping = computed<{ nodes: GraphNode[]; links: GraphLink[] }>(() => {
   const ty0 = h / 2 - (tgap * (tlist.length - 1)) / 2
   tlist.forEach(([key, t], i) => {
     nodes.push({ id: `out:${key}`, x: xOut, y: ty0 + i * tgap, label: t.label, sub: t.sub, count: t.members.length, kind: 'item', align: 'left', cat: t.cat, delay: 0.8 + i * 0.08 })
-    t.members.forEach(id => links.push({ a: `java:${id}`, b: `out:${key}`, flow: 'forward', shape: 'h', cat: t.cat }))
+    t.members.forEach(id => links.push({ a: `rust:${id}`, b: `out:${key}`, flow: 'forward', shape: 'h', cat: t.cat }))
   })
   return { nodes, links }
 })
@@ -182,7 +182,7 @@ async function save() {
       <!-- ② 字段映射 -->
       <div v-else-if="step === 2" class="pipe-map">
         <div class="pipe-map-head" aria-hidden="true">
-          <span style="left: 24%">数据库字段</span><span style="left: 50%">Java 属性</span><span style="left: 78%">页面呈现</span>
+          <span style="left: 24%">数据库字段</span><span style="left: 50%">Rust 字段</span><span style="left: 78%">页面呈现</span>
         </div>
         <RelationGraph v-model:size="size" class="pipe-graph" :style="{ height: `${mapHeight}px` }" label="字段映射图" :nodes="mapping.nodes" :links="mapping.links" />
         <p class="faint pipe-note">字段的表单类型、查询方式按数据库类型自动推断；悬停任一节点查看它的去向。</p>

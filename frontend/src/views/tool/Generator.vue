@@ -101,7 +101,7 @@ async function generate(row: TableRow) {
 <template>
   <ListPage
     title="代码生成"
-    desc="导入数据库表，预览并下载后端四层、前端页面与菜单权限 SQL，作为新业务模块的起点。"
+    desc="导入数据库表，预览并下载本项目 axum 分层的后端骨架、前端页面、菜单权限 SQL 与接入说明，作为新业务模块的起点。"
     table-title="已导入的表"
     :list="list"
     :columns="columns"

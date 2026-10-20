@@ -22,6 +22,7 @@ export interface GeneratorFile {
 
 export interface GeneratorPreview {
   files: GeneratorFile[]
+  /** 默认展开文件的完整路径（控制器），与 files[].path 取值一致 */
   activeFile: string
   code: string
 }
