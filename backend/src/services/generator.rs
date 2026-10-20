@@ -248,7 +248,7 @@ fn column_row(table_id: i64, column: &DatabaseColumn) -> NewGenColumn {
         query_type: if query_field { "LIKE" } else { "=" }.to_string(),
         form_type: form_type(&column.data_type).to_string(),
         required: i64::from(column.nullable == "NO" && !primary_like),
-        nullable: i64::from(column.nullable == "YES"),
+        nullable: i64::from(column.nullable == "YES" && !primary_like),
         sort: column.sort,
     }
 }
@@ -275,7 +275,7 @@ fn render_files(table: &GenTableDetail, columns: &[GenColumnRow]) -> Vec<GenFile
         ),
         (
             format!("backend/src/infrastructure/repositories/{table_name}.rs"),
-            repository_code(class_name, table_name, business),
+            repository_code(class_name, table_name, business, columns),
         ),
         (
             format!("backend/src/services/{table_name}.rs"),
@@ -401,13 +401,72 @@ fn domain_service_code(class_name: &str, table_name: &str, business: &str) -> St
     )
 }
 
-/// 仓储接口与适配器声明：SQL 按同项目的 `infrastructure/repositories/post.rs` 补。
-fn repository_code(class_name: &str, table_name: &str, business: &str) -> String {
+/// 仓储接口与适配器：列表与计数按 `column_name` 拼出可跑的 SQL，
+/// 写操作留 `todo!`（生成器不知道软删除、唯一约束等业务约束，不猜）。
+fn repository_code(
+    class_name: &str,
+    table_name: &str,
+    business: &str,
+    columns: &[GenColumnRow],
+) -> String {
+    let select = columns
+        .iter()
+        .map(|column| column.col.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    // 文本列参与 keyword 模糊匹配；没有文本列时退化成不过滤，避免生成空括号。
+    let text_columns = columns
+        .iter()
+        .filter(|column| column.rust_type == "String")
+        .map(|column| format!("{} LIKE ?", column.col))
+        .collect::<Vec<_>>();
+    let text_count = text_columns.len();
+    let text_like = if text_columns.is_empty() {
+        "1 = 1".to_string()
+    } else {
+        text_columns.join(" OR ")
+    };
+    let order = columns
+        .iter()
+        .find(|column| column.col == PRIMARY_COLUMN)
+        .map_or_else(|| "1".to_string(), |column| column.col.clone());
+    let row_build = columns
+        .iter()
+        .map(|column| format!("        {}: {},\n", column.rust_field, row_value_of(column)))
+        .collect::<String>();
+
+    // 只引入实际用到的取值助手，避免生成物带未使用 import。
+    let mut sql_imports = vec!["query_all", "query_count"];
+    if columns.iter().any(|column| column.rust_type == "String") {
+        sql_imports.push("text");
+    }
+    if columns
+        .iter()
+        .any(|column| column.rust_type == "String" && column.nullable)
+    {
+        sql_imports.push("text_or_none");
+    }
+    if columns
+        .iter()
+        .any(|column| matches!(column.rust_type.as_str(), "i32" | "i64"))
+    {
+        sql_imports.push("int_or_zero");
+    }
+    if columns
+        .iter()
+        .any(|column| matches!(column.rust_type.as_str(), "i32" | "i64") && column.nullable)
+    {
+        sql_imports.push("int");
+    }
+    sql_imports.sort_unstable();
+    let sql_imports = sql_imports.join(", ");
+
     format!(
         "use async_trait::async_trait;\n\
          use sea_orm::ConnectionTrait;\n\n\
          use crate::{{\n    domain::models::{{\n        pagination::Page,\n        \
-         {table_name}::{{{class_name}Row, {class_name}WriteCommand}},\n    }},\n    error::AppError,\n}};\n\n\
+         {table_name}::{{{class_name}Row, {class_name}WriteCommand}},\n    }},\n    error::AppError,\n    \
+         infrastructure::repositories::sql::{{\n        {sql_imports},\n    }},\n}};\n\n\
          /// {class_name} 的读写。\n\
          #[async_trait]\n\
          pub trait {class_name}Repository: Send + Sync {{\n    \
@@ -424,7 +483,41 @@ fn repository_code(class_name: &str, table_name: &str, business: &str) -> String
          async fn delete_{business}<C>(&self, db: &C, id: i64, operator: &str) -> Result<u64, AppError>\n    \
          where\n        C: ConnectionTrait;\n}}\n\n\
          #[derive(Debug, Default, Clone, Copy)]\n\
-         pub struct SeaOrm{class_name}Repository;\n"
+         pub struct SeaOrm{class_name}Repository;\n\n\
+         /// 列表与计数用 `column_name` 直出，取值走 `sql` 模块的助手；\n\
+         /// 写操作依赖业务约束（软删除、唯一校验），需要按表补完。\n\
+         #[async_trait]\n\
+         impl {class_name}Repository for SeaOrm{class_name}Repository {{\n    \
+         async fn count_{business}<C>(&self, db: &C, keyword: Option<&str>) -> Result<i64, AppError>\n    \
+         where\n        C: ConnectionTrait,\n    {{\n        \
+         let (filter, values) = filter_of(keyword);\n        \
+         let sql = format!(\"SELECT COUNT(*) AS value FROM {table_name} WHERE {{filter}}\");\n\n        \
+         query_count(db, &sql, values).await\n    }}\n\n    \
+         async fn list_{business}<C>(\n        &self,\n        db: &C,\n        keyword: Option<&str>,\n        \
+         page: Page,\n    ) -> Result<Vec<{class_name}Row>, AppError>\n    where\n        C: ConnectionTrait,\n    \
+         {{\n        let (filter, mut values) = filter_of(keyword);\n        \
+         let sql = format!(\n            \"SELECT {select} FROM {table_name} WHERE {{filter}} \
+         ORDER BY {order} LIMIT ? OFFSET ?\"\n        );\n        \
+         values.push(page.limit().into());\n        values.push(page.offset().into());\n        \
+         let rows = query_all(db, &sql, values).await?;\n\n        \
+         Ok(rows.iter().map(row_of).collect())\n    }}\n\n    \
+         async fn insert_{business}<C>(\n        &self,\n        _db: &C,\n        _command: \
+         &{class_name}WriteCommand,\n        _operator: &str,\n    ) -> Result<i64, AppError>\n    where\n        \
+         C: ConnectionTrait,\n    {{\n        todo!(\"按 {table_name} 的业务约束实现新增\")\n    }}\n\n    \
+         async fn update_{business}<C>(\n        &self,\n        _db: &C,\n        _id: i64,\n        _command: \
+         &{class_name}WriteCommand,\n        _operator: &str,\n    ) -> Result<u64, AppError>\n    where\n        \
+         C: ConnectionTrait,\n    {{\n        todo!(\"按 {table_name} 的业务约束实现修改\")\n    }}\n\n    \
+         async fn delete_{business}<C>(&self, _db: &C, _id: i64, _operator: &str) -> Result<u64, AppError>\n    \
+         where\n        C: ConnectionTrait,\n    {{\n        todo!(\"按 {table_name} 的业务约束实现删除\")\n    }}\n}}\n\n\
+         /// 关键词只按文本列模糊匹配，与后台列表的 `keyword` 语义一致。\n\
+         fn filter_of(keyword: Option<&str>) -> (String, Vec<sea_orm::Value>) {{\n    \
+         let mut clauses = vec![\"1 = 1\".to_string()];\n    let mut values = Vec::new();\n\n    \
+         if let Some(keyword) = keyword.filter(|value| !value.is_empty()) {{\n        \
+         clauses.push(format!(\"({text_like})\"));\n        \
+         let pattern = format!(\"%{{keyword}}%\");\n        \
+         for _ in 0..{text_count} {{\n            values.push(pattern.clone().into());\n        }}\n    }}\n\n    \
+         (clauses.join(\" AND \"), values)\n}}\n\n\
+         fn row_of(row: &sea_orm::QueryResult) -> {class_name}Row {{\n    {class_name}Row {{\n{row_build}    }}\n}}\n"
     )
 }
 
@@ -600,6 +693,23 @@ fn readme_code(module: &str, class_name: &str, table_name: &str, business: &str)
          在 `backend/src/middleware/audit.rs` 的 `AUDIT_ROUTES` 补「方法 + 路径段模式 + 模块 + 动作」，\n\
          并在 `tests/monitor_api_tests.rs` 里断言。\n"
     )
+}
+
+/// 仓储里从查询结果取值的表达式，只用 `sql` 模块已有的助手。
+fn row_value_of(column: &GenColumnRow) -> String {
+    let name = &column.rust_field;
+    // 主键恒非空：SQLite 的 `pragma_table_info` 对 INTEGER PRIMARY KEY 报 notnull=0。
+    let nullable = column.nullable && column.col != PRIMARY_COLUMN;
+    match (column.rust_type.as_str(), nullable) {
+        ("i64", false) => format!("int_or_zero(row, \"{name}\")"),
+        ("i64", true) => format!("int(row, \"{name}\")"),
+        ("i32", false) => format!("int_or_zero(row, \"{name}\") as i32"),
+        ("i32", true) => format!("int(row, \"{name}\").map(|value| value as i32)"),
+        // 项目没有浮点取值助手，硬转会把小数截断，因此显式留待手写。
+        ("f64", _) => format!("todo!(\"按 {name} 的实际精度从查询结果取值\")"),
+        (_, true) => format!("text_or_none(row, \"{name}\")"),
+        (_, false) => format!("text(row, \"{name}\").unwrap_or_default()"),
+    }
 }
 
 /// 列表行与实体里的字段类型：可空列包一层 `Option`，与数据库的 NULL 语义对齐。
@@ -828,9 +938,12 @@ mod tests {
         assert!(use_case.contains("pub trait SysPostUseCase: Send + Sync {"));
         assert!(use_case.contains("async fn list_post(&self, query: &KeywordQuery)"));
 
-        let repository = repository_code("SysPost", "sys_post", "post");
+        let repository = repository_code("SysPost", "sys_post", "post", &columns);
         assert!(repository.contains("pub trait SysPostRepository: Send + Sync {"));
         assert!(repository.contains("pub struct SeaOrmSysPostRepository;"));
+        assert!(repository.contains("impl SysPostRepository for SeaOrmSysPostRepository {"));
+        assert!(repository.contains("SELECT id, post_code FROM sys_post WHERE"));
+        assert!(repository.contains("post_code LIKE ?"));
 
         let service = service_code("SysPost", "sys_post", "post");
         assert!(service.contains("pub struct SysPostService {"));
