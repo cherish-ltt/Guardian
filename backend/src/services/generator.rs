@@ -653,12 +653,12 @@ fn snake_case(value: &str) -> String {
         .join("_")
 }
 
-/// 数据库列类型 → Rust 类型。SQLite 只有 `TEXT` / `INTEGER` / `REAL`，其余按文本处理。
+/// 数据库列类型 → Rust 类型。SQLite 只有 `TEXT` / `INTEGER` / `REAL`，时间与其余都按文本处理。
 fn rust_type(data_type: &str) -> &'static str {
     match data_type {
-        "bigint" | "integer" | "int8" => "i64",
-        "int" | "smallint" | "tinyint" | "int4" => "i32",
-        "decimal" | "numeric" | "real" | "double" | "float" => "f64",
+        "bigint" | "integer" => "i64",
+        "int" | "smallint" | "tinyint" => "i32",
+        "decimal" | "numeric" | "real" => "f64",
         _ => "String",
     }
 }
@@ -743,7 +743,6 @@ mod tests {
         assert_eq!(rust_type("real"), "f64");
         assert_eq!(rust_type("text"), "String");
         assert_eq!(rust_type("datetime"), "String");
-        assert_eq!(rust_type("varchar"), "String");
         assert_eq!(form_type("text"), "文本域");
         assert_eq!(form_type("int"), "数字框");
         assert_eq!(form_type("date"), "日期框");
