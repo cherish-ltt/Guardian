@@ -104,6 +104,28 @@ async fn upgrade_grants_reset2fa_once_without_restoring_revoked_grants() {
     execute(db, "DROP TABLE sys_user_security", vec![])
         .await
         .unwrap();
+    // 模拟 0007 之前的库：字段列名还是 java_field / java_type，好让迁移从 0003 重放。
+    execute(
+        db,
+        "ALTER TABLE gen_table_column RENAME COLUMN rust_field TO java_field",
+        vec![],
+    )
+    .await
+    .unwrap();
+    execute(
+        db,
+        "ALTER TABLE gen_table_column RENAME COLUMN rust_type TO java_type",
+        vec![],
+    )
+    .await
+    .unwrap();
+    execute(
+        db,
+        "ALTER TABLE gen_table_column DROP COLUMN nullable",
+        vec![],
+    )
+    .await
+    .unwrap();
     execute(
         db,
         "DELETE FROM _sqlx_migrations WHERE version >= 3",

@@ -18,8 +18,8 @@ pub struct GenTableRow {
 pub struct GenColumnRow {
     pub id: i64,
     pub col: String,
-    pub java_field: String,
-    pub java_type: String,
+    pub rust_field: String,
+    pub rust_type: String,
     pub jdbc_type: String,
     pub comment: Option<String>,
     pub insert: bool,
@@ -29,6 +29,8 @@ pub struct GenColumnRow {
     pub query_type: String,
     pub form_type: String,
     pub required: bool,
+    /// 数据库列是否允许 NULL：生成物用 `Option<T>` 表示可空列。
+    pub nullable: bool,
 }
 
 /// 可导入的数据库表：`imported` 表示已导入过生成配置。
@@ -115,8 +117,8 @@ pub struct NewGenTable<'a> {
 pub struct NewGenColumn {
     pub table_id: i64,
     pub column_name: String,
-    pub java_field: String,
-    pub java_type: String,
+    pub rust_field: String,
+    pub rust_type: String,
     pub jdbc_type: String,
     pub column_comment: Option<String>,
     pub insert: i64,
@@ -126,6 +128,7 @@ pub struct NewGenColumn {
     pub query_type: String,
     pub form_type: String,
     pub required: i64,
+    pub nullable: i64,
     pub sort: i64,
 }
 

@@ -273,14 +273,14 @@ impl GeneratorRepository for SeaOrmGeneratorRepository {
     {
         insert(
             db,
-            "INSERT INTO gen_table_column (table_id, column_name, java_field, java_type, jdbc_type, \
+            "INSERT INTO gen_table_column (table_id, column_name, rust_field, rust_type, jdbc_type, \
              column_comment, is_insert, is_edit, is_list, is_query, query_type, form_type, required, \
-             sort) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+             nullable, sort) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             vec![
                 column.table_id.into(),
                 column.column_name.clone().into(),
-                column.java_field.clone().into(),
-                column.java_type.clone().into(),
+                column.rust_field.clone().into(),
+                column.rust_type.clone().into(),
                 column.jdbc_type.clone().into(),
                 column.column_comment.clone().into(),
                 column.insert.into(),
@@ -290,6 +290,7 @@ impl GeneratorRepository for SeaOrmGeneratorRepository {
                 column.query_type.clone().into(),
                 column.form_type.clone().into(),
                 column.required.into(),
+                column.nullable.into(),
                 column.sort.into(),
             ],
         )
@@ -327,9 +328,9 @@ impl GeneratorRepository for SeaOrmGeneratorRepository {
     {
         let rows = query_all(
             db,
-            "SELECT id, column_name, java_field, java_type, jdbc_type, column_comment, is_insert, \
-             is_edit, is_list, is_query, query_type, form_type, required FROM gen_table_column \
-             WHERE table_id = ? ORDER BY sort, id",
+            "SELECT id, column_name, rust_field, rust_type, jdbc_type, column_comment, is_insert, \
+             is_edit, is_list, is_query, query_type, form_type, required, nullable \
+             FROM gen_table_column WHERE table_id = ? ORDER BY sort, id",
             vec![table_id.into()],
         )
         .await?;
@@ -339,8 +340,8 @@ impl GeneratorRepository for SeaOrmGeneratorRepository {
             .map(|row| GenColumnRow {
                 id: int_or_zero(row, "id"),
                 col: text(row, "column_name").unwrap_or_default(),
-                java_field: text(row, "java_field").unwrap_or_default(),
-                java_type: text(row, "java_type").unwrap_or_default(),
+                rust_field: text(row, "rust_field").unwrap_or_default(),
+                rust_type: text(row, "rust_type").unwrap_or_default(),
                 jdbc_type: text(row, "jdbc_type").unwrap_or_default(),
                 comment: text_or_none(row, "column_comment"),
                 insert: int_or_zero(row, "is_insert") == 1,
@@ -350,6 +351,7 @@ impl GeneratorRepository for SeaOrmGeneratorRepository {
                 query_type: text(row, "query_type").unwrap_or_default(),
                 form_type: text(row, "form_type").unwrap_or_default(),
                 required: int_or_zero(row, "required") == 1,
+                nullable: int_or_zero(row, "nullable") == 1,
             })
             .collect())
     }

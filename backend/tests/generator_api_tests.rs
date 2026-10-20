@@ -185,8 +185,8 @@ async fn columns_describe_sqlite_metadata() {
 
     // 主键不进表单与列表。
     assert_eq!(columns[0]["col"], "id");
-    assert_eq!(columns[0]["javaField"], "id");
-    assert_eq!(columns[0]["javaType"], "Integer");
+    assert_eq!(columns[0]["rustField"], "id");
+    assert_eq!(columns[0]["rustType"], "i64");
     assert_eq!(columns[0]["formType"], "数字框");
     assert_eq!(columns[0]["insert"], false);
     assert_eq!(columns[0]["edit"], false);
@@ -196,8 +196,8 @@ async fn columns_describe_sqlite_metadata() {
     // 含 name / code 的列默认作为模糊查询条件，NOT NULL 视为必填。
     let post_code = &columns[1];
     assert_eq!(post_code["col"], "post_code");
-    assert_eq!(post_code["javaField"], "postCode");
-    assert_eq!(post_code["javaType"], "String");
+    assert_eq!(post_code["rustField"], "post_code");
+    assert_eq!(post_code["rustType"], "String");
     assert_eq!(
         post_code["formType"], "文本域",
         "SQLite 的 TEXT 对应 MySQL 的 text"
@@ -215,7 +215,7 @@ async fn columns_describe_sqlite_metadata() {
         .iter()
         .find(|column| column["col"] == "sort")
         .expect("sort 列");
-    assert_eq!(sort["javaType"], "Integer");
+    assert_eq!(sort["rustType"], "i64");
     assert_eq!(sort["formType"], "数字框");
     assert_eq!(sort["query"], false);
 
@@ -230,7 +230,7 @@ async fn columns_describe_sqlite_metadata() {
         .iter()
         .find(|column| column["col"] == "create_time")
         .expect("create_time 列");
-    assert_eq!(create_time["javaType"], "String", "SQLite 只有 TEXT 类型");
+    assert_eq!(create_time["rustType"], "String", "SQLite 只有 TEXT 类型");
     assert_eq!(create_time["query"], false);
     assert_eq!(create_time["required"], false);
 
@@ -244,7 +244,7 @@ async fn columns_describe_sqlite_metadata() {
 }
 
 #[tokio::test]
-async fn preview_lists_seven_files_with_controller_active() {
+async fn preview_lists_ten_files_with_controller_active() {
     let (app, store) = setup_app_with_store().await;
     let token = admin_token(&app, store.as_ref()).await;
     let table_id = import_file_table(&app, &token).await;
@@ -259,7 +259,7 @@ async fn preview_lists_seven_files_with_controller_active() {
     .await;
     assert_eq!(status, StatusCode::OK);
     let files = body["data"]["files"].as_array().expect("预览文件");
-    assert_eq!(files.len(), 7);
+    assert_eq!(files.len(), 10);
     let names = files
         .iter()
         .map(|file| file["name"].as_str().unwrap_or_default().to_string())
@@ -267,70 +267,115 @@ async fn preview_lists_seven_files_with_controller_active() {
     assert_eq!(
         names,
         vec![
-            "SysPost.java".to_string(),
-            "SysPostMapper.java".to_string(),
-            "SysPostService.java".to_string(),
-            "SysPostController.java".to_string(),
-            "sysPost.ts".to_string(),
-            "index.vue".to_string(),
+            "sys_post.rs".to_string(),
+            "sys_post.rs".to_string(),
+            "sys_post.rs".to_string(),
+            "sys_post.rs".to_string(),
+            "sys_post.rs".to_string(),
+            "sys_post.rs".to_string(),
+            "post.ts".to_string(),
+            "SysPost.vue".to_string(),
             "sys_post_menu.sql".to_string(),
+            "sys_post.md".to_string(),
         ]
     );
-    assert_eq!(body["data"]["activeFile"], "SysPostController.java");
+    let paths = files
+        .iter()
+        .map(|file| file["path"].as_str().unwrap_or_default().to_string())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        paths,
+        vec![
+            "backend/src/entities/sys_post.rs".to_string(),
+            "backend/src/domain/models/sys_post.rs".to_string(),
+            "backend/src/domain/services/sys_post.rs".to_string(),
+            "backend/src/infrastructure/repositories/sys_post.rs".to_string(),
+            "backend/src/services/sys_post.rs".to_string(),
+            "backend/src/api/controllers/sys_post.rs".to_string(),
+            "frontend/src/api/post.ts".to_string(),
+            "frontend/src/views/system/SysPost.vue".to_string(),
+            "sql/sys_post_menu.sql".to_string(),
+            "docs/generated/sys_post.md".to_string(),
+        ]
+    );
+    assert_eq!(
+        body["data"]["activeFile"], "backend/src/api/controllers/sys_post.rs",
+        "默认展开控制器，取值与 files[].path 一致"
+    );
     let code = body["data"]["code"].as_str().expect("默认展开的代码");
     assert_eq!(
         code,
-        files[3]["code"].as_str().expect("Controller 代码"),
+        files[5]["code"].as_str().expect("Controller 代码"),
         "code 与 activeFile 指向同一份内容"
     );
-    // 模板文本与 Spring 版的文本块逐字一致。
+    // 控制器是按本项目 axum 分层生成的骨架：路由、权限码与提取器与后台管理接口一致。
+    assert!(code.contains("pub fn router() -> Router<Arc<Container>> {"));
+    assert!(code.contains(".route(\"/system/post\", get(list).post(create))"));
+    assert!(code.contains(".route(\"/system/post/{id}\", put(update).delete(remove))"));
+    assert!(code.contains("user.require(\"system:post:list\")?;"));
+    assert!(code.contains("let query = QueryString::parse(raw.as_deref());"));
+    assert!(code.contains("ApiJson(command): ApiJson<SysPostWriteCommand>,"));
+    assert!(code.contains("Ok(done())"));
+    assert!(!code.contains("package com.scaffold"), "不再输出 Java 包名");
+    assert!(!code.contains("@RestController"));
+
+    // 实体是 sea-orm 的 DeriveEntityModel，主键列带 primary_key 标注。
+    let entity = files[0]["code"].as_str().expect("实体代码");
+    assert!(entity.starts_with("use sea_orm::entity::prelude::*;\n"));
+    assert!(entity.contains("#[sea_orm(table_name = \"sys_post\")]"));
+    assert!(entity.contains("    #[sea_orm(primary_key)]\n    pub id: i64,"));
+    assert!(entity.contains("    pub post_code: String,"));
+    assert!(entity.ends_with("impl ActiveModelBehavior for ActiveModel {}\n"));
+    assert!(!entity.contains("import java"));
+
+    // 领域模型给出列表行与写入命令，写入命令不含主键。
+    let model = files[1]["code"].as_str().expect("领域模型代码");
+    assert!(model.contains("pub struct SysPostRow {"));
+    assert!(model.contains("pub struct SysPostWriteCommand {"));
+    assert!(model.contains("    pub post_code: Option<String>,"));
+
+    // 用例接口与仓储接口按同项目的命名与签名生成。
+    let use_case = files[2]["code"].as_str().expect("用例接口代码");
+    assert!(use_case.contains("pub trait SysPostUseCase: Send + Sync {"));
+    assert!(use_case.contains("async fn list_post(&self, query: &KeywordQuery)"));
+    let repository = files[3]["code"].as_str().expect("仓储代码");
+    assert!(repository.contains("pub trait SysPostRepository: Send + Sync {"));
+    assert!(repository.contains("pub struct SeaOrmSysPostRepository;"));
+
+    // 服务层装配数据库并实现用例，未实现的写方法显式 todo。
+    let service = files[4]["code"].as_str().expect("服务代码");
+    assert!(service.contains("impl SysPostUseCase for SysPostService {"));
+    assert!(service.contains("pub fn new(database: DatabaseConnection) -> Self {"));
+    assert!(service.contains("todo!(\"按 repositories/sys_post.rs 的 SQL 实现新增\")"));
+
+    // 前端 api 产物按本项目的 createXxxApi 工厂写法。
+    let api = files[6]["code"].as_str().expect("前端 api 代码");
+    assert!(api.contains("import type { HttpClient, QueryParams } from './http'"));
+    assert!(api.contains("import type { IdResponse, PageResult } from './system'"));
+    assert!(api.contains("export function createPostApi(client: HttpClient) {"));
+    assert!(api.contains("client.get<PageResult<Record<string, unknown>>>('/system/post', query)"));
+    assert!(api.contains("client.post<IdResponse>('/system/post', body)"));
+
+    // 菜单 SQL 的权限码与控制器里的 require 一致。
     assert_eq!(
-        code,
-        "package com.scaffold.system.controller;\n\n\
-         import org.springframework.web.bind.annotation.RequestMapping;\n\
-         import org.springframework.web.bind.annotation.RestController;\n\n\
-         @RestController\n@RequestMapping(\"/api/system/sysPost\")\n\
-         public class SysPostController {\n}\n"
-    );
-    assert_eq!(
-        files[1]["code"].as_str().expect("Mapper 代码"),
-        "package com.scaffold.system.mapper;\n\nimport org.apache.ibatis.annotations.Mapper;\n\n\
-         @Mapper\npublic interface SysPostMapper {\n}\n"
-    );
-    assert_eq!(
-        files[2]["code"].as_str().expect("Service 代码"),
-        "package com.scaffold.system.service;\n\nimport org.springframework.stereotype.Service;\n\n\
-         @Service\npublic class SysPostService {\n}\n"
-    );
-    assert_eq!(
-        files[4]["code"].as_str().expect("前端 api 代码"),
-        "import { httpClient } from '@/api/http'\n\nexport const sysPostApi = {\n  \
-         list: (query?: Record<string, unknown>) => httpClient.get('/system/sysPost', query as any),\n}\n"
-    );
-    assert_eq!(
-        files[6]["code"].as_str().expect("菜单 SQL"),
-        "-- sys_post 菜单权限\n\
+        files[8]["code"].as_str().expect("菜单 SQL"),
+        "-- SysPost 菜单权限\n\
          INSERT INTO sys_menu (id, parent_id, menu_name, menu_type, path, component, permission, sort, visible, status, create_by, update_by)\n\
-         SELECT COALESCE(MAX(id), 0) + 1, 0, 'SysPost管理', 'menu', '/system/sysPost', 'system/sysPost/index', 'system:sysPost:list', 1, 1, 1, 'system', 'system'\n\
+         SELECT COALESCE(MAX(id), 0) + 1, 0, 'SysPost管理', 'menu', '/system/post', 'system/SysPost', 'system:post:list', 1, 1, 1, 'system', 'system'\n\
          FROM sys_menu;\n"
     );
-    assert_eq!(files[6]["path"], "sql/sys_post_menu.sql");
 
-    // 实体类逐字段生成注释与类型；SQLite 全是 TEXT，因此不引入 LocalDateTime。
-    let entity = files[0]["code"].as_str().expect("实体代码");
-    assert!(
-        entity.starts_with("package com.scaffold.system.domain;\n\n\npublic class SysPost {\n")
-    );
-    assert!(entity.contains("    /**  */\n    private Integer id;\n\n"));
-    assert!(entity.contains("    /**  */\n    private String postCode;\n\n"));
-    assert!(entity.ends_with("    private String updateTime;\n\n}\n"));
-    assert!(!entity.contains("import java.time.LocalDateTime;"));
+    // 接入说明列出要注册的模块与装配点。
+    let readme = files[9]["code"].as_str().expect("接入说明");
+    assert!(readme.contains("# SysPost 接入步骤"));
+    assert!(readme.contains("pub mod sys_post;"));
+    assert!(readme.contains(".merge(controllers::sys_post::router())"));
 
     // 前端页面取第一个参与列表展示的字段作为主字段。
-    let view = files[5]["code"].as_str().expect("页面代码");
+    let view = files[7]["code"].as_str().expect("页面代码");
     assert!(view.contains("const tableName = 'sys_post'"));
     assert!(view.contains("const className = 'SysPost'"));
-    assert!(view.contains("const primaryField = 'postCode'"));
+    assert!(view.contains("const primaryField = 'post_code'"));
 
     let (status, body) = send(
         app.clone(),
@@ -438,16 +483,16 @@ async fn generate_and_download_returns_zip_with_every_file() {
     );
 
     let mut archive = ZipArchive::new(Cursor::new(bytes.clone())).expect("ZIP 内容");
-    assert_eq!(archive.len(), 7, "ZIP 里是完整路径的 7 个文件");
+    assert_eq!(archive.len(), 10, "ZIP 里是完整路径的 10 个文件");
     let mut controller = String::new();
     archive
-        .by_name("backend/src/main/java/com/scaffold/system/controller/SysPostController.java")
+        .by_name("backend/src/api/controllers/sys_post.rs")
         .expect("Controller 条目")
         .read_to_string(&mut controller)
         .expect("读取条目");
-    assert!(controller.starts_with("package com.scaffold.system.controller;\n"));
-    assert!(controller.contains("public class SysPostController {\n}\n"));
-    // 条目顺序与 Spring 版的 LinkedHashMap 一致。
+    assert!(controller.contains("pub fn router() -> Router<Arc<Container>> {"));
+    assert!(controller.contains("user.require(\"system:post:list\")?;"));
+    // 条目顺序与模板顺序一致。
     let names = (0..archive.len())
         .map(|index| {
             archive
@@ -458,11 +503,8 @@ async fn generate_and_download_returns_zip_with_every_file() {
                 .to_string()
         })
         .collect::<Vec<_>>();
-    assert_eq!(
-        names[0],
-        "backend/src/main/java/com/scaffold/system/domain/SysPost.java"
-    );
-    assert_eq!(names[6], "sql/sys_post_menu.sql");
+    assert_eq!(names[0], "backend/src/entities/sys_post.rs");
+    assert_eq!(names[9], "docs/generated/sys_post.md");
 
     let (status, _, _) = send_raw(
         app.clone(),
