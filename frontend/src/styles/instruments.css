@@ -1151,7 +1151,7 @@ button.trace-crumb:hover { color: var(--blue); }
 .pipe-map-head span { position: absolute; top: 0; translate: -50% 0; font-family: var(--font-mono); font-size: 10.5px; letter-spacing: var(--track-eyebrow); text-transform: uppercase; color: var(--ink-faint); }
 .pipe-graph { border-radius: var(--r-lg); }
 .pipe-note { margin: 10px 0 0; font-size: 12px; }
-.pipe-dir { display: block; padding: 10px 10px 4px; font-size: 10.5px; color: var(--ink-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pipe-dir { display: block; padding: 10px 10px 4px; font-size: 10.5px; line-height: 1.5; color: var(--ink-faint); overflow-wrap: anywhere; }
 .pipe-dir:first-child { padding-top: 2px; }
 .pipe-code { counter-reset: none; max-height: 58vh; overflow: auto; }
 .code-line { display: block; white-space: pre; }
