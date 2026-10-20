@@ -9,6 +9,19 @@
 > [AxumServiceScaffold](https://github.com/cherish-ltt/AxumServiceScaffold)。
 > 下方 `0.5.0` 及更早的条目属于上游项目的历史记录，版本号与本项目不连续。
 
+## [0.6.1] - 2026-10-20
+
+修复 `0.6.0` 生成器的两个产物缺陷与代码预览的路径显示问题。
+分前后端的发布说明见 [docs/version/v0.6.1.md](../../docs/version/v0.6.1.md)。
+
+### 修复
+
+- 生成物的仓储补齐 `impl XxxRepository`：`count_*` / `list_*` 按字段配置生成可执行的 SQL，
+  `row_of` 构造列表行。此前只生成 trait 与空结构体，服务层却直接调用，生成物必然编译失败。
+- 主键不再被当成可空列（SQLite 对 `INTEGER PRIMARY KEY` 报 `notnull=0`），
+  新增迁移 `0008_gen_column_primary_not_null.sql` 纠正已导入配置；`0007` 保持发布时的内容。
+- 前端代码预览的文件分组标题改为自动换行，长路径不再截断。
+
 ## [0.6.0] - 2026-10-20
 
 代码生成器改为产出本项目的 axum + sea-orm 分层骨架，不再生成 Spring/Java 代码。
