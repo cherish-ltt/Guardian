@@ -483,7 +483,8 @@ msrv = "1.99.0"
 - **生成器模板是契约**：`src/services/generator.rs` 的 10 个模板产出本项目的 axum + sea-orm 分层骨架
   （实体 / 领域模型 / 用例接口 / 仓储 / 服务 / 控制器 / 前端 api 与页面 / 菜单 SQL / 接入说明），
   集成测试按内容断言，调整模板必须同步更新 `tests/generator_api_tests.rs`。
-  写操作在模板里留 `todo!`：生成物缺实现要显式暴露，不要静默返回伪成功。
+  列表查询在模板里生成可跑的 SQL，写操作留 `todo!`：生成物缺实现要显式暴露，不要静默返回伪成功；
+  生成物必须能通过 `cargo check`，模板之间不能出现「服务调用了仓储里不存在的方法」这类断裂。
 - **时间字段**：SQLite 没有原生日期类型，统一存 `TEXT`（`YYYY-MM-DD HH:MM:SS` 本地时间，
   `src/util/time.rs` 提供格式化与解析），比较用字典序，SQL 侧用 `strftime` / `julianday` / `substr`。
 - **会话与验证码必须经过 `AuthStore`**：生产用 `RedisAuthStore`（`REDIS_URL` / `REDIS_PASSWORD`），

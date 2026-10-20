@@ -276,7 +276,7 @@ Redis 超时/错误/坏数据触发短暂熔断，回源 SQLite；故障时不�
 | 生成器默认展开 | `<类名>Controller.java` | `backend/src/api/controllers/<表名>.rs` | 产物不再有类名，`activeFile` 取完整路径 |
 | 生成器可空列 | 一律生成引用类型，空值靠约定 | `nullable` 列生成 `Option<T>` | 生成物要与数据库的 NULL 语义一致 |
 | 生成器前端产物 | `frontend/src/api/<模块>/<业务名>.ts`、`views/<模块>/<业务名>/index.vue` | `frontend/src/api/<业务名>.ts`、`views/<模块>/<类名>.vue` | 与本项目前端现有布局（api 平铺、页面按模块 PascalCase）一致 |
-| 生成器写操作 | 模板只有空类体，业务逻辑靠手工补 | 列表查询已接好，新增 / 修改 / 删除在服务层留 `todo!` | 不静默返回伪成功，缺失实现显式暴露 |
+| 生成器写操作 | 模板只有空类体，业务逻辑靠手工补 | 仓储的列表 / 计数与服务的列表查询已接好，写操作在仓储与服务层留 `todo!` | 不静默返回伪成功，缺失实现显式暴露 |
 | 时间字段 | `DATETIME` | `TEXT` 本地时间字符串 | SQLite 无原生日期类型 |
 | 留痕来源 IP | 操作日志按 `x-forwarded-for` → `x-real-ip` 取；登录日志不写 | 两者都取保护层按可信代理解出的真实对端（未命中可信代理时忽略转发头） | 转发头可被调用方伪造，日志里的来源必须可追溯；部署时需配置 `MIDDLEWARE_TRUSTED_PROXIES`，见 [生产部署](../../docs/DEPLOYMENT.md) |
 | 登录日志客户端 | 只写账号与结果 | 另写 IP、地点、浏览器、操作系统 | 排查需要知道「谁从哪里用什么客户端登录」；`User-Agent` 用 woothee 规则表解析，版本号不写入 |
