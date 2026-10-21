@@ -55,7 +55,7 @@ npm run build
 | `src/components/business` | ListPage、SearchForm、FormDialog、PermissionButton 及字典、部门、用户选择 |
 | `src/components/layout` | 外壳、侧栏、顶栏、命令搜索、外观与密码弹窗 |
 | `src/components/GithubLink.vue` | 顶栏的 GitHub 仓库入口（独立组件，可按需摘除） |
-| `src/composables` | 列表、字典 / 部门缓存、外观、动效、焦点与确认框 |
+| `src/composables` | 列表、字典 / 部门缓存、下拉浮层定位、外观、动效、焦点与确认框 |
 | `src/styles` | 令牌、基础、材质、控件、外壳、页面六层样式 |
 | `src/views` | 登录与两步验证、工作台、个人资料、10 个管理页、无权限与未匹配页面 |
 | `scripts/session-regression.py` | 真实浏览器会话、路由竞态与低权限回归 |
@@ -65,6 +65,11 @@ npm run build
 
 新列表先复用 `ListPage` 与列表 composable，新表单先复用 `FormDialog`，权限动作使用 `PermissionButton`；
 接口复用 `api/http.ts`。在 `auth.ts` 的 `COMPONENT_MAP` 注册页面，再通过菜单管理配置路径、组件标识与权限码。
+
+所有下拉选择框统一走 `ui/Select` 与 `ui/MultiCheck`：浮层 Teleport 到 body、层级随所在弹窗（`composables/focus.ts` 的
+`floatingLayerFor`）、空间不足向上展开（`composables/popover.ts`），触发器外观共用 `.select-trigger`。
+搜索框默认按选项数自动开启（`ui/select-shared.ts` 的 `SELECT_SEARCH_THRESHOLD`），需要强制开启或关闭时显式传
+`filterable`。部门、用户、字典选择器只是它的业务包装，不要另写一套下拉。
 
 退出和 401 均通过统一会话清理撤销动态路由与缓存；不得在页面直接修改认证存储或路由就绪标记。
 旧请求只能更新发起时仍有效的会话。
