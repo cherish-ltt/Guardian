@@ -77,7 +77,7 @@ src/middleware/audit.rs                       写操作留痕
 | GET | `/system/dict/data/{dict_type}` | 同上 | 指定类型的字典数据（管理页用，`def` 为布尔） |
 | GET | `/system/dict/options/{dict_type}` | 登录态 | 业务下拉（`def` 为 0/1，带 `tone`）；供任意已登录页面渲染，不校验 `system:dict:list` |
 | POST / PUT / DELETE | `/system/dict/types`、`/system/dict/types/{id}` | `system:dict:add` / `edit` / `remove` | 有字典数据不可删 |
-| POST / PUT / DELETE | `/system/dict/data`、`/system/dict/data/{dict_type}` | 同上 | `{dict_type}` 位置：GET 传类型，PUT / DELETE 传主键 |
+| POST / PUT / DELETE | `/system/dict/data`、`/system/dict/data/{dict_type}` | 同上 | `{dict_type}` 位置：GET 传类型，PUT / DELETE 传主键；同一字典类型只保留一个默认项（`def=true`），设新的会清掉旧的 |
 | GET | `/system/configs` | `system:config:list` | 参数分页列表 |
 | GET | `/system/configs/export` | 同上 | `configs.csv` |
 | POST / PUT / DELETE | `/system/configs`、`/system/configs/{id}` | `system:config:add` / `edit` / `remove` | 内置参数不可改删，键名唯一 |
@@ -266,6 +266,7 @@ Redis 超时/错误/坏数据触发短暂熔断，回源 SQLite；故障时不�
 | 验证码开关 | `sys.account.captchaEnabled` 参数控制是否校验验证码 | 同名参数，`builtin=0` 可在参数页直接开关 | 关闭后 `/auth/captcha` 返回 `enabled=false` 且不写 Redis，登录不再校验验证码 |
 | 路由前缀 | `/api` | `/api/v1` | 与骨架既有前缀统一；前端只需改 `http.ts` 默认前缀 |
 | 路径参数 | `@PathVariable Long id` | `{dict_type}` 共用同名参数 | axum 要求同一位置参数同名，GET 传类型、PUT / DELETE 传主键 |
+| 字典默认项 | 未核实上游约束 | 同一字典类型最多一个默认项，写库时在同事务内清掉旧默认项，并由 `is_default` 部分唯一索引兜底；升级时自动把存量多默认收敛为排序最靠前的一项 | 默认值语义上是单选，旧实现允许多个，存量数据由迁移无感修正 |
 | 响应体 | `{code, message, data, traceId}` | 同前 + `timestamp` | `timestamp` 是骨架既有字段，前端不读 |
 | 5xx 文案 | `系统内部错误` | 同前 | 4xx 文案逐字透出（「账号或密码错误」等） |
 | 请求体非法 | Spring 抛 `HttpMessageNotReadableException` | `ApiJson` 统一转 400「请求体格式错误」 | 前端 `http.ts` 只认 `message` |
