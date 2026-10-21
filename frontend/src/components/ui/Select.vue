@@ -4,6 +4,7 @@ import Icon from '@/components/Icon.vue'
 import { overlayEnter, overlayLeave } from '@/composables/motion'
 import { floatingLayerFor } from '@/composables/focus'
 import { placePopover, trackPopover } from '@/composables/popover'
+import { searchEnabled } from './select-shared'
 
 export interface SelectOption {
   label: string
@@ -20,13 +21,15 @@ const props = withDefaults(defineProps<{
   modelValue: Value
   options: Array<SelectOption | string | number>
   placeholder?: string
-  filterable?: boolean
+  /** 搜索框：true 强制开，false 强制关，auto 时选项达到阈值才开 */
+  filterable?: boolean | 'auto'
   clearable?: boolean
   disabled?: boolean
   invalid?: boolean
   emptyText?: string
 }>(), {
   placeholder: '请选择',
+  filterable: 'auto',
   emptyText: '无匹配项',
 })
 
@@ -49,7 +52,7 @@ const visible = computed(() => {
   const key = keyword.value.trim().toLowerCase()
   return key ? normalized.value.filter(o => o.label.toLowerCase().includes(key)) : normalized.value
 })
-const searchable = computed(() => Boolean(props.filterable))
+const searchable = computed(() => searchEnabled(props.filterable, normalized.value.length))
 
 function place() {
   const next = placePopover(trigger.value, menu.value)
