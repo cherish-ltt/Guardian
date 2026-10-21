@@ -9,6 +9,22 @@
 > [AxumServiceScaffold](https://github.com/cherish-ltt/AxumServiceScaffold)。
 > 下方 `0.5.0` 及更早的条目属于上游项目的历史记录，版本号与本项目不连续。
 
+## [0.6.3] - 2026-10-21
+
+统一前端所有下拉选择框：用户表单里的「岗位」「角色」多选下拉改为与「所属部门」同一种下拉，
+浮层置顶不被弹窗裁切并带搜索；其他页面的下拉沿用同一套浮层与外观，搜索框按选项数自动开启。
+分前后端的发布说明见 [docs/version/v0.6.3.md](../../docs/version/v0.6.3.md)。
+
+### 变更
+
+- 岗位 / 角色多选下拉改用与部门下拉同一套浮层：面板 `Teleport` 到 `body`、层级随所在弹窗、
+  空间不足时向上展开，补齐搜索、方向键 / 回车 / Esc 与 `role="listbox"` 语义，仍是多选。
+- `filterable` 改为 `true` / `false` / `'auto'` 三态，默认按选项数自动开启搜索框，
+  阈值由 `src/components/ui/select-shared.ts` 的 `SELECT_SEARCH_THRESHOLD` 统一。
+- 浮层定位抽到 `src/composables/popover.ts`，由 `Select` 与 `MultiCheck` 共用；
+  左右位置夹在视口内，面板自身滚动不再触发重新摆位。
+- 删除内联绝对定位的 `.multi-check-panel` / `.multi-check-option` / `.multi-check-caret` 等旧样式。
+
 ## [0.6.2] - 2026-10-20
 
 修复字典「默认值」可以同时勾选多项的问题：同一字典类型只保留一个默认项，
