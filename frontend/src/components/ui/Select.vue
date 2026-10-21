@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import Icon from '@/components/Icon.vue'
 import { overlayEnter, overlayLeave } from '@/composables/motion'
 import { floatingLayerFor } from '@/composables/focus'
+import { placePopover, trackPopover } from '@/composables/popover'
 
 export interface SelectOption {
   label: string
@@ -28,6 +29,7 @@ const props = withDefaults(defineProps<{
   placeholder: '请选择',
   emptyText: '无匹配项',
 })
+
 const emit = defineEmits<{ (e: 'update:modelValue', value: Value): void }>()
 
 const trigger = ref<HTMLElement | null>(null)
@@ -38,6 +40,7 @@ const keyword = ref('')
 const activeIndex = ref(-1)
 const pos = ref({ top: 0, left: 0, width: 0 })
 const listId = `sel-${Math.random().toString(36).slice(2, 8)}`
+let untrack: (() => void) | null = null
 
 const normalized = computed<SelectOption[]>(() => props.options.map(o =>
   typeof o === 'object' ? o : { label: String(o), value: o }))
@@ -46,16 +49,11 @@ const visible = computed(() => {
   const key = keyword.value.trim().toLowerCase()
   return key ? normalized.value.filter(o => o.label.toLowerCase().includes(key)) : normalized.value
 })
+const searchable = computed(() => Boolean(props.filterable))
 
 function place() {
-  const rect = trigger.value?.getBoundingClientRect()
-  if (!rect) return
-  const menuHeight = menu.value?.offsetHeight ?? 260
-  const below = window.innerHeight - rect.bottom
-  const top = below < menuHeight + 12 && rect.top > menuHeight + 12 ? rect.top - menuHeight - 6 : rect.bottom + 6
-  const width = Math.max(rect.width, 160)
-  const left = Math.min(rect.left, window.innerWidth - width - 8)
-  pos.value = { top, left, width }
+  const next = placePopover(trigger.value, menu.value)
+  if (next) pos.value = next
 }
 
 async function show() {
@@ -66,19 +64,18 @@ async function show() {
   place()
   await nextTick()
   place()
-  if (props.filterable) searchInput.value?.focus()
+  if (searchable.value) searchInput.value?.focus()
   scrollActiveIntoView()
   document.addEventListener('pointerdown', onOutside, true)
-  window.addEventListener('scroll', place, true)
-  window.addEventListener('resize', place)
+  untrack = trackPopover(place)
 }
 
 function hide(refocus = false) {
   if (!open.value) return
   open.value = false
   document.removeEventListener('pointerdown', onOutside, true)
-  window.removeEventListener('scroll', place, true)
-  window.removeEventListener('resize', place)
+  untrack?.()
+  untrack = null
   if (refocus) trigger.value?.focus()
 }
 
@@ -165,7 +162,7 @@ onBeforeUnmount(() => hide())
         :style="{ top: `${pos.top}px`, left: `${pos.left}px`, width: `${pos.width}px`, zIndex: floatingLayerFor(trigger) }"
         @keydown="onKey"
       >
-        <div v-if="filterable" class="select-search">
+        <div v-if="searchable" class="select-search">
           <span class="input-shell">
             <Icon name="search" :size="14" />
             <input ref="searchInput" v-model="keyword" placeholder="搜索" aria-label="搜索选项" />
