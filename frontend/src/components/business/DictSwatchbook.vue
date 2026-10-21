@@ -82,6 +82,8 @@ async function patch(type: DictTypeRow, item: DictItem, change: Partial<Pick<Dic
     settlePop((el as Element | null)?.closest('.swatch-row')?.querySelector('.tag') ?? null)
   } catch (error) {
     Object.assign(item, before)
+    // 设默认时本地已把其它行改成非默认，失败后以服务端数据为准恢复。
+    if (change.def) await load(type.dictType)
     toastError(error, '字典数据更新失败')
   }
 }

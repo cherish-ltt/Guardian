@@ -298,7 +298,7 @@ async function removeData(row: DataRow) {
       <Field label="预览" group>
         <div style="height: var(--control-h); display: flex; align-items: center"><Tag :tone="dataForm.tone" dot>{{ dataForm.label || '标签' }}</Tag></div>
       </Field>
-      <Field label="默认值" group>
+      <Field label="默认值" group hint="同类型只保留一个默认项，设置后原默认项自动取消">
         <Switch v-model="dataForm.def" :label="dataForm.def ? '是' : '否'" />
       </Field>
       <Field label="状态" group>
