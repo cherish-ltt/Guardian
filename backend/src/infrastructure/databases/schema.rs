@@ -228,4 +228,51 @@ mod tests {
             .await;
         assert!(conflict.is_err(), "重复幂等键应当被唯一索引拒绝");
     }
+
+    /// 老库里同一字典类型存在多个默认项时，迁移后只保留排序最靠前的一项。
+    #[tokio::test]
+    async fn legacy_dict_defaults_are_collapsed_to_one_per_type() {
+        let (database, url) = setup_database().await;
+
+        // 先建到 0008 的状态，再写入脏数据，最后让 0009 在脏数据上执行。
+        database
+            .execute_unprepared(
+                "CREATE TABLE sys_dict_data (\
+                 id INTEGER PRIMARY KEY AUTOINCREMENT, \
+                 dict_type TEXT NOT NULL, dict_label TEXT NOT NULL, dict_value TEXT NOT NULL, \
+                 sort INTEGER NOT NULL DEFAULT 0, status INTEGER NOT NULL DEFAULT 1, \
+                 tone TEXT, is_default INTEGER NOT NULL DEFAULT 0, remark TEXT, \
+                 create_by TEXT, update_by TEXT, create_time TEXT, update_time TEXT)",
+            )
+            .await
+            .expect("创建老版本字典数据表");
+        database
+            .execute_unprepared(
+                "INSERT INTO sys_dict_data (id, dict_type, dict_label, dict_value, sort, is_default) \
+                 VALUES (1, 'task_status', '待处理', '0', 1, 1), \
+                        (2, 'task_status', '处理中', '1', 2, 1), \
+                        (3, 'task_status', '已完成', '2', 3, 0), \
+                        (4, 'task_status', '已关闭', '3', 4, 1), \
+                        (5, 'sys_yes_no', '是', 'Y', 1, 1), \
+                        (6, 'sys_yes_no', '否', 'N', 2, 0)",
+            )
+            .await
+            .expect("写入多个默认项");
+
+        bootstrap(&database, &url).await;
+
+        let rows = database
+            .query_all_raw(sea_orm::Statement::from_string(
+                sea_orm::DbBackend::Sqlite,
+                "SELECT id, dict_type, is_default FROM sys_dict_data ORDER BY id".to_string(),
+            ))
+            .await
+            .expect("查询字典数据");
+        let defaults = rows
+            .iter()
+            .filter(|row| row.try_get::<i64>("", "is_default").unwrap_or_default() == 1)
+            .map(|row| row.try_get::<i64>("", "id").unwrap_or_default())
+            .collect::<Vec<_>>();
+        assert_eq!(defaults, vec![1, 5], "每个字典类型只留排序最靠前的一项");
+    }
 }

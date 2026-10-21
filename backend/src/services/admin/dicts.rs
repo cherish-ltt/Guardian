@@ -174,7 +174,7 @@ impl DictAdminUseCase for AdminService {
         let label = required(command.label.clone(), "字典标签不能为空")?;
         let value = required(command.value.clone(), "字典值不能为空")?;
         let command = DictDataWriteCommand {
-            dict_type: Some(dict_type),
+            dict_type: Some(dict_type.clone()),
             label: Some(label),
             value: Some(value),
             sort: Some(default_int(command.sort, 0)),
@@ -183,8 +183,22 @@ impl DictAdminUseCase for AdminService {
             ..command
         };
 
-        let id = SeaOrmDictRepository
-            .insert_dict_data(&self.database, &command, operator)
+        let id = self
+            .in_transaction(|transaction| {
+                let command = command.clone();
+                let operator = operator.to_string();
+                Box::pin(async move {
+                    // 同一字典类型只允许一个默认项：先把旧默认项清掉，再插入新项。
+                    if command.def == Some(true) {
+                        SeaOrmDictRepository
+                            .clear_dict_default(transaction, &dict_type, None)
+                            .await?;
+                    }
+                    SeaOrmDictRepository
+                        .insert_dict_data(transaction, &command, &operator)
+                        .await
+                })
+            })
             .await?;
 
         Ok(IdResponse { id })
@@ -197,21 +211,41 @@ impl DictAdminUseCase for AdminService {
         operator: &str,
     ) -> Result<(), AppError> {
         let _cache_write = self.cache.begin_write().await;
+        let operator = operator.to_string();
         let command = DictDataWriteCommand {
             dict_type: trim_to_null(command.dict_type.clone()),
             label: trim_to_null(command.label.clone()),
             value: trim_to_null(command.value.clone()),
             ..command
         };
-        if SeaOrmDictRepository
-            .update_dict_data(&self.database, id, &command, operator)
-            .await?
-            == 0
-        {
-            return Err(AppError::business("字典数据不存在"));
-        }
 
-        Ok(())
+        self.in_transaction(|transaction| {
+            let command = command.clone();
+            let operator = operator.clone();
+            Box::pin(async move {
+                let origin = SeaOrmDictRepository
+                    .dict_data_origin(transaction, id)
+                    .await?
+                    .ok_or_else(|| AppError::business("字典数据不存在"))?;
+
+                // 改类型时新类型里可能已经有默认项，按更新后的最终状态收敛：
+                // 本行仍是默认项，就清掉最终所属类型里的其它默认项。
+                let final_type = command.dict_type.as_deref().unwrap_or(&origin.0);
+                let final_default = command.def.unwrap_or(origin.1);
+                if final_default {
+                    SeaOrmDictRepository
+                        .clear_dict_default(transaction, final_type, Some(id))
+                        .await?;
+                }
+
+                SeaOrmDictRepository
+                    .update_dict_data(transaction, id, &command, &operator)
+                    .await?;
+
+                Ok(())
+            })
+        })
+        .await
     }
 
     async fn delete_dict_data(&self, id: i64) -> Result<(), AppError> {

@@ -90,6 +90,25 @@ pub trait DictRepository: Send + Sync {
     where
         C: ConnectionTrait;
 
+    /// 取一条字典数据当前的字典类型与默认标记，目标不存在时返回 `None`。
+    async fn dict_data_origin<C>(
+        &self,
+        db: &C,
+        id: i64,
+    ) -> Result<Option<(String, bool)>, AppError>
+    where
+        C: ConnectionTrait;
+
+    /// 把同类型其它项的默认标记清掉，由 `is_default` 上的部分唯一索引兜底。
+    async fn clear_dict_default<C>(
+        &self,
+        db: &C,
+        dict_type: &str,
+        keep: Option<i64>,
+    ) -> Result<u64, AppError>
+    where
+        C: ConnectionTrait;
+
     async fn insert_dict_data<C>(
         &self,
         db: &C,
@@ -326,6 +345,43 @@ impl DictRepository for SeaOrmDictRepository {
                 status: int_or_zero(row, "status"),
             })
             .collect())
+    }
+
+    async fn dict_data_origin<C>(&self, db: &C, id: i64) -> Result<Option<(String, bool)>, AppError>
+    where
+        C: ConnectionTrait,
+    {
+        let row = query_opt(
+            db,
+            "SELECT dict_type, is_default FROM sys_dict_data WHERE id = ?",
+            vec![id.into()],
+        )
+        .await?;
+
+        Ok(row.as_ref().map(|row| {
+            (
+                text(row, "dict_type").unwrap_or_default(),
+                int_or_zero(row, "is_default") == 1,
+            )
+        }))
+    }
+
+    async fn clear_dict_default<C>(
+        &self,
+        db: &C,
+        dict_type: &str,
+        keep: Option<i64>,
+    ) -> Result<u64, AppError>
+    where
+        C: ConnectionTrait,
+    {
+        execute(
+            db,
+            "UPDATE sys_dict_data SET is_default = 0 \
+             WHERE dict_type = ? AND is_default = 1 AND id IS NOT ?",
+            vec![dict_type.into(), keep.into()],
+        )
+        .await
     }
 
     async fn insert_dict_data<C>(

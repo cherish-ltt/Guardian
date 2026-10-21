@@ -5,6 +5,7 @@
 mod support;
 
 use axum::http::StatusCode;
+use sea_orm::ConnectionTrait;
 use serde_json::{Value, json};
 
 use guardian_backend::infrastructure::repositories::account::AccountRepository;
@@ -2444,4 +2445,126 @@ async fn created_user_password_follows_the_initial_password_config() {
     )
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+/// 同一字典类型只允许一个默认项：后设置的默认会顶掉前一个，旧项降级为普通项。
+#[tokio::test]
+async fn dict_default_is_unique_per_type() {
+    let (app, store, container) = setup_app_with_container().await;
+    let token = admin_token(&app, store.as_ref()).await;
+
+    let (_, created) = send(
+        app.clone(),
+        post_json_with_bearer(
+            "/api/v1/system/dict/types",
+            &token,
+            json!({ "dictName": "工单状态", "dictType": "ticket_status" }),
+        ),
+    )
+    .await;
+    let _type_id = created["data"]["id"].as_i64().expect("字典类型 ID");
+
+    let create_data = |label: &str, value: &str, def: bool| {
+        let body = json!({
+            "dictType": "ticket_status", "label": label, "value": value, "def": def,
+        });
+        let token = token.clone();
+        let app = app.clone();
+        async move {
+            let (_, created) = send(
+                app,
+                post_json_with_bearer("/api/v1/system/dict/data", &token, body),
+            )
+            .await;
+            created["data"]["id"].as_i64().expect("字典数据 ID")
+        }
+    };
+
+    let pending = create_data("待处理", "0", true).await;
+    let _doing = create_data("处理中", "1", true).await;
+    let done = create_data("已完成", "2", false).await;
+
+    // 新建默认项时清掉同类型旧默认项。
+    let (_, page) = send(
+        app.clone(),
+        get_with_bearer("/api/v1/system/dict/data/ticket_status", &token),
+    )
+    .await;
+    let rows = page["data"].as_array().expect("字典数据");
+    assert_eq!(rows.len(), 3);
+    assert_eq!(rows[0]["def"], false);
+    assert_eq!(rows[1]["def"], true);
+    assert_eq!(rows[2]["def"], false);
+
+    // 编辑时把另一项设为默认，同样只留一个。
+    let (status, _) = send(
+        app.clone(),
+        put_json_with_bearer(
+            &format!("/api/v1/system/dict/data/{done}"),
+            &token,
+            json!({ "def": true }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (_, options) = send(
+        app.clone(),
+        get_with_bearer("/api/v1/system/dict/options/ticket_status", &token),
+    )
+    .await;
+    let options = options["data"].as_array().expect("业务下拉");
+    assert_eq!(options.iter().filter(|row| row["def"] == 1).count(), 1);
+    assert_eq!(options[2]["def"], 1);
+    assert_eq!(options[1]["def"], 0);
+
+    // 数据库层也挡住第二个默认项：绕过接口直写会被部分唯一索引拒绝。
+    let conflict = container
+        .database
+        .execute_unprepared(&format!(
+            "UPDATE sys_dict_data SET is_default = 1 WHERE id = {pending}"
+        ))
+        .await;
+    assert!(conflict.is_err(), "同类型第二个默认项应被唯一索引拒绝");
+
+    let (status, _) = send(
+        app.clone(),
+        put_json_with_bearer(
+            &format!("/api/v1/system/dict/data/{pending}"),
+            &token,
+            json!({ "def": true }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, options) = send(
+        app.clone(),
+        get_with_bearer("/api/v1/system/dict/options/ticket_status", &token),
+    )
+    .await;
+    let options = options["data"].as_array().expect("业务下拉");
+    assert_eq!(options[0]["def"], 1);
+    assert_eq!(options.iter().filter(|row| row["def"] == 1).count(), 1);
+
+    // 把默认项整条搬到另一个已有默认项的字典类型：按最终状态收敛，不撞唯一索引。
+    let (status, body) = send(
+        app.clone(),
+        put_json_with_bearer(
+            &format!("/api/v1/system/dict/data/{pending}"),
+            &token,
+            json!({ "dictType": "sys_yes_no" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    let (_, options) = send(
+        app,
+        get_with_bearer("/api/v1/system/dict/options/sys_yes_no", &token),
+    )
+    .await;
+    let options = options["data"].as_array().expect("业务下拉");
+    assert_eq!(options.len(), 3);
+    assert_eq!(options.iter().filter(|row| row["def"] == 1).count(), 1);
+    assert_eq!(options[0]["value"], "0");
 }
