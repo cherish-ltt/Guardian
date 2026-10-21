@@ -1,6 +1,6 @@
 {
   "name": "guardian-frontend",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "private": true,
   "description": "Guardian 后台管理系统前端（Vue 3 + Vite + TS，珍珠玻璃主题）",
   "type": "module",
