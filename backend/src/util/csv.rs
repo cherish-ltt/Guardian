@@ -19,11 +19,25 @@ pub fn to_csv(headers: &[&str], rows: &[Vec<Option<String>>]) -> String {
 }
 
 fn escape_cell(value: &str) -> String {
+    let value = guard_formula(value);
+    let value = value.as_ref();
     if value.contains(['"', ',', '\n', '\r']) {
         return format!("\"{}\"", value.replace('"', "\"\""));
     }
 
     value.to_string()
+}
+
+/// 以 `= + - @` 或制表符 / 回车开头的文本会被表格软件当成公式执行。
+///
+/// 用户昵称、请求参数这类字段完全由用户控制，导出后双击打开就可能触发
+/// 外链与命令。这类单元格前面加一个单引号，让它保持文本。
+fn guard_formula(value: &str) -> std::borrow::Cow<'_, str> {
+    if value.starts_with(['=', '+', '-', '@', '\t', '\r']) {
+        return std::borrow::Cow::Owned(format!("'{value}"));
+    }
+
+    std::borrow::Cow::Borrowed(value)
 }
 
 /// 数值单元格：空值转空字符串，其余按十进制输出。
@@ -78,6 +92,30 @@ mod tests {
         );
 
         assert_eq!(csv, "a,b\n\"x,y\",\"he said \"\"hi\"\"\"\n");
+    }
+
+    /// 以公式前缀开头的文本不得被表格软件当成公式执行。
+    #[test]
+    fn formula_prefixes_are_neutralized() {
+        let csv = to_csv(
+            &["a", "b", "c", "d", "e"],
+            &[vec![
+                Some("=1+1".to_string()),
+                Some("+SUM(A1)".to_string()),
+                Some("-2+3".to_string()),
+                Some("@cmd".to_string()),
+                Some("\t=1".to_string()),
+            ]],
+        );
+
+        assert_eq!(csv, "a,b,c,d,e\n'=1+1,'+SUM(A1),'-2+3,'@cmd,'	=1\n");
+    }
+
+    /// 普通文本与负数文案不受影响。
+    #[test]
+    fn ordinary_text_keeps_its_prefix() {
+        let csv = to_csv(&["a"], &[vec![Some("管理员".to_string())]]);
+        assert_eq!(csv, "a\n管理员\n");
     }
 
     #[test]
