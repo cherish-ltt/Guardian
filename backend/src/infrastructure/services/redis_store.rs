@@ -45,20 +45,13 @@ impl AuthStore for RedisAuthStore {
     }
 
     async fn take_captcha(&self, uuid: &str) -> Result<Option<String>, AppError> {
-        let key = captcha_key(uuid);
         let mut connection = self.connection().await;
-        let stored: Option<String> = connection
-            .get(&key)
+        // GETDEL 是单条命令：GET + DEL 两步之间同一验证码可能被并发请求各取一次。
+        redis::cmd("GETDEL")
+            .arg(captcha_key(uuid))
+            .query_async(&mut connection)
             .await
-            .map_err(|error| AppError::internal(format!("redis get captcha failed: {error}")))?;
-
-        if stored.is_some() {
-            connection.del::<_, ()>(&key).await.map_err(|error| {
-                AppError::internal(format!("redis del captcha failed: {error}"))
-            })?;
-        }
-
-        Ok(stored)
+            .map_err(|error| AppError::internal(format!("redis getdel captcha failed: {error}")))
     }
 
     async fn save_token(

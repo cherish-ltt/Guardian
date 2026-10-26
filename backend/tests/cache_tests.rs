@@ -225,3 +225,43 @@ async fn redis_store_roundtrip_ttl_and_cache_invalidation() {
         2
     );
 }
+
+/// 验证码取用必须原子：并发请求同一个 uuid 只能有一个拿到明文。
+#[tokio::test]
+#[ignore = "requires TEST_REDIS_URL pointing to a disposable Redis"]
+async fn redis_captcha_take_is_atomic() {
+    use guardian_backend::infrastructure::services::{
+        auth_store::AuthStore, redis_store::RedisAuthStore,
+    };
+
+    let url = std::env::var("TEST_REDIS_URL").expect("TEST_REDIS_URL is required");
+    let store = Arc::new(
+        RedisAuthStore::connect(&guardian_backend::infrastructure::config::RedisConfig {
+            url,
+            password: None,
+        })
+        .await
+        .unwrap(),
+    );
+    let uuid = uuid::Uuid::now_v7().to_string();
+    store.save_captcha(&uuid, "AB12").await.unwrap();
+
+    let first = {
+        let store = Arc::clone(&store);
+        let uuid = uuid.clone();
+        tokio::spawn(async move { store.take_captcha(&uuid).await.unwrap() })
+    };
+    let second = {
+        let store = Arc::clone(&store);
+        let uuid = uuid.clone();
+        tokio::spawn(async move { store.take_captcha(&uuid).await.unwrap() })
+    };
+    let (first, second) = tokio::join!(first, second);
+    let winners = [first.unwrap(), second.unwrap()]
+        .into_iter()
+        .filter(|value| value.as_deref() == Some("AB12"))
+        .count();
+
+    assert_eq!(winners, 1, "同一个验证码只能被取用一次");
+    assert!(store.take_captcha(&uuid).await.unwrap().is_none());
+}
