@@ -23,7 +23,7 @@ use super::users::EXPORT_LIMIT;
 #[async_trait]
 impl RoleAdminUseCase for AdminService {
     async fn list_roles(&self, query: &StatusQuery) -> Result<PageResult<RoleRow>, AppError> {
-        let page = Page::from_query(Some(&query.page));
+        let page = Page::from_query(Some(&query.page))?;
         let keyword = query.keyword.as_deref();
         let total = SeaOrmRoleRepository
             .count_roles(&self.database, keyword, query.status)

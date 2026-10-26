@@ -3,6 +3,7 @@ import { reactive, ref, watch } from 'vue'
 import { Field, Segmented, StatusTag, Switch, TextInput, type Column } from '@/components/ui'
 import { DictSelect, FormDialog, ListPage, PermissionButton, PostLadder } from '@/components/business'
 import { systemApi } from '@/api'
+import { MAX_PAGE_SIZE } from '@/api/system'
 import { useListPage } from '@/composables/list'
 import { useViewMode } from '@/composables/view'
 import { confirm } from '@/composables/confirm'
@@ -26,7 +27,7 @@ const ladderLoading = ref(false)
 async function loadLadder() {
   ladderLoading.value = true
   try {
-    const page = await systemApi.posts.list({ pageNum: 1, pageSize: 200 })
+    const page = await systemApi.posts.list({ pageNum: 1, pageSize: MAX_PAGE_SIZE })
     ladderRows.value = page.rows as unknown as PostRow[]
   } catch (error) {
     toastError(error, '岗位阶梯加载失败')

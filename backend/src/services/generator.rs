@@ -62,7 +62,7 @@ impl GeneratorService {
 #[async_trait]
 impl GeneratorUseCase for GeneratorService {
     async fn tables(&self, query: &KeywordQuery) -> Result<PageResult<GenTableRow>, AppError> {
-        let page = Page::from_query(Some(&query.page));
+        let page = Page::from_query(Some(&query.page))?;
         let keyword = query.keyword.as_deref();
         let total = SeaOrmGeneratorRepository
             .count_tables(&self.database, keyword)
@@ -538,7 +538,7 @@ fn service_code(class_name: &str, table_name: &str, business: &str) -> String {
          #[async_trait]\n\
          impl {class_name}UseCase for {class_name}Service {{\n    \
          async fn list_{business}(&self, query: &KeywordQuery) -> Result<PageResult<{class_name}Row>, \
-         AppError> {{\n        let page = Page::from_query(Some(&query.page));\n        \
+         AppError> {{\n        let page = Page::from_query(Some(&query.page))?;\n        \
          let keyword = query.keyword.as_deref();\n        \
          let total = SeaOrm{class_name}Repository\n            \
          .count_{business}(&self.database, keyword)\n            .await?;\n        \
@@ -1001,7 +1001,7 @@ mod tests {
 
     #[test]
     fn keyword_query_defaults_to_first_page() {
-        let page = super::Page::from_query(Some(&KeywordQuery::default().page));
+        let page = super::Page::from_query(Some(&KeywordQuery::default().page)).expect("默认分页");
         assert_eq!(page.page_num(), 1);
         assert_eq!(page.limit(), 10);
     }

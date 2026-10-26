@@ -5,6 +5,7 @@ import { DataTable, Drawer, Field, Segmented, Select, StatusTag, Switch, Tag, Te
 import { DictSelect, DictSwatchbook, FormDialog, ListPage, PermissionButton } from '@/components/business'
 import { useViewMode } from '@/composables/view'
 import { systemApi } from '@/api'
+import { MAX_PAGE_SIZE } from '@/api/system'
 import { useListPage } from '@/composables/list'
 import { confirm } from '@/composables/confirm'
 import { invalidateDict } from '@/composables/dict'
@@ -46,7 +47,7 @@ const book = ref<{ reload: (dictType: string) => Promise<void> } | null>(null)
 async function loadAllTypes() {
   typesLoading.value = true
   try {
-    allTypes.value = (await systemApi.dictTypes.list({ pageNum: 1, pageSize: 200 })).rows as unknown as TypeRow[]
+    allTypes.value = (await systemApi.dictTypes.list({ pageNum: 1, pageSize: MAX_PAGE_SIZE })).rows as unknown as TypeRow[]
   } catch (error) {
     toastError(error, '字典类型加载失败')
   } finally {

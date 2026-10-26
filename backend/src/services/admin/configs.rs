@@ -21,7 +21,7 @@ impl ConfigAdminUseCase for AdminService {
     async fn list_configs(&self, query: &KeywordQuery) -> Result<PageResult<ConfigRow>, AppError> {
         self.cache
             .get_or_load(&format!("list_configs:{query:?}"), || async {
-                let page = Page::from_query(Some(&query.page));
+                let page = Page::from_query(Some(&query.page))?;
                 let keyword = query.keyword.as_deref();
                 let total = SeaOrmConfigRepository
                     .count_configs(&self.database, keyword)

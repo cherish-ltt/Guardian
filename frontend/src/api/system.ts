@@ -7,6 +7,9 @@ export interface PageResult<T> {
   rows: T[]
 }
 
+/** 后端允许的最大每页条数，超出会直接返回 400。 */
+export const MAX_PAGE_SIZE = 100
+
 export interface IdResponse {
   id: number
 }

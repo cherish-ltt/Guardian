@@ -8,6 +8,7 @@ import {
   type BoardColumn,
 } from '@/components/business'
 import { systemApi, type UserRow } from '@/api'
+import { MAX_PAGE_SIZE } from '@/api/system'
 import { useListPage } from '@/composables/list'
 import { useViewMode } from '@/composables/view'
 import { hasPermission } from '@/directives/permission'
@@ -49,7 +50,6 @@ const VIEWS = [{ label: '列表', value: 'table' as const }, { label: '看板', 
 type GroupBy = 'dept' | 'role' | 'status'
 const groupBy = useViewMode<GroupBy>('users.group', 'dept', ['dept', 'role', 'status'] as const)
 const GROUPS = [{ label: '按部门', value: 'dept' as GroupBy }, { label: '按角色', value: 'role' as GroupBy }, { label: '按状态', value: 'status' as GroupBy }]
-const BOARD_LIMIT = 100 // 与后端分页上限一致
 const boardRows = ref<UserRow[]>([])
 const boardTotal = ref(0)
 const boardKeyword = ref(list.query.keyword)
@@ -59,7 +59,7 @@ const canEditStatus = hasPermission('system:user:edit')
 async function loadBoard() {
   boardLoading.value = true
   try {
-    const page = await systemApi.users.list({ keyword: boardKeyword.value || undefined, pageNum: 1, pageSize: BOARD_LIMIT })
+    const page = await systemApi.users.list({ keyword: boardKeyword.value || undefined, pageNum: 1, pageSize: MAX_PAGE_SIZE })
     boardRows.value = page.rows
     boardTotal.value = page.total
   } catch (error) {
@@ -343,7 +343,7 @@ async function resetTwoFactor() {
         <Segmented v-model="groupBy" label="分列方式" :options="GROUPS" />
         <TextInput v-model="boardKeyword" icon="search" placeholder="账号 / 姓名 / 手机号" clearable @enter="loadBoard" />
         <span class="spacer" />
-        <span class="eyebrow">{{ boardTotal > BOARD_LIMIT ? `前 ${BOARD_LIMIT} / ${boardTotal}` : `共 ${boardTotal} 个账号` }}</span>
+        <span class="eyebrow">{{ boardTotal > MAX_PAGE_SIZE ? `前 ${MAX_PAGE_SIZE} / ${boardTotal}` : `共 ${boardTotal} 个账号` }}</span>
         <span v-if="groupBy === 'status' && canEditStatus" class="faint" style="font-size: 12px">拖动卡片切换启用 / 停用</span>
       </div>
       <BoardView

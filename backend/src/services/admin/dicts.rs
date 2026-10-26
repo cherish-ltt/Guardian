@@ -27,7 +27,7 @@ impl DictAdminUseCase for AdminService {
     ) -> Result<PageResult<DictTypeRow>, AppError> {
         self.cache
             .get_or_load(&format!("list_dict_types:{query:?}"), || async {
-                let page = Page::from_query(Some(&query.page));
+                let page = Page::from_query(Some(&query.page))?;
                 let keyword = query.keyword.as_deref();
                 let total = SeaOrmDictRepository
                     .count_dict_types(&self.database, keyword, query.status)

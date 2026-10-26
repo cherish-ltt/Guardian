@@ -19,7 +19,7 @@ use super::users::EXPORT_LIMIT;
 #[async_trait]
 impl PostAdminUseCase for AdminService {
     async fn list_posts(&self, query: &StatusQuery) -> Result<PageResult<PostRow>, AppError> {
-        let page = Page::from_query(Some(&query.page));
+        let page = Page::from_query(Some(&query.page))?;
         let keyword = query.keyword.as_deref();
         let total = SeaOrmPostRepository
             .count_posts(&self.database, keyword, query.status)

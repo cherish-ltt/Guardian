@@ -94,7 +94,7 @@ impl UserAdminUseCase for AdminService {
         query: &UserQuery,
         scope: &DataScope,
     ) -> Result<PageResult<UserRow>, AppError> {
-        let page = Page::from_query(Some(&query.page));
+        let page = Page::from_query(Some(&query.page))?;
         let total = SeaOrmUserRepository
             .count_users(&self.database, query, scope)
             .await?;

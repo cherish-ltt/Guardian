@@ -1,3 +1,5 @@
+use crate::domain::error::AppError;
+
 /// 分页请求。页码从 1 开始，每页最多 100 条。
 ///
 /// 排序由各列表的 SQL 固定给出（如用户列表按 `id`）：接口不暴露任意列排序，
@@ -20,7 +22,11 @@ pub struct Page {
 }
 
 impl Page {
-    pub fn from_query(query: Option<&PageQuery>) -> Self {
+    /// 归一化分页参数。
+    ///
+    /// 超出上限的 `pageSize` 直接拒绝而不是静默截断：截断会让客户端以为拿到了整页，
+    /// 分页总数与实际行数对不上。缺省与非法值（0）仍按默认值处理。
+    pub fn from_query(query: Option<&PageQuery>) -> Result<Self, AppError> {
         let page_num = query
             .and_then(|query| query.page_num)
             .filter(|page_num| *page_num >= 1)
@@ -28,13 +34,17 @@ impl Page {
         let page_size = query
             .and_then(|query| query.page_size)
             .filter(|page_size| *page_size >= 1)
-            .unwrap_or(DEFAULT_PAGE_SIZE)
-            .min(MAX_PAGE_SIZE);
+            .unwrap_or(DEFAULT_PAGE_SIZE);
+        if page_size > MAX_PAGE_SIZE {
+            return Err(AppError::business(format!(
+                "每页条数不能超过{MAX_PAGE_SIZE}"
+            )));
+        }
 
-        Self {
+        Ok(Self {
             page_num,
             page_size,
-        }
+        })
     }
 
     /// 导出用：不分页，只取前 `limit` 行。
@@ -89,7 +99,7 @@ mod tests {
 
     #[test]
     fn missing_and_invalid_values_fall_back_to_defaults() {
-        let page = Page::from_query(None);
+        let page = Page::from_query(None).expect("默认分页");
         assert_eq!(page.page_num(), 1);
         assert_eq!(page.page_size(), 10);
         assert_eq!(page.offset(), 0);
@@ -97,17 +107,32 @@ mod tests {
         let page = Page::from_query(Some(&PageQuery {
             page_num: Some(0),
             page_size: Some(0),
-        }));
+        }))
+        .expect("非法值取默认");
         assert_eq!(page.page_num(), 1);
         assert_eq!(page.page_size(), 10);
     }
 
     #[test]
-    fn page_size_is_capped_and_offset_follows_page() {
+    fn oversized_page_size_is_rejected_instead_of_truncated() {
+        let error = Page::from_query(Some(&PageQuery {
+            page_num: Some(3),
+            page_size: Some(MAX_PAGE_SIZE + 1),
+        }))
+        .expect_err("超过上限必须拒绝");
+
+        assert_eq!(error.http_code(), 400);
+        assert_eq!(error.to_string(), "每页条数不能超过100");
+    }
+
+    #[test]
+    fn offset_follows_page() {
         let page = Page::from_query(Some(&PageQuery {
             page_num: Some(3),
-            page_size: Some(1000),
-        }));
+            page_size: Some(MAX_PAGE_SIZE),
+        }))
+        .expect("上限内的分页");
+
         assert_eq!(page.page_size(), MAX_PAGE_SIZE);
         assert_eq!(page.page_num(), 3);
         assert_eq!(page.offset(), 200);
@@ -115,7 +140,7 @@ mod tests {
 
     #[test]
     fn page_result_serializes_with_spring_field_names() {
-        let result = PageResult::new(vec![1, 2], 5, Page::from_query(None));
+        let result = PageResult::new(vec![1, 2], 5, Page::from_query(None).expect("默认分页"));
         let json = serde_json::to_value(&result).expect("序列化分页结果");
 
         assert_eq!(json["pageNum"], 1);

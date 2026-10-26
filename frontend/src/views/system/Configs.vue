@@ -5,6 +5,7 @@ import Icon from '@/components/Icon.vue'
 import { Button, Field, IconButton, Segmented, SectionLabel, Switch, Tag, TextInput, type Column } from '@/components/ui'
 import { FormDialog, ListPage, PermissionButton } from '@/components/business'
 import { systemApi } from '@/api'
+import { MAX_PAGE_SIZE } from '@/api/system'
 import { useListPage } from '@/composables/list'
 import { confirm } from '@/composables/confirm'
 import { pushToast, toastError } from '@/composables/toast'
@@ -52,7 +53,7 @@ const body = ref<HTMLElement | null>(null)
 async function loadPanel() {
   panelLoading.value = true
   try {
-    const page = await systemApi.configs.list({ pageNum: 1, pageSize: 500 })
+    const page = await systemApi.configs.list({ pageNum: 1, pageSize: MAX_PAGE_SIZE })
     all.value = page.rows as unknown as ConfigRow[]
     await nextTick()
     revealCascade(body.value, '.settings-group', 0.08)

@@ -261,6 +261,15 @@ async fn users_page_supports_paging_filters_and_options() {
     let (app, store) = setup_app_with_store().await;
     let token = admin_token(&app, store.as_ref()).await;
 
+    // 超过上限的 pageSize 必须显式拒绝，不能静默截断后返回半页数据。
+    let (status, body) = send(
+        app.clone(),
+        get_with_bearer("/api/v1/system/users?pageNum=1&pageSize=101", &token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["message"], "每页条数不能超过100");
+
     let (status, page) = send(
         app.clone(),
         get_with_bearer("/api/v1/system/users?pageNum=1&pageSize=2", &token),

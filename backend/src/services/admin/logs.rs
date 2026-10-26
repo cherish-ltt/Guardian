@@ -22,7 +22,7 @@ impl LogAdminUseCase for AdminService {
         &self,
         query: &OperLogQuery,
     ) -> Result<PageResult<OperLogRow>, AppError> {
-        let page = Page::from_query(Some(&query.page));
+        let page = Page::from_query(Some(&query.page))?;
         let keyword = query.keyword.as_deref();
         let total = SeaOrmAuditLogRepository
             .count_oper_logs(&self.database, keyword, query.result)
@@ -107,7 +107,7 @@ impl LogAdminUseCase for AdminService {
         &self,
         query: &LoginLogQuery,
     ) -> Result<PageResult<LoginLogRow>, AppError> {
-        let page = Page::from_query(Some(&query.page));
+        let page = Page::from_query(Some(&query.page))?;
         let keyword = query.keyword.as_deref();
         let total = SeaOrmAuditLogRepository
             .count_login_logs(&self.database, keyword, query.status)
