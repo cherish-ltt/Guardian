@@ -100,6 +100,12 @@ impl GeneratorUseCase for GeneratorService {
                 let repository = SeaOrmGeneratorRepository;
                 let mut ids = Vec::new();
                 for table_name in table_names {
+                    // 先确认底层表还在：生成器记录会跨进程留存，表被删掉后旧记录仍指向它，
+                    // 直接复用旧 id 会生成一张查不到数据的表。
+                    let Some(table) = repository.database_table(transaction, &table_name).await?
+                    else {
+                        return Err(AppError::business(format!("数据库表不存在：{table_name}")));
+                    };
                     if let Some(existing) = repository
                         .table_id_by_name(transaction, &table_name)
                         .await?
@@ -108,10 +114,6 @@ impl GeneratorUseCase for GeneratorService {
                         continue;
                     }
 
-                    let Some(table) = repository.database_table(transaction, &table_name).await?
-                    else {
-                        return Err(AppError::business(format!("数据库表不存在：{table_name}")));
-                    };
                     let table_id = repository
                         .insert_table(
                             transaction,

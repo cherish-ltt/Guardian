@@ -10,7 +10,7 @@ use zip::ZipArchive;
 
 use support::{
     DEMO_PASSWORD, admin_token, delete_with_bearer, get_with_bearer, login, post_json_with_bearer,
-    put_json_with_bearer, send, send_raw, setup_app_with_store,
+    put_json_with_bearer, send, send_raw, setup_app_with_container, setup_app_with_store,
 };
 
 async fn import_file_table(app: &axum::Router, token: &str) -> i64 {
@@ -31,7 +31,7 @@ async fn import_file_table(app: &axum::Router, token: &str) -> i64 {
 
 #[tokio::test]
 async fn importable_tables_mark_imported_rows_and_validate_requests() {
-    let (app, store) = setup_app_with_store().await;
+    let (app, store, container) = setup_app_with_container().await;
     let token = admin_token(&app, store.as_ref()).await;
 
     let (status, empty) = send(
@@ -163,6 +163,26 @@ async fn importable_tables_mark_imported_rows_and_validate_requests() {
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
     assert_eq!(body["message"], "没有访问权限");
+
+    // 底层表被删掉后，残留的生成配置不能再被当成「已导入」直接复用。
+    guardian_backend::infrastructure::repositories::sql::execute(
+        &container.database,
+        "DROP TABLE sys_post",
+        vec![],
+    )
+    .await
+    .expect("删除演示表");
+    let (status, body) = send(
+        app.clone(),
+        post_json_with_bearer(
+            "/api/v1/tool/generator/import",
+            &token,
+            json!({ "tableNames": ["sys_post"] }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["message"], "数据库表不存在：sys_post");
 }
 
 #[tokio::test]
