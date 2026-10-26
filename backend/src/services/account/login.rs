@@ -25,8 +25,9 @@ impl AccountService {
                 if current.password != user.password {
                     return Err(AppError::business("账号信息已变更，请重新登录"));
                 }
+                // 口令阶段的锁定由 admin_auth 的 password_guard 负责，这里不再重复判定 2FA 计数：
+                // 两套计数共用同一个判定会让锁定 2FA 的账号连密码都校验不了（也拿不到新 challenge）。
                 let mut state = AccountRepository::security(tx, user.id).await?;
-                check_lock(&state)?;
                 if state.secret.is_none() {
                     return Ok(PasswordStep::Complete(state.auth_version));
                 }

@@ -13,6 +13,8 @@ pub struct Model {
     pub auth_version: i64,
     pub failures: i64,
     pub blocked_until: i64,
+    pub factor_failures: i64,
+    pub factor_blocked_until: i64,
     pub login_challenge_hash: Option<String>,
     pub login_challenge_expires: i64,
     pub login_password_hash: Option<String>,

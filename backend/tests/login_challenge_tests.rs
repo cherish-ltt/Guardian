@@ -125,3 +125,60 @@ async fn login_challenge_is_not_a_session_expires_and_is_consumed_once() {
     let denied = verify(&app, &limited, &codes[2]).await;
     assert!(denied.1["message"].as_str().unwrap().contains("次数过多"));
 }
+
+/// 2FA 失败计数必须独立于口令阶段：口令校验成功不能清零，否则 2FA 重试次数无限。
+#[tokio::test]
+async fn password_step_success_does_not_reset_factor_failures() {
+    let store = Arc::new(MemoryAuthStore::new());
+    let container = setup_container_with_store(Vec::new(), store.clone()).await;
+    let app = create_app(container.clone());
+    let token = admin_token(&app, store.as_ref()).await;
+    let (_, setup) = send(
+        app.clone(),
+        post_json_with_bearer(
+            "/api/v1/auth/2fa/setup",
+            &token,
+            json!({"password":DEMO_PASSWORD}),
+        ),
+    )
+    .await;
+    let totp = totp_rs::Builder::new()
+        .with_secret(
+            totp_rs::Secret::try_from_base32(setup["data"]["secret"].as_str().unwrap()).unwrap(),
+        )
+        .build()
+        .unwrap();
+    let (status, _) = send(
+        app.clone(),
+        post_json_with_bearer(
+            "/api/v1/auth/2fa/enable",
+            &token,
+            json!({"password":DEMO_PASSWORD,"secondFactor":totp.generate_current().to_string()}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // 4 次 2FA 失败后，再用正确口令拿一个新 challenge（口令阶段成功）。
+    let mut challenge_value = challenge(&app, store.as_ref()).await;
+    for _ in 0..4 {
+        let (status, _) = verify(&app, &challenge_value, &json!("wrong")).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        challenge_value = challenge(&app, store.as_ref()).await;
+    }
+
+    // 第 5 次失败必须直接锁住：若计数被口令阶段清零，这里仍然是「第四次」。
+    let (status, _) = verify(&app, &challenge_value, &json!("wrong")).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    let locked = challenge(&app, store.as_ref()).await;
+    let (_, body) = verify(&app, &locked, &json!("wrong")).await;
+    assert!(
+        body["message"].as_str().unwrap().contains("次数过多"),
+        "{body}"
+    );
+    assert_eq!(
+        verify(&app, &locked, &json!("123456")).await.0,
+        StatusCode::BAD_REQUEST
+    );
+}

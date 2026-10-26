@@ -55,7 +55,7 @@ async fn active_user(tx: &DatabaseTransaction, username: &str) -> Result<AuthUse
 }
 
 fn check_lock(state: &Model) -> Result<(), AppError> {
-    if state.blocked_until > chrono::Utc::now().timestamp() {
+    if state.factor_blocked_until > chrono::Utc::now().timestamp() {
         return Err(AppError::business("安全验证失败次数过多，请稍后重试"));
     }
     Ok(())
@@ -116,21 +116,23 @@ async fn record_attempt<T>(
         ));
     }
     let now = chrono::Utc::now().timestamp();
-    if state.blocked_until > now {
+    if state.factor_blocked_until > now {
         return Ok(());
     }
-    if result.is_ok() {
-        state.failures = 0;
-        state.blocked_until = 0;
-    } else if matches!(result, Err(AppError::Business(_))) {
-        if state.blocked_until != 0 {
-            state.failures = 0;
-            state.blocked_until = 0;
+    // 只计 2FA 阶段的失败：口令阶段的计数由 password_guard 独立维护，
+    // 两阶段共用一份计数会让「口令正确」变成「2FA 重试次数无限」。
+    if matches!(result, Err(AppError::Business(_))) {
+        if state.factor_blocked_until != 0 {
+            state.factor_failures = 0;
+            state.factor_blocked_until = 0;
         }
-        state.failures += 1;
-        if state.failures >= 5 {
-            state.blocked_until = now + 300;
+        state.factor_failures += 1;
+        if state.factor_failures >= 5 {
+            state.factor_blocked_until = now + 300;
         }
+    } else if result.is_ok() {
+        state.factor_failures = 0;
+        state.factor_blocked_until = 0;
     }
     AccountRepository::save_security(tx, state.clone()).await
 }
