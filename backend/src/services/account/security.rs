@@ -1,5 +1,6 @@
 use super::{
-    AccountService, active_user, check_lock, check_password, consume_factor, record_attempt,
+    AccountService, AttemptStage, active_user, check_password, check_password_lock, consume_factor,
+    record_attempt,
 };
 use crate::{
     domain::{
@@ -34,7 +35,7 @@ impl AccountService {
                 let user = active_user(tx, &username).await?;
                 let mut state = AccountRepository::security(tx, user.id).await?;
                 let result = (|| {
-                    check_lock(&state)?;
+                    check_password_lock(&state)?;
                     check_password(&user, &proof)?;
                     if state.secret.is_some() {
                         return Err(AppError::business("2FA已启用，请先关闭"));
@@ -51,7 +52,7 @@ impl AccountService {
                         expires_in: 300,
                     })
                 })();
-                record_attempt(tx, &mut state, &result).await?;
+                record_attempt(tx, &mut state, &result, AttemptStage::Password).await?;
                 Ok(result)
             })
         })
@@ -72,7 +73,7 @@ impl AccountService {
                     let user = active_user(tx, &owner).await?;
                     let mut state = AccountRepository::security(tx, user.id).await?;
                     let result = (|| {
-                        check_lock(&state)?;
+                        check_password_lock(&state)?;
                         check_password(&user, &proof)?;
                         match action {
                             SecurityAction::Enable => {
@@ -132,7 +133,7 @@ impl AccountService {
                             recovery_codes: codes,
                         })
                     })();
-                    record_attempt(tx, &mut state, &result).await?;
+                    record_attempt(tx, &mut state, &result, AttemptStage::Password).await?;
                     Ok(result)
                 })
             })
@@ -167,9 +168,10 @@ impl AccountService {
                     }
                     let target_username = AccountRepository::username(tx, target).await?;
                     let mut operator_state = AccountRepository::security(tx, user.id).await?;
-                    let result =
-                        check_lock(&operator_state).and_then(|()| check_password(&user, &proof));
-                    record_attempt(tx, &mut operator_state, &result).await?;
+                    let result = check_password_lock(&operator_state)
+                        .and_then(|()| check_password(&user, &proof));
+                    record_attempt(tx, &mut operator_state, &result, AttemptStage::Password)
+                        .await?;
                     if let Err(error) = result {
                         return Ok(Err(error));
                     }

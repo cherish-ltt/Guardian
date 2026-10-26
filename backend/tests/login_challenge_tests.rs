@@ -182,3 +182,56 @@ async fn password_step_success_does_not_reset_factor_failures() {
         StatusCode::BAD_REQUEST
     );
 }
+
+/// 2FA 锁定不影响必须验口令的入口：锁定期间仍能开启 / 关闭 2FA，
+/// 否则用户只能干等锁定期结束。
+#[tokio::test]
+async fn factor_lock_does_not_block_password_step() {
+    let store = Arc::new(MemoryAuthStore::new());
+    let container = setup_container_with_store(Vec::new(), store.clone()).await;
+    let app = create_app(container.clone());
+    let token = admin_token(&app, store.as_ref()).await;
+
+    // 直接构造「2FA 阶段已锁定」的状态，不必真的打满重试。
+    let now = chrono::Utc::now().timestamp();
+    execute(
+        &container.database,
+        &format!(
+            "UPDATE sys_user_security SET factor_failures = 5, factor_blocked_until = {} WHERE user_id = 1",
+            now + 300
+        ),
+        vec![],
+    )
+    .await
+    .expect("写入 2FA 锁定");
+
+    // 口令阶段照常通过：能拿到 2FA 绑定密钥，而不是被 2FA 计数挡住。
+    let (status, body) = send(
+        app.clone(),
+        post_json_with_bearer(
+            "/api/v1/auth/2fa/setup",
+            &token,
+            json!({"password":DEMO_PASSWORD}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(
+        body["data"]["secret"]
+            .as_str()
+            .is_some_and(|s| !s.is_empty())
+    );
+
+    // 口令错误时仍然按口令计数报错，而不是报 2FA 的次数。
+    let (status, body) = send(
+        app.clone(),
+        post_json_with_bearer(
+            "/api/v1/auth/2fa/setup",
+            &token,
+            json!({"password":"wrong-password"}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["message"], "密码不正确", "{body}");
+}

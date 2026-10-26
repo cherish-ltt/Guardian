@@ -54,9 +54,18 @@ async fn active_user(tx: &DatabaseTransaction, username: &str) -> Result<AuthUse
     Ok(user)
 }
 
-fn check_lock(state: &Model) -> Result<(), AppError> {
+/// 2FA 阶段的锁定判定：只认 2FA 自己的计数。
+fn check_factor_lock(state: &Model) -> Result<(), AppError> {
     if state.factor_blocked_until > chrono::Utc::now().timestamp() {
         return Err(AppError::business("安全验证失败次数过多，请稍后重试"));
+    }
+    Ok(())
+}
+
+/// 口令阶段的锁定判定：只认口令自己的计数（与 admin_auth 的 password_guard 同源）。
+fn check_password_lock(state: &Model) -> Result<(), AppError> {
+    if state.blocked_until > chrono::Utc::now().timestamp() {
+        return Err(AppError::business("密码错误次数过多，请稍后重试"));
     }
     Ok(())
 }
@@ -103,10 +112,21 @@ fn consume_factor(
     Err(AppError::business("动态码或恢复码无效、已使用或已过期"))
 }
 
+/// 一次校验失败 / 成功记到哪个计数器上。
+/// 口令阶段（开启、启用、重置 2FA 都要验当前口令）记 `failures`；
+/// 2FA 阶段（两步登录提交动态码）记 `factor_failures`。两段共用一份计数会让
+/// 「口令正确」变成「2FA 重试次数无限」，反之 2FA 锁定会把人挡在验口令之前。
+#[derive(Clone, Copy)]
+pub(crate) enum AttemptStage {
+    Password,
+    Factor,
+}
+
 async fn record_attempt<T>(
     tx: &DatabaseTransaction,
     state: &mut Model,
     result: &Result<T, AppError>,
+    stage: AttemptStage,
 ) -> Result<(), AppError> {
     if let Err(error) = result
         && !matches!(error, AppError::Business(_))
@@ -116,23 +136,26 @@ async fn record_attempt<T>(
         ));
     }
     let now = chrono::Utc::now().timestamp();
-    if state.factor_blocked_until > now {
+    let (failures, blocked_until) = match stage {
+        AttemptStage::Password => (&mut state.failures, &mut state.blocked_until),
+        AttemptStage::Factor => (&mut state.factor_failures, &mut state.factor_blocked_until),
+    };
+    if *blocked_until > now {
         return Ok(());
     }
-    // 只计 2FA 阶段的失败：口令阶段的计数由 password_guard 独立维护，
-    // 两阶段共用一份计数会让「口令正确」变成「2FA 重试次数无限」。
-    if matches!(result, Err(AppError::Business(_))) {
-        if state.factor_blocked_until != 0 {
-            state.factor_failures = 0;
-            state.factor_blocked_until = 0;
+    if result.is_ok() {
+        *failures = 0;
+        *blocked_until = 0;
+    } else if matches!(result, Err(AppError::Business(_))) {
+        // 锁定窗口已过：旧计数作废重新起算，否则每次失败都会立刻再锁一遍。
+        if *blocked_until != 0 {
+            *failures = 0;
+            *blocked_until = 0;
         }
-        state.factor_failures += 1;
-        if state.factor_failures >= 5 {
-            state.factor_blocked_until = now + 300;
+        *failures += 1;
+        if *failures >= 5 {
+            *blocked_until = now + 300;
         }
-    } else if result.is_ok() {
-        state.factor_failures = 0;
-        state.factor_blocked_until = 0;
     }
     AccountRepository::save_security(tx, state.clone()).await
 }

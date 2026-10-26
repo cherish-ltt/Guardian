@@ -1,4 +1,6 @@
-use super::{AccountService, active_user, check_lock, consume_factor, record_attempt};
+use super::{
+    AccountService, AttemptStage, active_user, check_factor_lock, consume_factor, record_attempt,
+};
 use crate::{
     domain::{
         error::AppError,
@@ -61,14 +63,14 @@ impl AccountService {
                 {
                     return Err(AppError::business("验证已失效，请返回登录页重新登录"));
                 }
-                let result = check_lock(&state).and_then(|()| {
+                let result = check_factor_lock(&state).and_then(|()| {
                     consume_factor(&crypto, &mut state, Some(&command.second_factor))?;
                     state.login_challenge_hash = None;
                     state.login_challenge_expires = 0;
                     state.login_password_hash = None;
                     Ok((user, state.auth_version))
                 });
-                record_attempt(tx, &mut state, &result).await?;
+                record_attempt(tx, &mut state, &result, AttemptStage::Factor).await?;
                 Ok(result)
             })
         })
