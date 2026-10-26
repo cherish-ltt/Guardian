@@ -23,7 +23,6 @@ use crate::{
 };
 
 /// 预览里默认展开的文件：实体对应的 Controller。
-const ACTIVE_FILE_SUFFIX: &str = "Controller";
 /// 控制器产物路径：默认展开它，预览与下载文件名都从这里取。
 const ACTIVE_FILE_PATH: &str = "backend/src/api/controllers";
 /// 主键列名：`id` 列不参与新增 / 编辑 / 列表展示。
@@ -203,14 +202,8 @@ impl GeneratorUseCase for GeneratorService {
     async fn download(&self, table_id: i64) -> Result<(String, Vec<u8>), AppError> {
         let table = self.table_detail(table_id).await?;
         let files = self.rendered_files(&table).await?;
-        // ZIP 名取实体类名，去掉 Controller 后缀（`SysPost` → `SysPost.zip`）。
-        let file_name = format!(
-            "{}.zip",
-            table
-                .class_name
-                .strip_suffix(ACTIVE_FILE_SUFFIX)
-                .unwrap_or(&table.class_name)
-        );
+        // ZIP 名取实体类名（`SysPost` → `SysPost.zip`）。
+        let file_name = format!("{}.zip", table.class_name);
 
         let mut writer = ZipWriter::new(Cursor::new(Vec::new()));
         for file in &files {
