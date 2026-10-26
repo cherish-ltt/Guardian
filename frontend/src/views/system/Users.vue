@@ -286,9 +286,11 @@ async function batchStatus(ids: (string | number)[], status: 0 | 1) {
   try {
     await Promise.all(ids.map(id => systemApi.users.updateStatus(Number(id), status)))
     pushToast(`已${status ? '启用' : '停用'} ${ids.length} 个用户`)
-    await list.load()
   } catch (error) {
     toastError(error, '批量更新状态失败')
+  } finally {
+    // 中途失败时前面的条目已经改成功了，列表必须照常回源，否则界面上还是旧状态。
+    await list.load()
   }
 }
 
@@ -298,9 +300,10 @@ async function batchRemove(ids: (string | number)[]) {
   try {
     await Promise.all(ids.map(id => systemApi.users.remove(Number(id))))
     pushToast(`已删除 ${ids.length} 个用户`)
-    await list.load()
   } catch (error) {
     toastError(error, '批量删除失败')
+  } finally {
+    await list.load()
   }
 }
 const twoFactorTarget = ref<UserRow | null>(null)

@@ -93,11 +93,13 @@ async function batchRemove(ids: (string | number)[]) {
   try {
     await Promise.all(ids.map(id => systemApi.loginLogs.remove(id)))
     pushToast(`已删除 ${ids.length} 条日志`)
+  } catch (error) {
+    toastError(error, '日志删除失败')
+  } finally {
+    // 中途失败时前面的日志已经删掉了，列表与统计必须照常回源。
     await list.load()
     loadStats()
     loadHeat()
-  } catch (error) {
-    toastError(error, '日志删除失败')
   }
 }
 

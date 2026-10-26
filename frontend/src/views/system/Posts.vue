@@ -111,9 +111,12 @@ async function batchRemove(ids: (string | number)[]) {
   try {
     await Promise.all(ids.map(id => systemApi.posts.remove(Number(id))))
     pushToast(`已删除 ${ids.length} 个岗位`)
-    await list.load()
   } catch (error) {
     toastError(error, '批量删除失败')
+  } finally {
+    // 中途失败时前面的条目已经删掉了，列表必须照常回源。
+    await list.load()
+    if (view.value === 'ladder') loadLadder()
   }
 }
 </script>
