@@ -74,6 +74,10 @@ async fn seed_users(
 ///
 /// 第一个账号是超级管理员（拥有全部菜单），其余账号是演示角色。
 /// 账号数超过内置映射时，多出的账号不分配，登录后没有菜单。
+///
+/// **只在账号还没有任何关联行时分配**：管理员撤掉某个角色后，重启不能再把它补回来，
+/// 否则「撤销授权」在重启后静默失效。账号的关联整体为空时仍按演示数据补齐，
+/// 保证「克隆即可运行」与演示账号可用。
 async fn seed_user_assignments(database: &DatabaseConnection, user_count: usize) -> Result<()> {
     let assigned = user_count.min(USER_ROLE_IDS.len());
     if assigned == 0 {
@@ -84,11 +88,20 @@ async fn seed_user_assignments(database: &DatabaseConnection, user_count: usize)
         ("sys_user_role", "role_id", USER_ROLE_IDS),
         ("sys_user_post", "post_id", USER_POST_IDS),
     ] {
-        let pairs = (0..assigned)
-            .map(|index| format!("({}, {})", index + 1, ids[index]))
-            .collect::<Vec<String>>()
-            .join(", ");
-        let statement = format!("INSERT OR IGNORE INTO {table} (user_id, {column}) VALUES {pairs}");
+        let mut pairs = Vec::with_capacity(assigned);
+        for (index, id) in ids.iter().take(assigned).enumerate() {
+            let user_id = index as i64 + 1;
+            if !has_assignment(database, table, user_id).await? {
+                pairs.push(format!("({user_id}, {id})"));
+            }
+        }
+        if pairs.is_empty() {
+            continue;
+        }
+        let statement = format!(
+            "INSERT OR IGNORE INTO {table} (user_id, {column}) VALUES {}",
+            pairs.join(", ")
+        );
 
         database
             .execute_unprepared(&statement)
@@ -97,6 +110,25 @@ async fn seed_user_assignments(database: &DatabaseConnection, user_count: usize)
     }
 
     Ok(())
+}
+
+/// 账号是否已经有关联行：只要有一行就认为播种已完成，不再补默认值。
+///
+/// 用 `COUNT(*)` 读结果，而不是 `SELECT 1 ... LIMIT 1` 看有没有行：后者的结果列名在
+/// 不同驱动/缓存路径下不稳定，判定「要不要补播种」这种关键分支不能依赖它。
+async fn has_assignment(database: &DatabaseConnection, table: &str, user_id: i64) -> Result<bool> {
+    let statement = Statement::from_string(
+        DbBackend::Sqlite,
+        format!("SELECT COUNT(*) AS total FROM {table} WHERE user_id = {user_id}"),
+    );
+    let row = database
+        .query_one_raw(statement)
+        .await
+        .with_context(|| format!("failed to check {table} assignment"))?
+        .ok_or_else(|| anyhow::anyhow!("counting {table} assignments returned no result"))?;
+    let total = row.try_get::<i64>("", "total")?;
+
+    Ok(total > 0)
 }
 
 async fn seeded_user_count(database: &DatabaseConnection, last_id: i64) -> Result<i64> {
@@ -253,7 +285,7 @@ const MENU_INSERT: &str = "INSERT OR IGNORE INTO sys_menu (id, parent_id, menu_n
 mod tests {
     use sea_orm::{ConnectionTrait, Database, DatabaseConnection};
 
-    use super::{MENU_INSERT, STATEMENTS};
+    use super::{MENU_INSERT, STATEMENTS, seed_admin_data};
     use crate::infrastructure::config::{SeedConfig, SeedUser};
 
     /// 测试用播种配置：口令固定，账号由用例自己指定。
@@ -283,6 +315,23 @@ mod tests {
         let database = Database::connect(&url).await.expect("连接临时数据库");
 
         (database, url)
+    }
+
+    /// 用一个全新的连接直接读库文件，绕开被测连接池的语句缓存。
+    async fn links_from(url: &str, table: &str, column: &str, user_id: i64) -> Vec<i64> {
+        let fresh = Database::connect(url).await.expect("连接临时数据库");
+        let rows = fresh
+            .query_all_raw(sea_orm::Statement::from_sql_and_values(
+                sea_orm::DbBackend::Sqlite,
+                format!("SELECT {column} FROM {table} WHERE user_id = ? ORDER BY {column}"),
+                vec![user_id.into()],
+            ))
+            .await
+            .expect("查询关联");
+
+        rows.iter()
+            .map(|row| row.try_get::<i64>("", column).expect("读取关联"))
+            .collect()
     }
 
     async fn count(database: &DatabaseConnection, table: &str) -> i64 {
@@ -339,6 +388,73 @@ mod tests {
         assert!(
             crate::util::password::verify_password("seed-test-password", &hashed)
                 .expect("校验口令")
+        );
+    }
+
+    /// 管理员撤销演示账号的某个角色后重新启动，种子不得把它单独补回来。
+    #[tokio::test]
+    async fn admin_seed_keeps_revoked_assignments() {
+        let (database, url) = setup_database().await;
+        let seed = SeedConfig {
+            admin_password: "seed-test-password".to_string(),
+            ..SeedConfig::default()
+        };
+        crate::infrastructure::databases::run_migrations(&database, &url, &seed)
+            .await
+            .expect("执行迁移与播种");
+        assert_eq!(count(&database, "sys_user_role").await, 3);
+        assert_eq!(count(&database, "sys_user_post").await, 3);
+
+        database
+            .execute_unprepared("INSERT INTO sys_user_role (user_id, role_id) VALUES (2, 4)")
+            .await
+            .expect("追加角色");
+        database
+            .execute_unprepared("DELETE FROM sys_user_role WHERE user_id = 2 AND role_id = 2")
+            .await
+            .expect("撤销角色");
+
+        seed_admin_data(&database, &seed)
+            .await
+            .expect("重启后重新播种");
+
+        assert_eq!(
+            links_from(&url, "sys_user_role", "role_id", 2).await,
+            vec![4],
+            "撤销的角色不得被重新播种，管理员追加的角色保持不变"
+        );
+        assert_eq!(
+            links_from(&url, "sys_user_role", "role_id", 1).await,
+            vec![1],
+            "其它账号的授权保持不变"
+        );
+    }
+
+    /// 账号的关联整体为空时仍补齐演示数据，保证「克隆即可运行」。
+    #[tokio::test]
+    async fn admin_seed_refills_account_without_any_assignment() {
+        let (database, url) = setup_database().await;
+        let seed = SeedConfig {
+            admin_password: "seed-test-password".to_string(),
+            ..SeedConfig::default()
+        };
+        crate::infrastructure::databases::run_migrations(&database, &url, &seed)
+            .await
+            .expect("执行迁移与播种");
+
+        database
+            .execute_unprepared("DELETE FROM sys_user_role WHERE user_id = 2")
+            .await
+            .expect("清空角色");
+
+        seed_admin_data(&database, &seed)
+            .await
+            .expect("重启后重新播种");
+
+        assert_eq!(
+            links_from(&url, "sys_user_role", "role_id", 2).await,
+            vec![2],
+            "完全没有关联的账号按演示数据补齐"
         );
     }
 
