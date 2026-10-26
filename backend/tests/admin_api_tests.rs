@@ -1635,8 +1635,13 @@ async fn password_change_requires_old_password_and_rotates_credentials() {
 /// 改密码后，该账号已签发的会话（含当前与其它设备）必须全部失效。
 #[tokio::test]
 async fn password_change_revokes_every_existing_session() {
-    let (app, store) = setup_app_with_store().await;
+    let (app, store, container) = setup_app_with_container().await;
     let first = admin_token(&app, store.as_ref()).await;
+    let admin_id = 1;
+    let before = AccountRepository::security(&container.database, admin_id)
+        .await
+        .expect("读取安全状态")
+        .auth_version;
     // JWT 的 iat / exp 是秒粒度，同一秒内重复登录会签发逐字相同的令牌，
     // 先错开一秒，才能确定拿到两个不同会话。
     tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
@@ -1660,6 +1665,13 @@ async fn password_change_revokes_every_existing_session() {
         assert_eq!(status, StatusCode::UNAUTHORIZED, "{label} 应失效");
         assert_eq!(body["message"], "未认证或登录已过期");
     }
+
+    // 光撤销 Redis 会话不够：auth_version 必须递增，让验签阶段就拒绝旧令牌。
+    let after = AccountRepository::security(&container.database, admin_id)
+        .await
+        .expect("读取安全状态")
+        .auth_version;
+    assert_eq!(after, before + 1, "改密必须递增会话版本");
 
     // 只清该账号的会话，其他账号不受影响。
     let (status, _) = send(app.clone(), get_with_bearer("/api/v1/auth/me", &other)).await;

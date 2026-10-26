@@ -19,6 +19,7 @@ use crate::{
     infrastructure::{
         ip_location::IpLocation,
         repositories::{
+            account::AccountRepository,
             admin_auth::{AdminAuthRepository, SeaOrmAdminAuthRepository},
             config::{ConfigRepository, SeaOrmConfigRepository},
         },
@@ -344,15 +345,29 @@ impl AdminAuthUseCase for AdminAuthService {
         }
 
         let hashed = password::hash_password(&command.new_password)?;
-        let updated = SeaOrmAdminAuthRepository
-            .update_password(&self.database, user.id, &user.username, &hashed)
-            .await?;
-        if updated == 0 {
-            return Err(AppError::business("密码修改失败"));
-        }
+        let user_id = user.id;
+        let username = user.username.clone();
+        super::support::in_immediate_transaction(&self.database, |transaction| {
+            let hashed = hashed.clone();
+            let username = username.clone();
+            Box::pin(async move {
+                let updated = SeaOrmAdminAuthRepository
+                    .update_password(transaction, user_id, &username, &hashed)
+                    .await?;
+                if updated == 0 {
+                    return Err(AppError::business("密码修改失败"));
+                }
+                // 与管理员重置口令同口径：光删 Redis 会话不够，Redis 清理失败或令牌索引
+                // 缺失时旧 JWT 仍能验签通过，递增 auth_version 让版本校验兜住残留。
+                AccountRepository::bump_auth_version(transaction, user_id).await
+            })
+        })
+        .await?;
 
-        // 改密码后旧凭证必须失效：撤销该账号已签发的全部会话。
-        self.auth_store.revoke_user_tokens(&user.username).await?;
+        // 会话撤销在事务外：数据库版本已生效，Redis 故障不该回滚口令修改。
+        if let Err(error) = self.auth_store.revoke_user_tokens(&user.username).await {
+            tracing::warn!(%error, "auth version bumped; Redis session cleanup deferred to TTL");
+        }
 
         Ok(())
     }
