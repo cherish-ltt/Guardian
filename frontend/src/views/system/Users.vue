@@ -56,16 +56,21 @@ const boardKeyword = ref(list.query.keyword)
 const boardLoading = ref(false)
 const canEditStatus = hasPermission('system:user:edit')
 
+// 搜索框防抖 320ms，慢网下先后两个请求可能乱序返回；只认最后一次发出的请求。
+let boardRequestId = 0
 async function loadBoard() {
+  const requestId = ++boardRequestId
   boardLoading.value = true
   try {
     const page = await systemApi.users.list({ keyword: boardKeyword.value || undefined, pageNum: 1, pageSize: MAX_PAGE_SIZE })
+    if (requestId !== boardRequestId) return
     boardRows.value = page.rows
     boardTotal.value = page.total
   } catch (error) {
+    if (requestId !== boardRequestId) return
     toastError(error, '看板数据加载失败')
   } finally {
-    boardLoading.value = false
+    if (requestId === boardRequestId) boardLoading.value = false
   }
 }
 watch(view, (v) => { if (v === 'board') loadBoard() }, { immediate: true })
