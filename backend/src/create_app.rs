@@ -34,8 +34,11 @@ pub fn create_app(container: Arc<Container>) -> Router {
 }
 
 /// 未匹配到任何路由：与 Spring 版的 `NoResourceFoundException` 文案一致。
+///
+/// 只记 path 不记完整 URI：未匹配的请求也可能带着令牌、验证码等 query 参数，
+/// 日志里不应该出现这些值。
 async fn not_found(request: Request) -> Response {
-    warn!(uri = %request.uri(), "no route matched");
+    warn!(path = %request.uri().path(), "no route matched");
 
     ApiResponse::<()>::error(StatusCode::NOT_FOUND, "资源不存在").into_response()
 }

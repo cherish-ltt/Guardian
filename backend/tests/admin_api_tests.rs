@@ -4,6 +4,8 @@
 
 mod support;
 
+use std::sync::{Arc, Mutex};
+
 use axum::http::StatusCode;
 use sea_orm::ConnectionTrait;
 use serde_json::{Value, json};
@@ -254,6 +256,50 @@ async fn unknown_route_and_unsupported_method_use_spring_wording() {
     let (status, body) = send(app.clone(), get("/api/v1/auth/login")).await;
     assert_eq!(status, StatusCode::METHOD_NOT_ALLOWED);
     assert_eq!(body["message"], "不支持的请求方法: GET");
+}
+
+/// 未匹配路由的日志只记路径：未匹配请求同样可能带令牌、验证码等 query 参数。
+#[tokio::test]
+async fn unknown_route_log_omits_query_string() {
+    let (app, _store) = setup_app_with_store().await;
+    let captured = Arc::new(Mutex::new(String::new()));
+
+    #[derive(Clone)]
+    struct Writer(Arc<Mutex<String>>);
+
+    impl std::io::Write for Writer {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0
+                .lock()
+                .expect("日志缓冲可写")
+                .push_str(&String::from_utf8_lossy(buf));
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    let writer = Writer(Arc::clone(&captured));
+    let subscriber = tracing_subscriber::fmt()
+        .with_writer(move || writer.clone())
+        .with_ansi(false)
+        .with_max_level(tracing::Level::WARN)
+        .finish();
+
+    let guard = tracing::subscriber::set_default(subscriber);
+    let (status, _) = send(app, get("/api/v1/system/unknown?token=do-not-log")).await;
+    drop(guard);
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    let logs = captured.lock().expect("日志缓冲可读").clone();
+    assert!(logs.contains("no route matched"), "{logs}");
+    assert!(logs.contains("/api/v1/system/unknown"), "{logs}");
+    assert!(
+        !logs.contains("do-not-log"),
+        "日志不得包含 query 值: {logs}"
+    );
 }
 
 #[tokio::test]
