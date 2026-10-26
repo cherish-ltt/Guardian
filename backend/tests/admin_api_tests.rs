@@ -2392,6 +2392,83 @@ async fn password_failures_lock_the_account_even_with_the_right_password() {
     assert_eq!(body["message"], "密码错误次数过多，请稍后重试");
 }
 
+/// 锁定窗口过期后计数必须归零重算，否则再错一次就会立刻重新锁满 5 分钟。
+#[tokio::test]
+async fn expired_lock_resets_the_failure_counter() {
+    let (app, store, container) = setup_app_with_container().await;
+    let admin_id = 1;
+    let wrong_login = |app: axum::Router, store: Arc<MemoryAuthStore>, password: &'static str| async move {
+        let (_, captcha) = send(app.clone(), get("/api/v1/auth/captcha")).await;
+        let code = take_captcha(
+            store.as_ref(),
+            captcha["data"]["uuid"].as_str().expect("验证码标识"),
+        );
+        send(
+            app,
+            post_json(
+                "/api/v1/auth/login",
+                json!({
+                    "username": "admin",
+                    "password": password,
+                    "captcha": code,
+                    "captchaUuid": captcha["data"]["uuid"],
+                }),
+            ),
+        )
+        .await
+    };
+
+    for _ in 0..5 {
+        let (_, body) = wrong_login(app.clone(), Arc::clone(&store), "wrong-password").await;
+        assert_eq!(body["message"], "账号或密码错误");
+    }
+    let locked = AccountRepository::security(&container.database, admin_id)
+        .await
+        .expect("读取安全状态");
+    assert_eq!(locked.failures, 5);
+    assert!(locked.blocked_until > 0);
+
+    // 把锁定窗口推到过去，模拟「等过了 5 分钟」。
+    let mut expired = locked.clone();
+    expired.blocked_until = chrono::Utc::now().timestamp() - 1;
+    AccountRepository::save_security(&container.database, expired)
+        .await
+        .expect("写入过期状态");
+
+    let (_, body) = wrong_login(app.clone(), Arc::clone(&store), "wrong-password").await;
+    assert_eq!(
+        body["message"], "账号或密码错误",
+        "锁定已过期，应回到口令校验"
+    );
+
+    let after = AccountRepository::security(&container.database, admin_id)
+        .await
+        .expect("读取安全状态");
+    assert_eq!(after.failures, 1, "过期后的失败重新从 1 起算");
+    assert_eq!(after.blocked_until, 0, "重新起算不应立刻再锁");
+
+    // 口令正确即可正常登录，说明锁定确实解除。
+    let (_, captcha) = send(app.clone(), get("/api/v1/auth/captcha")).await;
+    let code = take_captcha(
+        store.as_ref(),
+        captcha["data"]["uuid"].as_str().expect("验证码标识"),
+    );
+    let (status, _) = send(
+        app,
+        post_json(
+            "/api/v1/auth/login",
+            json!({
+                "username": "admin",
+                "password": DEMO_PASSWORD,
+                "captcha": code,
+                "captchaUuid": captcha["data"]["uuid"],
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+}
+
 /// 登录成功后失败计数清零，不会因为历史失败把正常用户挡在门外。
 #[tokio::test]
 async fn successful_login_clears_the_failure_counter() {

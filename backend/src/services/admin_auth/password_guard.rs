@@ -35,7 +35,12 @@ pub(crate) async fn record(
             if succeeded {
                 state.failures = 0;
                 state.blocked_until = 0;
-            } else if state.blocked_until <= now {
+            } else {
+                // 锁定窗口已过：旧计数作废重新起算，否则累计到 5 次后每次失败都会立刻再锁一遍。
+                if state.blocked_until != 0 && state.blocked_until <= now {
+                    state.failures = 0;
+                    state.blocked_until = 0;
+                }
                 state.failures += 1;
                 if state.failures >= MAX_FAILURES {
                     state.blocked_until = now + LOCK_SECONDS;
