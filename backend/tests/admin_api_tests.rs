@@ -775,6 +775,19 @@ async fn role_flow_covers_menus_graph_and_guards() {
         39
     );
 
+    // 不存在的菜单不能写进授权，否则 sys_role_menu 会留下悬空关联。
+    let (status, body) = send(
+        app.clone(),
+        post_json_with_bearer(
+            "/api/v1/system/roles",
+            &token,
+            json!({ "name": "越界角色", "code": "beyond", "menuIds": [100, 999999] }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["message"], "菜单不存在或已删除");
+
     let (status, created) = send(
         app.clone(),
         post_json_with_bearer(
@@ -786,6 +799,18 @@ async fn role_flow_covers_menus_graph_and_guards() {
     .await;
     assert_eq!(status, StatusCode::OK);
     let role_id = created["data"]["id"].as_i64().expect("角色 ID");
+
+    let (status, body) = send(
+        app.clone(),
+        put_json_with_bearer(
+            &format!("/api/v1/system/roles/{role_id}"),
+            &token,
+            json!({ "menuIds": [100, 999999] }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["message"], "菜单不存在或已删除");
 
     let (_, duplicate) = send(
         app.clone(),

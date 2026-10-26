@@ -57,6 +57,10 @@ pub trait MenuRepository: Send + Sync {
     async fn count_menu_roles<C>(&self, db: &C, menu_id: i64) -> Result<i64, AppError>
     where
         C: ConnectionTrait;
+
+    async fn count_menu_ids<C>(&self, db: &C, ids: &[i64]) -> Result<i64, AppError>
+    where
+        C: ConnectionTrait;
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -206,6 +210,20 @@ impl MenuRepository for SeaOrmMenuRepository {
             vec![menu_id.into()],
         )
         .await
+    }
+
+    async fn count_menu_ids<C>(&self, db: &C, ids: &[i64]) -> Result<i64, AppError>
+    where
+        C: ConnectionTrait,
+    {
+        if ids.is_empty() {
+            return Ok(0);
+        }
+        let placeholders = vec!["?"; ids.len()].join(", ");
+        let sql = format!("SELECT COUNT(*) AS value FROM sys_menu WHERE id IN ({placeholders})");
+        let values = ids.iter().map(|id| (*id).into()).collect();
+
+        query_count(db, &sql, values).await
     }
 }
 

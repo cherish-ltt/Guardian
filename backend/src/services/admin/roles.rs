@@ -11,6 +11,7 @@ use crate::{
     },
     infrastructure::repositories::{
         dept::{DeptRepository, SeaOrmDeptRepository},
+        menu::{MenuRepository, SeaOrmMenuRepository},
         role::{RoleRepository, SeaOrmRoleRepository},
     },
     services::admin::{AdminService, default_int, default_string, required, trim_to_null},
@@ -117,6 +118,7 @@ impl RoleAdminUseCase for AdminService {
                     if let Some(dept_ids) = dept_ids.as_deref() {
                         ensure_depts_exist(transaction, dept_ids).await?;
                     }
+                    ensure_menus_exist(transaction, &menu_ids).await?;
                     let id = SeaOrmRoleRepository
                         .insert_role(transaction, &command, &operator)
                         .await?;
@@ -159,6 +161,9 @@ impl RoleAdminUseCase for AdminService {
             Box::pin(async move {
                 if let Some(dept_ids) = dept_ids.as_deref() {
                     ensure_depts_exist(transaction, dept_ids).await?;
+                }
+                if let Some(menu_ids) = menu_ids.as_deref() {
+                    ensure_menus_exist(transaction, menu_ids).await?;
                 }
                 if SeaOrmRoleRepository
                     .update_role(transaction, id, &command, &operator)
@@ -236,6 +241,30 @@ async fn ensure_depts_exist(
     let found = SeaOrmDeptRepository.count_dept_ids(db, &unique).await?;
     if found as usize != unique.len() {
         return Err(AppError::business("部门不存在或已删除"));
+    }
+
+    Ok(())
+}
+
+/// 授权里的菜单必须真实存在，否则会在 `sys_role_menu` 留下悬空的授权行。
+async fn ensure_menus_exist(
+    db: &sea_orm::DatabaseTransaction,
+    menu_ids: &[i64],
+) -> Result<(), AppError> {
+    let unique: Vec<i64> = {
+        let mut seen = std::collections::HashSet::new();
+        menu_ids
+            .iter()
+            .copied()
+            .filter(|id| seen.insert(*id))
+            .collect()
+    };
+    if unique.is_empty() {
+        return Ok(());
+    }
+    let found = SeaOrmMenuRepository.count_menu_ids(db, &unique).await?;
+    if found as usize != unique.len() {
+        return Err(AppError::business("菜单不存在或已删除"));
     }
 
     Ok(())
