@@ -895,6 +895,24 @@ fn redis_connection_url_embeds_password_only_when_configured() {
     );
 }
 
+/// 口令里的 userinfo 非法字符必须转义，否则会被当成 fragment / 路径分隔。
+#[test]
+fn redis_connection_url_percent_encodes_password() {
+    let config = RedisConfig {
+        url: "redis://127.0.0.1:6379/2".to_string(),
+        password: Some("p#ss/w:rd@x".to_string()),
+    };
+    let url = config.connection_url().expect("编码后可用");
+
+    assert_eq!(url, "redis://:p%23ss%2Fw%3Ard%40x@127.0.0.1:6379/2");
+
+    let parsed = url::Url::parse(&url).expect("编码后的连接串必须可解析");
+    assert_eq!(parsed.host_str(), Some("127.0.0.1"));
+    assert_eq!(parsed.port(), Some(6379));
+    assert_eq!(parsed.password(), Some("p%23ss%2Fw%3Ard%40x"));
+    assert_eq!(parsed.path(), "/2");
+}
+
 /// 没有 scheme 的 REDIS_URL 插不进口令，必须报错而不是拼出坏连接串。
 #[test]
 fn redis_connection_url_rejects_urls_without_scheme() {

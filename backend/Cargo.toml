@@ -89,6 +89,9 @@ zip = { version = "=9.0.3", default-features = false, features = [
 chrono = "=0.4.45"
 dotenv = "=0.15"
 
+# Redis 连接串里的口令编码（口令可能含 # / / 空格等 userinfo 非法字符）
+url = "=2.5.8"
+
 # 数据序列化与持久化
 # sea-orm 关掉默认集：默认打开的 with-json / with-chrono / with-uuid / with-time /
 # with-rust_decimal / stream 都没被用到（实体列只有 i64 与 String，也没有流式查询）。

@@ -95,6 +95,9 @@ pub struct RedisConfig {
 
 impl RedisConfig {
     /// 带认证信息的连接串；`redis` 客户端要求密码作为 userinfo 的一部分。
+    ///
+    /// 口令必须按 userinfo 规则转义：`#` 会被当成 fragment 起点，`/` 会被当成路径分隔，
+    /// 直接拼接会让 `into_connection_info` 解析出错误的 host / db。
     pub fn connection_url(&self) -> Result<String> {
         let Some(password) = self.password.as_deref() else {
             return Ok(self.url.clone());
@@ -106,8 +109,9 @@ impl RedisConfig {
             .map(|(_, rest)| rest)
             .ok_or_else(|| anyhow!("invalid REDIS_URL: {}", self.url))?;
         let scheme = &self.url[..self.url.len() - rest.len() - 3];
+        let encoded: String = url::form_urlencoded::byte_serialize(password.as_bytes()).collect();
 
-        Ok(format!("{scheme}://:{password}@{rest}"))
+        Ok(format!("{scheme}://:{encoded}@{rest}"))
     }
 }
 
