@@ -571,6 +571,19 @@ async fn user_write_flow_covers_create_update_status_password_and_delete() {
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert_eq!(body["message"], "内置管理员不允许停用");
 
+    // 编辑接口的 status 取值与 /status 端点同口径：非 0/1 一律拒绝。
+    let (status, body) = send(
+        app.clone(),
+        put_json_with_bearer(
+            &format!("/api/v1/system/users/{id}"),
+            &token,
+            json!({ "nickname": "测试账号", "status": 2 }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["message"], "用户状态只能为正常或停用");
+
     let (status, _) = send(
         app.clone(),
         delete_with_bearer(&format!("/api/v1/system/users/{id}"), &token),

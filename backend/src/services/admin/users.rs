@@ -219,8 +219,14 @@ impl UserAdminUseCase for AdminService {
             nickname: trim_to_null(command.nickname.clone()),
             ..command
         };
-        // 内置管理员不能被停用：`/status` 端点已有这道校验，
-        // 编辑接口同样能改 `status`，必须一致。
+        // 编辑接口也能改 `status`，取值校验与 `/status` 端点保持一致：
+        // 任意整数都能写进库会让账号进入既非正常也非停用的状态。
+        if let Some(status) = command.status
+            && status != 0
+            && status != 1
+        {
+            return Err(AppError::business("用户状态只能为正常或停用"));
+        }
         if id == 1 && command.status == Some(0) {
             return Err(AppError::business("内置管理员不允许停用"));
         }
