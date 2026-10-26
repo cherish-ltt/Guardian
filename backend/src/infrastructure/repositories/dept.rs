@@ -66,6 +66,21 @@ pub trait DeptRepository: Send + Sync {
     async fn dept_ancestors<C>(&self, db: &C, dept_id: i64) -> Result<Option<String>, AppError>
     where
         C: ConnectionTrait;
+
+    /// 目标部门自身及其全部后代的 `(id, parent_id)`：移动子树时逐层重算祖先链。
+    async fn dept_subtree<C>(&self, db: &C, dept_id: i64) -> Result<Vec<(i64, i64)>, AppError>
+    where
+        C: ConnectionTrait;
+
+    /// 把祖先链整体写入某部门的 `ancestors` 列。
+    async fn set_dept_ancestors<C>(
+        &self,
+        db: &C,
+        dept_id: i64,
+        ancestors: &str,
+    ) -> Result<u64, AppError>
+    where
+        C: ConnectionTrait;
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -234,6 +249,62 @@ impl DeptRepository for SeaOrmDeptRepository {
             db,
             "SELECT COUNT(*) AS value FROM sys_user WHERE dept_id = ? AND deleted = 0",
             vec![dept_id.into()],
+        )
+        .await
+    }
+
+    async fn dept_subtree<C>(&self, db: &C, dept_id: i64) -> Result<Vec<(i64, i64)>, AppError>
+    where
+        C: ConnectionTrait,
+    {
+        let rows = query_all(
+            db,
+            "SELECT id, parent_id FROM sys_dept WHERE deleted = 0 ORDER BY id",
+            vec![],
+        )
+        .await?;
+
+        let children: Vec<(i64, i64)> = rows
+            .iter()
+            .map(|row| (int_or_zero(row, "id"), int_or_zero(row, "parent_id")))
+            .collect();
+        let mut subtree = Vec::new();
+        let mut pending = vec![dept_id];
+        while let Some(current) = pending.pop() {
+            if subtree.iter().any(|(id, _)| *id == current) {
+                continue;
+            }
+            if let Some((id, parent_id)) = children.iter().find(|(id, _)| *id == current) {
+                subtree.push((*id, *parent_id));
+            }
+            pending.extend(
+                children
+                    .iter()
+                    .filter(|(_, parent_id)| *parent_id == current)
+                    .map(|(id, _)| *id),
+            );
+        }
+
+        Ok(subtree)
+    }
+
+    async fn set_dept_ancestors<C>(
+        &self,
+        db: &C,
+        dept_id: i64,
+        ancestors: &str,
+    ) -> Result<u64, AppError>
+    where
+        C: ConnectionTrait,
+    {
+        execute(
+            db,
+            "UPDATE sys_dept SET ancestors = ?, update_time = ? WHERE id = ? AND deleted = 0",
+            vec![
+                ancestors.to_string().into(),
+                time::now().into(),
+                dept_id.into(),
+            ],
         )
         .await
     }

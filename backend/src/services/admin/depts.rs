@@ -86,31 +86,79 @@ impl DeptAdminUseCase for AdminService {
         let _cache_write = self.cache.begin_write().await;
         // 请求未带 parentId 时不调整上级链，带了才重新计算。
         let ancestors = match command.parent_id {
-            Some(parent_id) => Some(self.ancestors_for(parent_id).await?),
+            Some(0) => Some(String::new()),
+            Some(parent_id) => {
+                if parent_id == id {
+                    return Err(AppError::business("上级部门不能是部门自身"));
+                }
+                Some(self.ancestors_for(parent_id).await?)
+            },
             None => None,
         };
         let command = DeptWriteCommand {
             name: trim_to_null(command.name.clone()),
             ..command
         };
+        let operator = operator.to_string();
 
-        if SeaOrmDeptRepository
-            .update_dept(
-                &self.database,
-                id,
-                &DeptUpdate {
-                    command: &command,
-                    ancestors: ancestors.as_deref(),
-                    operator,
-                },
-            )
-            .await?
-            == 0
-        {
-            return Err(AppError::business("部门不存在或已删除"));
-        }
+        self.in_transaction(|transaction| {
+            let command = command.clone();
+            let operator = operator.clone();
+            let ancestors = ancestors.clone();
+            Box::pin(async move {
+                // 把子树挂到自己的后代下会成环：祖先链解析（LIKE 前缀匹配）随即失效，
+                // 旧父节点仍能看到已移走的成员。移动前必须校验。
+                if let Some(parent_id) = command.parent_id
+                    && parent_id != 0
+                {
+                    let subtree = SeaOrmDeptRepository.dept_subtree(transaction, id).await?;
+                    if subtree.iter().any(|(child_id, _)| *child_id == parent_id) {
+                        return Err(AppError::business("上级部门不能是部门自身的下级"));
+                    }
+                }
 
-        Ok(())
+                if SeaOrmDeptRepository
+                    .update_dept(
+                        transaction,
+                        id,
+                        &DeptUpdate {
+                            command: &command,
+                            ancestors: ancestors.as_deref(),
+                            operator: &operator,
+                        },
+                    )
+                    .await?
+                    == 0
+                {
+                    return Err(AppError::business("部门不存在或已删除"));
+                }
+
+                // 移动后整棵子树的祖先链都要重算：只改自己会让后代仍挂在旧路径上。
+                if let Some(ancestors) = ancestors.as_deref() {
+                    let subtree = SeaOrmDeptRepository.dept_subtree(transaction, id).await?;
+                    let mut chains = std::collections::HashMap::new();
+                    chains.insert(id, ancestors.to_string());
+                    for (child_id, parent_id) in subtree.iter().filter(|(child, _)| *child != id) {
+                        let Some(parent_chain) = chains.get(parent_id) else {
+                            // 子树按 id 升序返回，父节点一定先处理；走到这里说明数据已成环。
+                            return Err(AppError::business("部门层级存在环，无法移动"));
+                        };
+                        let chain = if parent_chain.is_empty() {
+                            parent_id.to_string()
+                        } else {
+                            format!("{parent_chain},{parent_id}")
+                        };
+                        SeaOrmDeptRepository
+                            .set_dept_ancestors(transaction, *child_id, &chain)
+                            .await?;
+                        chains.insert(*child_id, chain);
+                    }
+                }
+
+                Ok(())
+            })
+        })
+        .await
     }
 
     async fn delete_dept(&self, id: i64, operator: &str) -> Result<(), AppError> {

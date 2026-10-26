@@ -1091,6 +1091,63 @@ async fn dept_tree_and_crud_keep_ancestors_consistent() {
     assert_eq!(status, StatusCode::OK);
 }
 
+/// 移动部门子树：后代祖先链一起重算，且不允许挂到自己的下级下。
+#[tokio::test]
+async fn moving_dept_subtree_rebuilds_descendant_ancestors() {
+    use guardian_backend::infrastructure::repositories::dept::{
+        DeptRepository, SeaOrmDeptRepository,
+    };
+    let (app, store, container) = setup_app_with_container().await;
+    let token = admin_token(&app, store.as_ref()).await;
+
+    // 把「研发中心」(2) 挂到「职能中心」(4) 下：其子部门 5/6/7 的祖先链必须一起变。
+    let (status, body) = send(
+        app.clone(),
+        put_json_with_bearer("/api/v1/system/depts/2", &token, json!({ "parentId": 4 })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    for dept_id in [2, 5, 6, 7] {
+        let ancestors = SeaOrmDeptRepository
+            .dept_ancestors(&container.database, dept_id)
+            .await
+            .expect("读取祖先链")
+            .expect("部门存在");
+        let expected = match dept_id {
+            2 => "0,1,4".to_string(),
+            5..=7 => "0,1,4,2".to_string(),
+            _ => unreachable!(),
+        };
+        assert_eq!(ancestors, expected, "部门 {dept_id} 的祖先链");
+    }
+
+    // 挂到自己的下级下成环：拒绝，并且原结构保持不变。
+    let (status, body) = send(
+        app.clone(),
+        put_json_with_bearer("/api/v1/system/depts/2", &token, json!({ "parentId": 6 })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["message"], "上级部门不能是部门自身的下级");
+    assert_eq!(
+        SeaOrmDeptRepository
+            .dept_ancestors(&container.database, 2)
+            .await
+            .expect("读取祖先链")
+            .as_deref(),
+        Some("0,1,4")
+    );
+
+    // 自己是自己的上级同样拒绝。
+    let (status, body) = send(
+        app.clone(),
+        put_json_with_bearer("/api/v1/system/depts/2", &token, json!({ "parentId": 2 })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["message"], "上级部门不能是部门自身");
+}
+
 #[tokio::test]
 async fn post_flow_and_export() {
     let (app, store) = setup_app_with_store().await;
