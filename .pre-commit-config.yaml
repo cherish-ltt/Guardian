@@ -130,7 +130,7 @@ repos:
     hooks:
       - id: frontend-lint
         name: 前端 lint
-        entry: bash -c 'cd frontend && [ -d node_modules ] && npm run --silent lint || echo "跳过：frontend/node_modules 未安装"'
+        entry: bash -c 'cd frontend || exit 1; if [ ! -d node_modules ]; then echo "跳过：frontend/node_modules 未安装"; exit 0; fi; npm run --silent lint'
         language: system
         files: '^frontend/src/.*\.(ts|vue)$'
         pass_filenames: false
