@@ -36,10 +36,14 @@ impl AdminUser {
         &self.info
     }
 
+    /// 是否内置超级管理员：敏感操作（授予超管角色）只允许超管本人执行。
+    pub fn is_super_admin(&self) -> bool {
+        self.info.roles.iter().any(|role| role == SUPER_ADMIN)
+    }
+
     /// 超管直接放行，其余按授权码判定。
     pub fn has_permission(&self, permission: &str) -> bool {
-        self.info.roles.iter().any(|role| role == SUPER_ADMIN)
-            || self.info.permissions.iter().any(|code| code == permission)
+        self.is_super_admin() || self.info.permissions.iter().any(|code| code == permission)
     }
 
     pub fn require(&self, permission: &str) -> Result<(), AppError> {

@@ -2110,6 +2110,76 @@ async fn user_relations_must_point_to_existing_records() {
     assert_ne!(page["data"]["rows"][0]["nickname"], "不该生效");
 }
 
+/// 授予内置超管角色属于提权：只有超管本人可以，普通「用户编辑」账号不行。
+#[tokio::test]
+async fn granting_super_admin_role_requires_super_admin() {
+    let (app, store) = setup_app_with_store().await;
+    let token = admin_token(&app, store.as_ref()).await;
+
+    // 系统管理员（id=2）拿到用户管理与角色菜单，仍不是超管。
+    let (status, _) = send(
+        app.clone(),
+        put_json_with_bearer(
+            "/api/v1/system/roles/2",
+            &token,
+            json!({ "menuIds": [101, 102, 1011, 1012, 1021, 1022] }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let scoped = login(&app, store.as_ref(), "linjh", DEMO_PASSWORD).await;
+
+    // 1) 新建账号时直接挂超管角色：拒绝，且不留下半截数据。
+    let (status, body) = send(
+        app.clone(),
+        post_json_with_bearer(
+            "/api/v1/system/users",
+            &scoped,
+            json!({
+                "username": "escalate",
+                "nickname": "提权",
+                "password": "Ee@123456",
+                "deptId": 5,
+                "roleIds": [1],
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(body["message"], "只有超级管理员可以授予超级管理员角色");
+    let (_, page) = send(
+        app.clone(),
+        get_with_bearer("/api/v1/system/users?keyword=escalate", &token),
+    )
+    .await;
+    assert_eq!(page["data"]["total"], 0, "拒绝后不得写入用户");
+
+    // 2) 编辑自己、把超管角色挂上去：拒绝。
+    let (status, body) = send(
+        app.clone(),
+        put_json_with_bearer(
+            "/api/v1/system/users/2",
+            &scoped,
+            json!({ "roleIds": [1, 2] }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(body["message"], "只有超级管理员可以授予超级管理员角色");
+
+    // 3) 超管本人同样的操作照旧可以。
+    let (status, _) = send(
+        app.clone(),
+        put_json_with_bearer(
+            "/api/v1/system/users/3",
+            &token,
+            json!({ "roleIds": [1, 3] }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+}
+
 /// 密码阶段连续失败 5 次后锁定 5 分钟：第 6 次连正确口令也不放行。
 #[tokio::test]
 async fn password_failures_lock_the_account_even_with_the_right_password() {

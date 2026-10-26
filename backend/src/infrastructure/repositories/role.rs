@@ -8,7 +8,7 @@ use crate::{
     },
     error::AppError,
     infrastructure::repositories::sql::{
-        execute, insert, int_or_zero, query_all, query_count, text, text_or_none,
+        execute, insert, int_or_zero, query_all, query_count, query_opt, text, text_or_none,
     },
     util::time,
 };
@@ -46,6 +46,11 @@ pub trait RoleRepository: Send + Sync {
         C: ConnectionTrait;
 
     async fn count_role_code<C>(&self, db: &C, code: &str) -> Result<i64, AppError>
+    where
+        C: ConnectionTrait;
+
+    /// 按角色标识取未删除的 ID：授予超管角色前要知道它的 ID。
+    async fn find_role_id_by_code<C>(&self, db: &C, code: &str) -> Result<Option<i64>, AppError>
     where
         C: ConnectionTrait;
 
@@ -230,6 +235,20 @@ impl RoleRepository for SeaOrmRoleRepository {
             vec![code.into()],
         )
         .await
+    }
+
+    async fn find_role_id_by_code<C>(&self, db: &C, code: &str) -> Result<Option<i64>, AppError>
+    where
+        C: ConnectionTrait,
+    {
+        let row = query_opt(
+            db,
+            "SELECT id FROM sys_role WHERE role_code = ? AND deleted = 0 LIMIT 1",
+            vec![code.into()],
+        )
+        .await?;
+
+        Ok(row.as_ref().map(|row| int_or_zero(row, "id")))
     }
 
     async fn insert_role<C>(

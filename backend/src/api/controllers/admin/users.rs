@@ -95,7 +95,7 @@ async fn create(
     user.require("system:user:add")?;
     let created = container
         .admin_service
-        .create_user(command, user.username())
+        .create_user(command, user.username(), user.is_super_admin())
         .await?;
 
     Ok(ok(created))
@@ -110,7 +110,7 @@ async fn update(
     user.require("system:user:edit")?;
     container
         .admin_service
-        .update_user(id, command, user.username())
+        .update_user(id, command, user.username(), user.is_super_admin())
         .await?;
 
     Ok(done())

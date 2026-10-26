@@ -148,6 +148,7 @@ impl UserAdminUseCase for AdminService {
         &self,
         command: UserWriteCommand,
         operator: &str,
+        operator_is_super: bool,
     ) -> Result<IdResponse, AppError> {
         let _cache_write = self.cache.begin_write().await;
         let username = required(command.username.clone(), "登录账号不能为空")?;
@@ -178,6 +179,7 @@ impl UserAdminUseCase for AdminService {
                 let command = command.clone();
                 Box::pin(async move {
                     ensure_relations(transaction, &command).await?;
+                    ensure_grant_allowed(transaction, &command, operator_is_super).await?;
                     let id = SeaOrmUserRepository
                         .insert_user(transaction, &command, &operator)
                         .await?;
@@ -209,6 +211,7 @@ impl UserAdminUseCase for AdminService {
         id: i64,
         command: UserWriteCommand,
         operator: &str,
+        operator_is_super: bool,
     ) -> Result<(), AppError> {
         let _cache_write = self.cache.begin_write().await;
         // 昵称为空字符串时按「不修改」处理，与 Spring 的 trimToNull 一致。
@@ -231,6 +234,7 @@ impl UserAdminUseCase for AdminService {
             let post_ids = post_ids.clone();
             Box::pin(async move {
                 ensure_relations(transaction, &command).await?;
+                ensure_grant_allowed(transaction, &command, operator_is_super).await?;
                 if SeaOrmUserRepository
                     .update_user(transaction, id, &command, &operator)
                     .await?
@@ -360,6 +364,35 @@ async fn ensure_relations(
         if found as usize != dedup_ids(post_ids).len() {
             return Err(AppError::business("岗位不存在或已删除"));
         }
+    }
+
+    Ok(())
+}
+
+/// 授予内置超级管理员角色属于提权：只有超管本人可以，避免「用户编辑」权限
+/// 通过 `roleIds` 把自己或新建账号变成超管。
+async fn ensure_grant_allowed(
+    db: &sea_orm::DatabaseTransaction,
+    command: &UserWriteCommand,
+    operator_is_super: bool,
+) -> Result<(), AppError> {
+    if operator_is_super {
+        return Ok(());
+    }
+    let Some(role_ids) = command.role_ids.as_deref() else {
+        return Ok(());
+    };
+    if role_ids.is_empty() {
+        return Ok(());
+    }
+    let Some(super_role_id) = SeaOrmRoleRepository
+        .find_role_id_by_code(db, crate::services::admin_auth::SUPER_ADMIN)
+        .await?
+    else {
+        return Ok(());
+    };
+    if role_ids.contains(&super_role_id) {
+        return Err(AppError::forbidden("只有超级管理员可以授予超级管理员角色"));
     }
 
     Ok(())
