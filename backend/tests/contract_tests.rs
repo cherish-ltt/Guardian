@@ -1,7 +1,7 @@
 //! 端点契约矩阵：把 Router 上注册的全部接口当成对外契约逐条锁定。
 //!
-//! 四张表与 `src/api/controllers` 的路由注册一一对应，共 91 个 `(方法, 路径)`：
-//! 需要权限码的 65 个、仅需登录的 12 个、脚手架登录态的 4 个、公开的 10 个。
+//! 四张表与 `src/api/controllers` 的路由注册一一对应，共 94 个 `(方法, 路径)`：
+//! 需要权限码的 68 个、仅需登录的 12 个、脚手架登录态的 4 个、公开的 10 个。
 //! 表格驱动的目的是让「新增接口但忘了加鉴权」这类回归在测试里立刻暴露，
 //! 而不是漏到线上；`endpoint_tables_cover_every_registered_route` 会真的枚举
 //! Router 已注册的路径与方法，与本文件的四张表双向比对。
@@ -72,6 +72,11 @@ const PERMISSION_ENDPOINTS: &[(&str, &str, &str)] = &[
         "/api/v1/monitor/login-logs/stats",
         "monitor:loginlog:list",
     ),
+    (
+        "GET",
+        "/api/v1/monitor/ip-locations",
+        "monitor:ip:view:full",
+    ),
     ("GET", "/api/v1/monitor/oper-logs", "monitor:operlog:list"),
     (
         "GET",
@@ -87,6 +92,11 @@ const PERMISSION_ENDPOINTS: &[(&str, &str, &str)] = &[
         "GET",
         "/api/v1/monitor/oper-logs/timeline",
         "monitor:operlog:list",
+    ),
+    (
+        "POST",
+        "/api/v1/monitor/ip-locations",
+        "monitor:ip:view:full",
     ),
     ("GET", "/api/v1/system/configs", "system:config:list"),
     ("GET", "/api/v1/system/configs/export", "system:config:list"),
@@ -218,6 +228,16 @@ const PUBLIC_ENDPOINTS: &[(&str, &str)] = &[
 /// 不会在契约测试里真的把账号口令改掉（那会撤销当前令牌，后续断言全部 401）。
 fn body_of(method: &str) -> Option<Value> {
     matches!(method, "POST" | "PUT" | "PATCH").then(|| json!({"password": "short"}))
+}
+
+/// 属地查询的请求体：端点只接受 `ips`，其它字段会被 400 拒绝，
+/// 契约矩阵里用合法请求体才能验到「鉴权通过」这一层。
+fn body_for(method: &str, path: &str) -> Option<Value> {
+    if path == "/api/v1/monitor/ip-locations" {
+        return (method == "POST").then(|| json!({ "ips": ["8.8.8.8"] }));
+    }
+
+    body_of(method)
 }
 
 /// 四张表必须与 Router 上注册的端点完全一致：漏登记或多登记都会失败。
@@ -370,10 +390,14 @@ async fn protected_endpoints_without_token_are_rejected_with_401() {
         .map(|(method, path, _)| (*method, *path))
         .chain(AUTH_ENDPOINTS.iter().copied())
         .collect();
-    assert_eq!(protected.len(), 77);
+    assert_eq!(protected.len(), 79);
 
     for (method, path) in protected {
-        let (status, body) = send(app.clone(), request(method, path, body_of(method), None)).await;
+        let (status, body) = send(
+            app.clone(),
+            request(method, path, body_for(method, path), None),
+        )
+        .await;
 
         assert_eq!(status, StatusCode::UNAUTHORIZED, "{method} {path}");
         assert_eq!(body["code"], 401, "{method} {path}");
@@ -433,7 +457,7 @@ async fn permission_endpoints_reject_account_without_codes_with_403() {
     for (method, path, permission) in PERMISSION_ENDPOINTS {
         let (status, body) = send(
             app.clone(),
-            request(method, path, body_of(method), Some(&token)),
+            request(method, path, body_for(method, path), Some(&token)),
         )
         .await;
 
@@ -458,7 +482,7 @@ async fn admin_token_is_never_rejected_by_the_auth_layer() {
     for (method, path, _) in PERMISSION_ENDPOINTS {
         let (status, _, _) = send_raw(
             app.clone(),
-            request(method, path, body_of(method), Some(&token)),
+            request(method, path, body_for(method, path), Some(&token)),
         )
         .await;
 
