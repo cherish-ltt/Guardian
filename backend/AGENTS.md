@@ -592,21 +592,27 @@ msrv = "1.99.0"
 
 ### 10.16 登录日志的客户端来源
 
-- `sys_login_log` 的 `ip` / `location` / `browser` / `os` 必须采集：`ip` 取保护层按可信代理链解析出的
-  真实对端（`client_ip::source_of`，与操作日志同源），**不得**直接读请求头原值；
-  `location` 由 `IpLocation::resolve` 给出：回环「本机」、RFC1918 私网 / 链路本地 / IPv6 ULA
-  「内网」（不查库），其余查离线 xdb 并写入库里原始串，未命中写「外网」；`browser` / `os` 由
+- `sys_login_log` 的 `ip` / `browser` / `os` 必须采集：`ip` 取保护层按可信代理链解析出的
+  真实对端（`client_ip::source_of`，与操作日志同源），**不得**直接读请求头原值；`browser` / `os` 由
   `src/util/user_agent.rs` 解析 `User-Agent`，识别不出时留空。
+- **IP 属地不入库**：`sys_oper_log` / `sys_login_log` 的 `location` 列不再写入，列表与导出也不返回，
+  属地由 `GET|POST /monitor/ip-locations` 按需现查（`src/services/ip_location_cache.rs`，
+  缓存 255 条 / 3 小时）。历史行的原值保留，迁移不得擅自清空。
 - 登录 / 退出用例的签名收 `&ClientSource`（`src/domain/models/identity.rs`），
   控制器通过 `src/api/extractors/client_source.rs` 提取，不自己读头或扩展。
   验证码失败不写日志、账号密码错误与账号停用要写失败日志的既有约定不变。
 - 禁止把 `User-Agent` 原样或版本号写入日志列；`Column` 名称级的解析结果在
   `tests/admin_api_tests.rs` 与 `tests/monitor_api_tests.rs` 各有一条断言，
   调整采集字段或解析规则时同步这两处。
-- 地名库是**可选**的：`IP_LOCATION_DB_PATH` 留空时不查库（地点只有三档），配置了却加载不了
-  必须启动失败，不得静默降级。库按 IPv4 / IPv6 分别配置（`IP_LOCATION_DB_PATH` 与
-  `IP_LOCATION_V6_DB_PATH`，各用一个 `Searcher`），两个都可留空。修改解析口径要同步 `docs/ADMIN.md` 的字段表、
-  `docs/DEPLOYMENT.md` 的「离线 IP 地名库」与 `src/infrastructure/ip_location.rs` 的单测。
+- 地名库按 IPv4 / IPv6 分别配置（`IP_LOCATION_DB_PATH` 与 `IP_LOCATION_V6_DB_PATH`，
+  各用一个 `Searcher`）：**未设置**时默认 `data/ip2region_v4.xdb` / `data/ip2region_v6.xdb`，
+  **显式写成空白**表示该协议不查库，配置了却加载不了必须启动失败，不得静默降级。
+  库文件不入库（`backend/.gitignore` 排除 `data/*.xdb`），由 `scripts/fetch-ip-database.sh` 下载。
+  修改解析口径要同步 `docs/ADMIN.md` 的字段表、`docs/DEPLOYMENT.md` 的「离线 IP 地名库」
+  与 `src/infrastructure/ip_location.rs` 的单测。
+- `IpLocation::resolve` 的第二个参数控制「本地网段是否单列」：日志采集传 `true`（回环「本机」、
+  RFC1918 私网 / 链路本地 / IPv6 ULA「内网」），属地现查传 `false`（一律查库）。
+  新增调用点必须显式选边，不要默认成其中一种。
 
 ### 10.17 生产部署文档
 
@@ -658,3 +664,15 @@ msrv = "1.99.0"
   锁版本口径；升级按 vendor 目录 `README.md` 的差异表重新套用上游文件。
 - vendor 代码纳入本仓库的格式检查（`cargo fmt --all`）与编译，但不适用本仓库的
   `#![warn(...)]` lint 与覆盖率目标；改动 vendor 代码时不要顺手改它的实现逻辑。
+
+### 10.21 真实 IP 的查看权限
+
+- 日志接口返回的 `ip` 一律经过 `IpVisibility`（`src/util/ip_mask.rs`）打码，**在 handler 返回前完成**，
+  不要在仓储或 domain 里改数据。三档权限码：`monitor:ip:view:full`（完整）、
+  `monitor:ip:view:partial`（IPv4 前两段 / IPv6 前四个 hextet）、都不授予时只留首尾段。
+  多档同时授予时按最高档输出。
+- 打码对本地网段、回环与公网一视同仁，不要为「不是公网」开例外。
+- 属地查询端点只对完全查看档开放，用 `user.require("monitor:ip:view:full")` 落地；
+  新增 IP 返回点（如告警、导出、看板）必须显式选择打码粒度，未授权的字段不得原样透出。
+- 权限码必须同时存在于 `sys_menu`（种子 `MENU_INSERT`）与 `tests/contract_tests.rs` 的端点表；
+  新增档位要同步 `docs/ADMIN.md` 的权限表与前端 `PermissionButton` 的 `perm`。

@@ -9,6 +9,36 @@
 > [AxumServiceScaffold](https://github.com/cherish-ltt/AxumServiceScaffold)。
 > 下方 `0.5.0` 及更早的条目属于上游项目的历史记录，版本号与本项目不连续。
 
+## [0.8.0] - 2026-10-27
+
+IP 相关改动的版本：真实 IP 查看权限分三档并在返回前打码，IP 属地不再入库、改为按需现查并缓存到
+Redis，离线地名库改为下载到 `backend/data/` 且默认启用。发布说明见
+[docs/version/v0.8.0.md](../../docs/version/v0.8.0.md)。
+
+### 新增
+
+- 三档真实 IP 查看权限：`monitor:ip:view:full`（完整地址）、`monitor:ip:view:partial`
+  （保留前两段 / 前四个 hextet）、两者都不授予时只留首尾段；打码在 axum 返回前完成
+  （`src/util/ip_mask.rs`），内网与回环同样打码。
+- `GET /api/v1/monitor/ip-locations?ip=` 与 `POST /api/v1/monitor/ip-locations`：属地现查，
+  只对完全查看档开放；结果缓存到 Redis（`guardian:ip-location:v1:*`，255 条上限 / 3 小时 TTL）。
+- `backend/scripts/fetch-ip-database.sh`：下载 ip2region 的 IPv4 / IPv6 库到 `backend/data/`，
+  支持 `IP_DB_MIRROR` 镜像前缀。
+- `tests/ip_visibility_tests.rs`：三档打码、权限回收、属地端点 403 与「列表不再带 location」的行为覆盖。
+
+### 变更
+
+- `IpLocation::resolve` 增加「本地网段是否单列」开关：日志采集仍区分本机 / 内网，属地现查一律查库。
+- 未配置 `IP_LOCATION_DB_PATH` / `IP_LOCATION_V6_DB_PATH` 时默认使用 `data/ip2region_v4.xdb` /
+  `data/ip2region_v6.xdb`；显式写成空白仍表示不启用。
+- 种子新增「真实 IP 查看」菜单（203）与两个按钮（2031 / 2032），`sys_admin` 默认授权监控目录、
+  该目录与二级查看按钮（`sys_menu` 共 42 条）。
+
+### 移除
+
+- `sys_oper_log` / `sys_login_log` 不再写入 `location` 列，列表、详情与 CSV 导出同步去掉该字段
+  （历史行的原值保留）。
+
 ## [0.7.0] - 2026-10-26
 
 一次以修复为主的版本：后端修掉权限提权、部门移动、种子数据、状态取值、菜单授权、Redis 连接串、

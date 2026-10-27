@@ -89,16 +89,29 @@ src/middleware/audit.rs                       写操作留痕
 
 | 方法 | 路径 | 权限 | 说明 |
 | --- | --- | --- | --- |
-| GET | `/monitor/oper-logs` | `monitor:operlog:list` | 分页列表（`keyword` / `result`） |
+| GET | `/monitor/oper-logs` | `monitor:operlog:list` | 分页列表（`keyword` / `result`），`ip` 按查看权限打码 |
 | GET | `/monitor/oper-logs/stats` | 同上 | 统计卡 + 趋势（`range=24h` 按小时、`7d` / `30d` 按天，缺省桶补零） |
 | GET | `/monitor/oper-logs/timeline` | 同上 | 泳道时间线（同一模块相邻操作合并，间隔超过 900s 断开） |
 | GET | `/monitor/oper-logs/export` | 同上 | `oper-logs.csv` |
 | DELETE | `/monitor/oper-logs/{id}`、`/monitor/oper-logs` | `monitor:operlog:remove` | 删除单条 / 清空 |
-| GET | `/monitor/login-logs` | `monitor:loginlog:list` | 分页列表（`keyword` / `status`） |
+| GET | `/monitor/login-logs` | `monitor:loginlog:list` | 分页列表（`keyword` / `status`），`ip` 按查看权限打码 |
 | GET | `/monitor/login-logs/stats` | 同上 | 统计卡 + 趋势 |
 | GET | `/monitor/login-logs/heatmap` | 同上 | 7×24 热力格与异常告警（`days` 可选，阈值默认 5） |
 | GET | `/monitor/login-logs/export` | 同上 | `login-logs.csv` |
 | DELETE | `/monitor/login-logs/{id}`、`/monitor/login-logs` | `monitor:loginlog:remove` | 删除单条 / 清空 |
+| GET | `/monitor/ip-locations?ip=` | `monitor:ip:view:full` | 单条属地现查，返回 `{ip, location}` |
+| POST | `/monitor/ip-locations` | `monitor:ip:view:full` | 整页批量现查，请求 `{"ips": [...]}`，返回顺序与请求一致 |
+
+真实 IP 的查看粒度由三个按钮级权限码决定，角色在「角色管理」里勾选，只有超级管理员能授权：
+
+| 权限码 | 默认持有 | 列表里的 `ip` |
+| --- | --- | --- |
+| `monitor:ip:view:full` | 超级管理员（`super_admin` 拥有全部菜单） | 完整地址，可使用属地查询 |
+| `monitor:ip:view:partial` | 系统管理员（`sys_admin`，种子默认授权） | `61.135.x.x` / `2001:db8:85a3:0:x:x:x:x` |
+| （都不授予） | 其余角色 | `61.x.x.21` / `2001:x:x:x:x:x:x:7334` |
+
+打码在 axum 返回前完成，库里存的是原始地址；本地网段、回环与公网地址一视同仁。
+属地查询只对完全查看档开放，其余档位返回 403「没有访问权限」。
 
 ### 工作台与代码生成
 
@@ -157,8 +170,9 @@ src/middleware/audit.rs                       写操作留痕
 | --- | --- |
 | `username` / `status` / `msg` | 业务结果：密码错误、账号停用（成功登录前的失败也记录，验证码失败不写） |
 | `ip` | 保护层解析出的真实对端 IP（可信代理命中时取 `X-Forwarded-For` 最右侧的不可信地址） |
-| `location` | 按 `ip` 推导：回环「本机」、私网与链路本地「内网」；其余查离线地名库（`vendor/ip2region`），命中写库里的原始串，未命中写「外网」 |
 | `browser` / `os` | 请求 `User-Agent` 经 `src/util/user_agent.rs`（woothee 规则表）解析出的名称，识别不出时留空 |
+
+`location` 列不再写入（属地改为按需现查，见监控一节），历史行的该列保持原值不动。
 
 `src/api/extractors/client_source.rs` 把来源收成一个提取器：控制器只需声明参数，
 不自己读头或扩展；服务层签名收 `&ClientSource`，会话、验证码与事务边界都不受影响。
