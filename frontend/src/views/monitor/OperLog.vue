@@ -1,15 +1,17 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { Drawer, Field, Metric, SectionLabel, Segmented, Select, Tag, TextInput, type Column } from '@/components/ui'
+import { Button, Drawer, Field, Metric, SectionLabel, Segmented, Select, Tag, TextInput, type Column } from '@/components/ui'
 import { ListPage, PermissionButton } from '@/components/business'
 import TrendChart from '@/components/charts/TrendChart.vue'
 import Swimlane from '@/components/charts/Swimlane.vue'
 import { systemApi, type OperLogStats, type OperTimeline, type StatsRange } from '@/api'
 import { useListPage } from '@/composables/list'
+import { useIpLocation } from '@/composables/ip-location'
 import { confirm } from '@/composables/confirm'
 import { pushToast, toastError } from '@/composables/toast'
 import { revealCascade } from '@/composables/motion'
+import { hasPermission } from '@/directives/permission'
 
 interface OperRow {
   id: number
@@ -20,7 +22,6 @@ interface OperRow {
   method: string
   url: string
   ip?: string
-  location?: string
   params?: string
   result: number
   errorMsg?: string
@@ -50,6 +51,10 @@ const columns: Column[] = [
 
 const RESULTS = [{ label: '全部结果', value: '' }, { label: '成功', value: '1' }, { label: '失败', value: '0' }]
 const METHOD_TONE: Record<string, string> = { GET: 'neutral', POST: 'info', PUT: 'info', DELETE: 'danger' }
+
+// 属地不再随日志下发：来源列的按钮按需现查，表头按钮一次查整页。
+const ipLocation = useIpLocation()
+const canViewFullIp = () => hasPermission('monitor:ip:view:full')
 
 const detail = ref<OperRow | null>(null)
 const detailBody = ref<HTMLElement | null>(null)
@@ -116,6 +121,11 @@ async function batchRemove(ids: (string | number)[]) {
     await list.load()
     reloadAll()
   }
+}
+
+/** 表头按钮：一次查这一页的去重地址。 */
+function locatePage() {
+  ipLocation.locateMany(list.rows.value.map(row => row.ip))
 }
 
 async function clearAll() {
@@ -191,6 +201,10 @@ async function clearAll() {
       </Field>
     </template>
 
+    <template #tools>
+      <PermissionButton perm="monitor:ip:view:full" icon-only icon="search" label="查询整页属地" :loading="ipLocation.pending.value" :disabled="!list.rows.value.length" @click="locatePage" />
+    </template>
+
     <template #batch="{ ids }">
       <PermissionButton perm="monitor:operlog:remove" variant="text" size="sm" danger @click="batchRemove(ids)">删除</PermissionButton>
     </template>
@@ -210,7 +224,9 @@ async function clearAll() {
     <template #cell-ip="{ row }">
       <div>
         <div class="tnum" style="font-size: 12.5px">{{ row.ip || '—' }}</div>
-        <div v-if="row.location" class="cell-sub">{{ row.location }}</div>
+        <div v-if="ipLocation.locationOf(row.ip)" class="cell-sub">{{ ipLocation.locationOf(row.ip) }}</div>
+        <Button v-else-if="canViewFullIp()" variant="text" size="sm" icon="search" :disabled="ipLocation.pending.value" @click="ipLocation.locate(row.ip)">查询属地</Button>
+        <div v-else class="cell-sub faint">无权查看</div>
       </div>
     </template>
     <template #cell-result="{ row }"><Tag :tone="row.result === 1 ? 'ok' : 'danger'" dot>{{ row.result === 1 ? '成功' : '失败' }}</Tag></template>
@@ -227,7 +243,13 @@ async function clearAll() {
           <div class="kv"><div class="kv-label">操作人</div><div class="kv-value">{{ detail.operName }}<span v-if="detail.dept" class="soft"> · {{ detail.dept }}</span></div></div>
           <div class="kv"><div class="kv-label">操作时间</div><div class="kv-value tnum">{{ detail.operTime }}</div></div>
           <div class="kv span-2"><div class="kv-label">请求</div><div class="kv-value mono">{{ detail.method }} {{ detail.url }}</div></div>
-          <div class="kv"><div class="kv-label">来源</div><div class="kv-value tnum">{{ detail.ip || '—' }} {{ detail.location || '' }}</div></div>
+          <div class="kv">
+            <div class="kv-label">来源</div>
+            <div class="kv-value tnum">
+              {{ detail.ip || '—' }}
+              <span v-if="ipLocation.locationOf(detail.ip)" class="soft">{{ ipLocation.locationOf(detail.ip) }}</span>
+            </div>
+          </div>
           <div class="kv"><div class="kv-label">结果 / 耗时</div><div class="kv-value"><Tag :tone="detail.result === 1 ? 'ok' : 'danger'" dot>{{ detail.result === 1 ? '成功' : '失败' }}</Tag> <span class="tnum soft">{{ detail.cost }} ms</span></div></div>
         </div>
         <div class="section-label" style="margin: 20px 0 10px">请求参数</div>

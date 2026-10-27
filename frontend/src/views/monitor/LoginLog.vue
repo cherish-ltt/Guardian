@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import Icon from '@/components/Icon.vue'
-import { Field, Metric, SectionLabel, Segmented, Select, Tag, TextInput, type Column } from '@/components/ui'
+import { Button, Field, Metric, SectionLabel, Segmented, Select, Tag, TextInput, type Column } from '@/components/ui'
 import { ListPage, PermissionButton } from '@/components/business'
 import TrendChart from '@/components/charts/TrendChart.vue'
 import HeatGrid from '@/components/charts/HeatGrid.vue'
@@ -10,10 +10,12 @@ import { systemApi, type LoginHeatmap, type LoginLogStats, type StatsRange } fro
 import { useViewMode } from '@/composables/view'
 import { revealCascade } from '@/composables/motion'
 import { useListPage } from '@/composables/list'
+import { useIpLocation } from '@/composables/ip-location'
+import { hasPermission } from '@/directives/permission'
 import { confirm } from '@/composables/confirm'
 import { pushToast, toastError } from '@/composables/toast'
 
-interface LoginRow { id: number; username: string; status: number; msg?: string; ip?: string; location?: string; browser?: string; os?: string; loginTime: string }
+interface LoginRow { id: number; username: string; status: number; msg?: string; ip?: string; browser?: string; os?: string; loginTime: string }
 
 const list = useListPage<LoginRow, { keyword: string; status: string }>({
   query: { keyword: '', status: '' },
@@ -30,6 +32,13 @@ const columns: Column[] = [
   { key: 'client', title: '客户端' },
   { key: 'loginTime', title: '登录时间', width: 168 },
 ]
+
+// 属地不再随日志下发：来源列的按钮按需现查，表头按钮一次查整页。
+const ipLocation = useIpLocation()
+const canViewFullIp = () => hasPermission('monitor:ip:view:full')
+function locatePage() {
+  ipLocation.locateMany(list.rows.value.map(row => row.ip))
+}
 
 const STATUSES = [{ label: '全部结果', value: '' }, { label: '成功', value: '1' }, { label: '失败', value: '0' }]
 
@@ -195,6 +204,10 @@ async function clearAll() {
       </Field>
     </template>
 
+    <template #tools>
+      <PermissionButton perm="monitor:ip:view:full" icon-only icon="search" label="查询整页属地" :loading="ipLocation.pending.value" :disabled="!list.rows.value.length" @click="locatePage" />
+    </template>
+
     <template #batch="{ ids }">
       <PermissionButton perm="monitor:loginlog:remove" variant="text" size="sm" danger @click="batchRemove(ids)">删除</PermissionButton>
     </template>
@@ -205,7 +218,9 @@ async function clearAll() {
     <template #cell-ip="{ row }">
       <div>
         <div class="tnum" style="font-size: 12.5px">{{ row.ip || '—' }}</div>
-        <div v-if="row.location" class="cell-sub">{{ row.location }}</div>
+        <div v-if="ipLocation.locationOf(row.ip)" class="cell-sub">{{ ipLocation.locationOf(row.ip) }}</div>
+        <Button v-else-if="canViewFullIp()" variant="text" size="sm" icon="search" :disabled="ipLocation.pending.value" @click="ipLocation.locate(row.ip)">查询属地</Button>
+        <div v-else class="cell-sub faint">无权查看</div>
       </div>
     </template>
     <template #cell-client="{ row }"><span class="muted">{{ [row.browser, row.os].filter(Boolean).join(' · ') || '—' }}</span></template>

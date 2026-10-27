@@ -121,6 +121,12 @@ export interface ConfigWriteRequest {
 export type StatsRange = '24h' | '7d' | '30d'
 
 /** 趋势时间桶：bucket 桶标签（HH:00 或 MM-dd）、total 总次数、failed 失败次数 */
+/** 属地现查结果：`location` 为空串表示地址非法或库未收录。 */
+export interface IpLocationItem {
+  ip: string
+  location: string
+}
+
 export interface StatsBucket {
   bucket: string
   total: number
@@ -243,6 +249,11 @@ export function createSystemApi(client: HttpClient) {
       export: (query?: QueryParams) => client.download('/monitor/oper-logs/export', query),
       remove: (id: number | string) => client.delete<void>(`/monitor/oper-logs/${id}`),
       clear: () => client.delete<void>('/monitor/oper-logs'),
+    },
+    // 属地现查：属地不入库，前端按需查询；只有完全查看档可调用，其余返回 403。
+    ipLocations: {
+      locate: (ip: string) => client.get<IpLocationItem>('/monitor/ip-locations', { ip }),
+      locateMany: (ips: string[]) => client.post<IpLocationItem[]>('/monitor/ip-locations', { ips }),
     },
     loginLogs: {
       list: (query?: QueryParams) => client.get<PageResult<Record<string, unknown>>>('/monitor/login-logs', query),
