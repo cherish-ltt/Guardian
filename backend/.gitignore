@@ -22,6 +22,9 @@ Thumbs.db
 *.sqlite
 *.sqlite3
 
+# 离线 IP 地名库：约 48 MiB 且上游每周更新，不入库；用 scripts/fetch-ip-database.sh 下载
+/data/*.xdb
+
 # Python 与其他工具缓存
 .ruff_cache
 .venv
