@@ -41,15 +41,19 @@ impl IpLocation {
     /// 回环「本机」、私网与链路本地「内网」，其余查对应协议的库；库未配置或未命中时「外网」。
     ///
     /// 地名保留库里的原始串（如 `中国|广东省|茂名市|电信|CN`），不裁剪字段。
-    pub fn resolve(&self, ip: Option<&str>) -> Option<String> {
+    /// `label_local` 为 false 时回环与私网也查库：日志地点要标明它们是本机 / 内网，
+    /// 而属地现查只关心「这条地址在哪」。
+    pub fn resolve(&self, ip: Option<&str>, label_local: bool) -> Option<String> {
         let ip = ip.filter(|value| !value.is_empty())?;
         let addr = ip.parse::<IpAddr>().ok()?.to_canonical();
 
-        if addr.is_loopback() {
-            return Some(LOOPBACK.to_string());
-        }
-        if is_lan(addr) {
-            return Some(LAN.to_string());
+        if label_local {
+            if addr.is_loopback() {
+                return Some(LOOPBACK.to_string());
+            }
+            if is_lan(addr) {
+                return Some(LAN.to_string());
+            }
         }
 
         let region = match addr {
@@ -111,12 +115,21 @@ mod tests {
         IpLocation::load(None, None).expect("不配置库文件时应构造成功")
     }
 
+    /// 日志与属地现查共用同一个解析器，只有「本地网段是否单列」的开关不同。
+    fn resolve(location: &IpLocation, ip: Option<&str>) -> Option<String> {
+        location.resolve(ip, true)
+    }
+
     #[test]
     fn local_segments_are_recognized_without_the_database() {
         let location = without_database();
 
         for ip in ["127.0.0.1", "127.0.0.2", "::1", "0:0:0:0:0:0:0:1"] {
-            assert_eq!(location.resolve(Some(ip)).as_deref(), Some("本机"), "{ip}");
+            assert_eq!(
+                resolve(&location, Some(ip)).as_deref(),
+                Some("本机"),
+                "{ip}"
+            );
         }
 
         for ip in [
@@ -129,7 +142,11 @@ mod tests {
             "fe80::1",
             "::ffff:192.168.1.1",
         ] {
-            assert_eq!(location.resolve(Some(ip)).as_deref(), Some("内网"), "{ip}");
+            assert_eq!(
+                resolve(&location, Some(ip)).as_deref(),
+                Some("内网"),
+                "{ip}"
+            );
         }
     }
 
@@ -144,12 +161,16 @@ mod tests {
             "203.0.113.7",
             "2001:db8::1",
         ] {
-            assert_eq!(location.resolve(Some(ip)).as_deref(), Some("外网"), "{ip}");
+            assert_eq!(
+                resolve(&location, Some(ip)).as_deref(),
+                Some("外网"),
+                "{ip}"
+            );
         }
 
-        assert_eq!(location.resolve(None), None);
-        assert_eq!(location.resolve(Some("")), None);
-        assert_eq!(location.resolve(Some("not-an-ip")), None);
+        assert_eq!(resolve(&location, None), None);
+        assert_eq!(resolve(&location, Some("")), None);
+        assert_eq!(resolve(&location, Some("not-an-ip")), None);
     }
 
     #[test]
@@ -157,6 +178,20 @@ mod tests {
         assert!(super::is_region("中国|广东省|茂名市|电信|CN"));
         assert!(!super::is_region(""));
         assert!(!super::is_region("Reserved|Reserved|Reserved|0|0"));
+    }
+
+    /// 属地现查不把本地网段单列：库里没有对应记录时同样退回「外网」。
+    #[test]
+    fn location_lookup_does_not_label_local_segments() {
+        let location = without_database();
+
+        for ip in ["127.0.0.1", "192.168.1.1", "fe80::1"] {
+            assert_eq!(
+                location.resolve(Some(ip), false).as_deref(),
+                Some("外网"),
+                "{ip}"
+            );
+        }
     }
 
     #[test]

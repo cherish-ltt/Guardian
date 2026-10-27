@@ -7,6 +7,7 @@ pub mod dashboard;
 pub mod example;
 pub mod generator;
 pub mod hot_cache;
+pub mod ip_location_cache;
 pub mod monitor;
 pub mod support;
 pub mod system;

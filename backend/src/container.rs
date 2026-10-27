@@ -8,8 +8,8 @@ use crate::{
     domain::services::{
         admin::AdminUseCase, admin_auth::AdminAuthUseCase, audit::OperationLogUseCase,
         auth::AuthUseCase, dashboard::DashboardUseCase, example::ExampleUseCase,
-        generator::GeneratorUseCase, monitor::MonitorUseCase, system::SystemUseCase,
-        transaction::TransferUseCase,
+        generator::GeneratorUseCase, ip_location::IpLocationUseCase, monitor::MonitorUseCase,
+        system::SystemUseCase, transaction::TransferUseCase,
     },
     infrastructure::{
         config::AppConfig,
@@ -26,7 +26,8 @@ use crate::{
     services::{
         admin::AdminService, admin_auth::AdminAuthService, audit::AuditService, auth::AuthService,
         dashboard::DashboardService, example::ExampleService, generator::GeneratorService,
-        monitor::MonitorService, system::SystemService, transaction::TransferService,
+        ip_location_cache::IpLocationService, monitor::MonitorService, system::SystemService,
+        transaction::TransferService,
     },
 };
 
@@ -56,8 +57,10 @@ pub struct Container {
     pub generator_service: Arc<dyn GeneratorUseCase>,
     /// 操作留痕：由审计中间件在写操作后调用。
     pub audit_service: Arc<dyn OperationLogUseCase>,
-    /// 客户端 IP 的地点：登录日志与操作日志的 `location` 列都由它解析。
+    /// 客户端 IP 的地点：离线库查询与属地缓存（按需现查，不落库）。
     pub ip_location: Arc<IpLocation>,
+    /// IP 属地现查：日志页的「查询属地」按钮与整页批量查询走这里。
+    pub ip_location_service: Arc<dyn IpLocationUseCase>,
 }
 
 impl Container {
@@ -65,7 +68,7 @@ impl Container {
     pub async fn bootstrap(config: AppConfig) -> Result<Self> {
         let store: Arc<dyn AuthStore> = Arc::new(RedisAuthStore::connect(&config.redis).await?);
 
-        let cache = Arc::new(RedisCacheStore::connect(&config.redis).await?);
+        let cache: Arc<dyn CacheStore> = Arc::new(RedisCacheStore::connect(&config.redis).await?);
         Self::bootstrap_with_stores(config, store, cache).await
     }
 
@@ -90,6 +93,10 @@ impl Container {
             config.ip_location_db_path.as_deref(),
             config.ip_location_v6_db_path.as_deref(),
         )?);
+        let ip_location_service: Arc<dyn IpLocationUseCase> = Arc::new(IpLocationService::new(
+            ip_location.clone(),
+            Some(cache_store.clone()),
+        ));
 
         let auth_service: Arc<dyn AuthUseCase> = Arc::new(AuthService::new(jwt_service.clone()));
         let example_service: Arc<dyn ExampleUseCase> = Arc::new(ExampleService::new());
@@ -109,7 +116,6 @@ impl Container {
             database.clone(),
             jwt_service.clone(),
             auth_store.clone(),
-            ip_location.clone(),
             account_service.clone(),
         ));
         let admin_service: Arc<dyn AdminUseCase> = Arc::new(AdminService::new(
@@ -147,6 +153,7 @@ impl Container {
             generator_service,
             audit_service,
             ip_location,
+            ip_location_service,
         })
     }
 

@@ -6,6 +6,7 @@ pub mod auth;
 pub mod dashboard;
 pub mod example;
 pub mod generator;
+pub mod ip_location;
 pub mod monitor;
 pub mod system;
 pub mod transaction;

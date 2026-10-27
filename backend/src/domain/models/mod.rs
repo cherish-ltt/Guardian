@@ -5,6 +5,7 @@ pub mod dashboard;
 pub mod example;
 pub mod generator;
 pub mod identity;
+pub mod ip_location;
 pub mod monitor;
 pub mod pagination;
 pub mod system;
