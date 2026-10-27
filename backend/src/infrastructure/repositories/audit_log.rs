@@ -108,7 +108,7 @@ impl AuditLogRepository for SeaOrmAuditLogRepository {
         let (filter, mut values) = oper_filter(keyword, result);
         let sql = format!(
             "SELECT l.id, l.module, l.action, l.request_method, l.request_url, l.request_params, \
-             l.oper_name, l.dept_name, l.ip, l.location, l.cost, l.result, l.error_msg, \
+             l.oper_name, l.dept_name, l.ip, l.cost, l.result, l.error_msg, \
              l.oper_time FROM sys_oper_log l WHERE {filter} \
              ORDER BY l.oper_time DESC, l.id DESC LIMIT ? OFFSET ?"
         );
@@ -127,8 +127,7 @@ impl AuditLogRepository for SeaOrmAuditLogRepository {
                 params: text_or_none(row, "request_params"),
                 oper_name: text_or_none(row, "oper_name"),
                 dept: text_or_none(row, "dept_name"),
-                ip: text_or_none(row, "ip"),
-                location: text_or_none(row, "location"),
+                ip: text_or_none(row, "ip").unwrap_or_default(),
                 cost: super::sql::int(row, "cost"),
                 result: int_or_zero(row, "result"),
                 error_msg: text_or_none(row, "error_msg"),
@@ -164,7 +163,7 @@ impl AuditLogRepository for SeaOrmAuditLogRepository {
     {
         let (filter, mut values) = login_filter(keyword, status);
         let sql = format!(
-            "SELECT l.id, l.username, l.ip, l.location, l.browser, l.os, l.status, l.msg, \
+            "SELECT l.id, l.username, l.ip, l.browser, l.os, l.status, l.msg, \
              l.login_time FROM sys_login_log l WHERE {filter} \
              ORDER BY l.login_time DESC, l.id DESC LIMIT ? OFFSET ?"
         );
@@ -177,8 +176,7 @@ impl AuditLogRepository for SeaOrmAuditLogRepository {
             .map(|row| LoginLogRow {
                 id: int_or_zero(row, "id"),
                 username: text_or_none(row, "username"),
-                ip: text_or_none(row, "ip"),
-                location: text_or_none(row, "location"),
+                ip: text_or_none(row, "ip").unwrap_or_default(),
                 browser: text_or_none(row, "browser"),
                 os: text_or_none(row, "os"),
                 status: int_or_zero(row, "status"),
@@ -195,8 +193,8 @@ impl AuditLogRepository for SeaOrmAuditLogRepository {
         insert(
             db,
             "INSERT INTO sys_oper_log (module, action, request_method, request_url, request_params, \
-             oper_name, dept_name, ip, location, cost, result, error_msg, oper_time) \
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+             oper_name, dept_name, ip, cost, result, error_msg, oper_time) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             vec![
                 entry.module.clone().into(),
                 entry.action.clone().into(),
@@ -206,7 +204,6 @@ impl AuditLogRepository for SeaOrmAuditLogRepository {
                 entry.operator.clone().into(),
                 Option::<String>::None.into(),
                 entry.ip.clone().into(),
-                entry.location.clone().into(),
                 entry.cost_ms.into(),
                 entry.result.into(),
                 entry.error_message.clone().into(),

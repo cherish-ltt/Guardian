@@ -29,8 +29,8 @@ pub struct OperLogRow {
     pub params: Option<String>,
     pub oper_name: Option<String>,
     pub dept: Option<String>,
-    pub ip: Option<String>,
-    pub location: Option<String>,
+    /// 按查看权限打码后的地址；无权限时为固定文案。
+    pub ip: String,
     pub cost: Option<i64>,
     pub result: i64,
     pub error_msg: Option<String>,
@@ -42,8 +42,8 @@ pub struct OperLogRow {
 pub struct LoginLogRow {
     pub id: i64,
     pub username: Option<String>,
-    pub ip: Option<String>,
-    pub location: Option<String>,
+    /// 按查看权限打码后的地址；无权限时为固定文案。
+    pub ip: String,
     pub browser: Option<String>,
     pub os: Option<String>,
     pub status: i64,
@@ -57,8 +57,6 @@ pub struct LoginLogEntry {
     pub username: String,
     pub status: i64,
     pub message: String,
-    /// 由 `IpLocation` 解析：本地网段给出本机 / 内网，公网给出地名。
-    pub location: Option<String>,
     pub source: ClientSource,
 }
 
@@ -72,8 +70,6 @@ pub struct OperationLogEntry {
     pub request_params: Option<String>,
     pub operator: Option<String>,
     pub ip: Option<String>,
-    /// 由 `IpLocation` 解析：本地网段给出本机 / 内网，公网给出地名。
-    pub location: Option<String>,
     pub cost_ms: i64,
     pub result: i64,
     pub error_message: Option<String>,

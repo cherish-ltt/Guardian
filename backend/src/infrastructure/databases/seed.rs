@@ -204,9 +204,11 @@ const STATEMENTS: [(&str, &str); 8] = [
     ("sys_menu", MENU_INSERT),
     (
         "sys_role_menu",
-        "-- 超级管理员拥有全部菜单；其余角色由管理员在「角色管理」中按需授权
+        "-- 超级管理员拥有全部菜单；系统管理员默认拿到二级 IP 查看与它所在的目录，
+         -- 其余角色由管理员在「角色管理」中按需授权
          INSERT OR IGNORE INTO sys_role_menu (role_id, menu_id)
-         SELECT 1, id FROM sys_menu;",
+         SELECT 1, id FROM sys_menu;
+         INSERT OR IGNORE INTO sys_role_menu (role_id, menu_id) VALUES (2, 200), (2, 203), (2, 2032);",
     ),
     (
         "sys_dict_type",
@@ -277,6 +279,9 @@ const MENU_INSERT: &str = "INSERT OR IGNORE INTO sys_menu (id, parent_id, menu_n
          (2011, 201, '清理操作日志', 'btn', '', '', '', 'monitor:operlog:remove', 1, 1, 1, 'system', 'system'),
          (202, 200, '登录日志', 'menu', 'lock', '/monitor/login-log', 'monitor/loginlog/index', 'monitor:loginlog:list', 2, 1, 1, 'system', 'system'),
          (2021, 202, '清理登录日志', 'btn', '', '', '', 'monitor:loginlog:remove', 1, 1, 1, 'system', 'system'),
+         (203, 200, '真实 IP 查看', 'menu', 'lock', '/monitor/ip-visibility', '', '', 3, 1, 1, 'system', 'system'),
+         (2031, 203, '完整地址', 'btn', '', '', '', 'monitor:ip:view:full', 1, 1, 1, 'system', 'system'),
+         (2032, 203, '部分地址', 'btn', '', '', '', 'monitor:ip:view:partial', 2, 1, 1, 'system', 'system'),
          (300, 0, '系统工具', 'dir', 'tool', '/tool', '', '', 4, 1, 1, 'system', 'system'),
          (301, 300, '代码生成', 'menu', 'command', '/tool/generator', 'tool/gen/index', 'tool:gen:list', 1, 1, 1, 'system', 'system');
      -- 代码生成配置初始为空，按需导入当前数据库的真实表。";
@@ -371,9 +376,10 @@ mod tests {
         assert_eq!(count(&database, "sys_dict_type").await, 3);
         assert_eq!(count(&database, "sys_dict_data").await, 7);
         assert_eq!(count(&database, "sys_config").await, 3);
+        // 超级管理员有全部菜单，系统管理员的默认授权另算 3 行。
         assert_eq!(
             count(&database, "sys_role_menu").await,
-            count(&database, "sys_menu").await
+            count(&database, "sys_menu").await + 3
         );
 
         let row = database

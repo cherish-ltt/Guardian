@@ -214,12 +214,11 @@ impl AdminAuthRepository for SeaOrmAdminAuthRepository {
     {
         execute(
             db,
-            "INSERT INTO sys_login_log (username, ip, location, browser, os, status, msg, login_time) \
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO sys_login_log (username, ip, browser, os, status, msg, login_time) \
+             VALUES (?, ?, ?, ?, ?, ?, ?)",
             vec![
                 entry.username.clone().into(),
                 entry.source.ip.clone().into(),
-                entry.location.clone().into(),
                 entry.source.browser.clone().into(),
                 entry.source.os.clone().into(),
                 entry.status.into(),

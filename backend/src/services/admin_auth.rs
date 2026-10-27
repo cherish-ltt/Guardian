@@ -17,7 +17,6 @@ use crate::{
         services::admin_auth::AdminAuthUseCase,
     },
     infrastructure::{
-        ip_location::IpLocation,
         repositories::{
             account::AccountRepository,
             admin_auth::{AdminAuthRepository, SeaOrmAdminAuthRepository},
@@ -41,7 +40,6 @@ pub struct AdminAuthService {
     database: DatabaseConnection,
     jwt_service: Arc<JwtService>,
     auth_store: Arc<dyn AuthStore>,
-    ip_location: Arc<IpLocation>,
     account_service: Arc<super::account::AccountService>,
 }
 
@@ -50,14 +48,12 @@ impl AdminAuthService {
         database: DatabaseConnection,
         jwt_service: Arc<JwtService>,
         auth_store: Arc<dyn AuthStore>,
-        ip_location: Arc<IpLocation>,
         account_service: Arc<super::account::AccountService>,
     ) -> Self {
         Self {
             database,
             jwt_service,
             auth_store,
-            ip_location,
             account_service,
         }
     }
@@ -108,7 +104,6 @@ impl AdminAuthService {
                     username: username.to_string(),
                     status,
                     message: message.to_string(),
-                    location: self.ip_location.resolve(source.ip.as_deref()),
                     source: source.clone(),
                 },
             )
