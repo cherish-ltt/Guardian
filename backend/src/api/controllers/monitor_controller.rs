@@ -7,17 +7,24 @@ use axum::{
 };
 
 use crate::{
-    api::{done, dto::admin::QueryString, extractors::admin_user::AdminUser, ok},
+    api::{
+        done,
+        dto::admin::QueryString,
+        extractors::{admin_user::AdminUser, api_json::ApiJson},
+        ok,
+    },
     container::Container,
     domain::{
         error::AppError,
         models::{
             audit_log::{LoginLogQuery, LoginLogRow, OperLogQuery, OperLogRow},
+            ip_location::{IpLocationBatch, IpLocationItem, IpLocationQuery},
             monitor::{LoginHeatmap, LoginStats, OperStats, OperTimeline},
             pagination::PageResult,
         },
     },
     response::{ApiResponse, csv_attachment},
+    util::ip_mask::{IpVisibility, PERMISSION_FULL},
 };
 
 pub fn router() -> Router<Arc<Container>> {
@@ -44,6 +51,7 @@ pub fn router() -> Router<Arc<Container>> {
             "/monitor/login-logs/{id}",
             axum::routing::delete(delete_login_log),
         )
+        .route("/monitor/ip-locations", get(locate_ip).post(locate_ips))
 }
 
 async fn list_oper_logs(
@@ -53,13 +61,17 @@ async fn list_oper_logs(
 ) -> Result<ApiResponse<PageResult<OperLogRow>>, AppError> {
     user.require("monitor:operlog:list")?;
     let query = QueryString::parse(raw.as_deref());
+    let visibility = IpVisibility::of(|code| user.has_permission(code));
     let rows = container
         .admin_service
-        .list_oper_logs(&OperLogQuery {
-            page: query.page()?,
-            keyword: query.text("keyword"),
-            result: query.int("result")?,
-        })
+        .list_oper_logs(
+            &OperLogQuery {
+                page: query.page()?,
+                keyword: query.text("keyword"),
+                result: query.int("result")?,
+            },
+            visibility,
+        )
         .await?;
 
     Ok(ok(rows))
@@ -138,13 +150,17 @@ async fn list_login_logs(
 ) -> Result<ApiResponse<PageResult<LoginLogRow>>, AppError> {
     user.require("monitor:loginlog:list")?;
     let query = QueryString::parse(raw.as_deref());
+    let visibility = IpVisibility::of(|code| user.has_permission(code));
     let rows = container
         .admin_service
-        .list_login_logs(&LoginLogQuery {
-            page: query.page()?,
-            keyword: query.text("keyword"),
-            status: query.int("status")?,
-        })
+        .list_login_logs(
+            &LoginLogQuery {
+                page: query.page()?,
+                keyword: query.text("keyword"),
+                status: query.int("status")?,
+            },
+            visibility,
+        )
         .await?;
 
     Ok(ok(rows))
@@ -214,4 +230,59 @@ async fn clear_login_logs(
     container.admin_service.clear_login_logs().await?;
 
     Ok(done())
+}
+
+/// 单条属地查询：只有完全查看档可以使用，其余档位一律 403。
+#[cfg_attr(feature = "docs", utoipa::path(
+    get,
+    path = "/api/v1/monitor/ip-locations",
+    tag = "Monitor",
+    params(("ip" = String, Query, description = "待查询的地址")),
+    security(("bearer_auth" = [])),
+    responses(
+        (status = 200, description = "Location of the address"),
+        (status = 403, description = "Only the full visibility level may query")
+    )
+))]
+pub async fn locate_ip(
+    State(container): State<Arc<Container>>,
+    user: AdminUser,
+    RawQuery(raw): RawQuery,
+) -> Result<ApiResponse<IpLocationItem>, AppError> {
+    user.require(PERMISSION_FULL)?;
+    let query = QueryString::parse(raw.as_deref());
+    let item = container
+        .ip_location_service
+        .locate_ip(&IpLocationQuery {
+            ip: query.text("ip"),
+        })
+        .await?;
+
+    Ok(ok(item))
+}
+
+/// 整页批量查询：请求体为 `{ "ips": ["1.2.3.4", ...] }`，返回顺序与请求一致。
+#[cfg_attr(feature = "docs", utoipa::path(
+    post,
+    path = "/api/v1/monitor/ip-locations",
+    tag = "Monitor",
+    request_body = IpLocationBatch,
+    security(("bearer_auth" = [])),
+    responses(
+        (status = 200, description = "Locations of the given addresses"),
+        (status = 403, description = "Only the full visibility level may query")
+    )
+))]
+pub async fn locate_ips(
+    State(container): State<Arc<Container>>,
+    user: AdminUser,
+    ApiJson(batch): ApiJson<IpLocationBatch>,
+) -> Result<ApiResponse<Vec<IpLocationItem>>, AppError> {
+    user.require(PERMISSION_FULL)?;
+    let items = container
+        .ip_location_service
+        .locate_ips(&IpLocationBatch { ips: batch.ips })
+        .await?;
+
+    Ok(ok(items))
 }

@@ -11,7 +11,7 @@ use crate::{
     },
     infrastructure::repositories::audit_log::{AuditLogRepository, SeaOrmAuditLogRepository},
     services::admin::AdminService,
-    util::csv,
+    util::{csv, ip_mask::IpVisibility},
 };
 
 use super::users::EXPORT_LIMIT;
@@ -21,15 +21,19 @@ impl LogAdminUseCase for AdminService {
     async fn list_oper_logs(
         &self,
         query: &OperLogQuery,
+        visibility: IpVisibility,
     ) -> Result<PageResult<OperLogRow>, AppError> {
         let page = Page::from_query(Some(&query.page))?;
         let keyword = query.keyword.as_deref();
         let total = SeaOrmAuditLogRepository
             .count_oper_logs(&self.database, keyword, query.result)
             .await?;
-        let rows = SeaOrmAuditLogRepository
+        let mut rows = SeaOrmAuditLogRepository
             .list_oper_logs(&self.database, keyword, query.result, page)
             .await?;
+        for row in &mut rows {
+            row.ip = visibility.display(Some(row.ip.as_str()));
+        }
 
         Ok(PageResult::new(rows, total, page))
     }
@@ -53,8 +57,7 @@ impl LogAdminUseCase for AdminService {
                     row.params.clone(),
                     row.oper_name.clone(),
                     row.dept.clone(),
-                    row.ip.clone(),
-                    row.location.clone(),
+                    Some(row.ip.clone()),
                     csv::number_cell(row.cost),
                     csv::result_text(Some(row.result)),
                     row.oper_time.clone(),
@@ -73,7 +76,6 @@ impl LogAdminUseCase for AdminService {
                 "操作人",
                 "部门",
                 "IP",
-                "地点",
                 "耗时",
                 "结果",
                 "操作时间",
@@ -106,15 +108,19 @@ impl LogAdminUseCase for AdminService {
     async fn list_login_logs(
         &self,
         query: &LoginLogQuery,
+        visibility: IpVisibility,
     ) -> Result<PageResult<LoginLogRow>, AppError> {
         let page = Page::from_query(Some(&query.page))?;
         let keyword = query.keyword.as_deref();
         let total = SeaOrmAuditLogRepository
             .count_login_logs(&self.database, keyword, query.status)
             .await?;
-        let rows = SeaOrmAuditLogRepository
+        let mut rows = SeaOrmAuditLogRepository
             .list_login_logs(&self.database, keyword, query.status, page)
             .await?;
+        for row in &mut rows {
+            row.ip = visibility.display(Some(row.ip.as_str()));
+        }
 
         Ok(PageResult::new(rows, total, page))
     }
@@ -132,8 +138,7 @@ impl LogAdminUseCase for AdminService {
             .map(|row| {
                 vec![
                     row.username.clone(),
-                    row.ip.clone(),
-                    row.location.clone(),
+                    Some(row.ip.clone()),
                     row.browser.clone(),
                     row.os.clone(),
                     csv::result_text(Some(row.status)),
@@ -147,7 +152,6 @@ impl LogAdminUseCase for AdminService {
             &[
                 "登录账号",
                 "IP",
-                "地点",
                 "浏览器",
                 "系统",
                 "状态",

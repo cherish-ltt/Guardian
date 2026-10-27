@@ -50,7 +50,6 @@ async fn write_operations_are_recorded_with_module_action_and_operator() {
     assert_eq!(row["operName"], "admin");
     assert_eq!(row["dept"], Value::Null, "与 Spring 版一致地不写部门");
     assert_eq!(row["ip"], "127.0.0.1");
-    assert_eq!(row["location"], "本机");
     assert_eq!(row["result"], 1);
     assert_eq!(row["errorMsg"], Value::Null);
     assert!(row["cost"].as_i64().unwrap_or(-1) >= 0);
@@ -309,10 +308,10 @@ async fn login_stats_heatmap_and_exports() {
     )
     .await;
     let login_csv = String::from_utf8(login_csv).expect("CSV");
-    assert!(login_csv.starts_with("登录账号,IP,地点,浏览器,系统,状态,描述,登录时间\n"));
+    assert!(login_csv.starts_with("登录账号,IP,浏览器,系统,状态,描述,登录时间\n"));
     assert!(
-        login_csv.contains("admin,127.0.0.1,本机,,,成功,登录成功,"),
-        "来源 IP 与地点已采集，测试请求不带 User-Agent 时浏览器与系统留空: {login_csv}"
+        login_csv.contains("admin,127.0.0.1,,,成功,登录成功,"),
+        "来源 IP 已采集，测试请求不带 User-Agent 时浏览器与系统留空: {login_csv}"
     );
 
     let (_, _, oper_csv) = send_raw(
@@ -322,7 +321,7 @@ async fn login_stats_heatmap_and_exports() {
     .await;
     let oper_csv = String::from_utf8(oper_csv).expect("CSV");
     assert!(oper_csv.starts_with(
-        "模块,类型,请求方式,请求地址,请求参数,操作人,部门,IP,地点,耗时,结果,操作时间,异常信息\n"
+        "模块,类型,请求方式,请求地址,请求参数,操作人,部门,IP,耗时,结果,操作时间,异常信息\n"
     ));
 
     let (_, logs) = send(
@@ -385,7 +384,7 @@ async fn dashboard_summary_reports_cards_trends_and_activities() {
     assert_eq!(by_key("users")["sub"], "当前启用账号");
     assert_eq!(by_key("users")["tone"], "ok");
     assert_eq!(by_key("users")["up"], true);
-    assert_eq!(by_key("menus")["value"], 39);
+    assert_eq!(by_key("menus")["value"], 42);
     assert_eq!(by_key("menus")["sub"], "目录 / 菜单 / 按钮");
     assert_eq!(by_key("depts")["value"], 11);
     assert_eq!(by_key("online")["value"], 1, "刚刚登录了一个账号");
@@ -489,7 +488,7 @@ async fn oper_log_export_contains_recorded_rows() {
     let csv = String::from_utf8(bytes).expect("CSV 为合法 UTF-8");
     assert_eq!(
         csv.lines().next().expect("表头"),
-        "模块,类型,请求方式,请求地址,请求参数,操作人,部门,IP,地点,耗时,结果,操作时间,异常信息"
+        "模块,类型,请求方式,请求地址,请求参数,操作人,部门,IP,耗时,结果,操作时间,异常信息"
     );
 
     let row = csv
@@ -505,8 +504,8 @@ async fn oper_log_export_contains_recorded_rows() {
         "请求参数按 CSV 规则转义后原样落盘: {row}"
     );
     assert!(
-        row.contains(",admin,,127.0.0.1,本机,"),
-        "操作人已记录；部门留空，IP 与地点取保护层解析出的真实对端: {row}"
+        row.contains(",admin,,127.0.0.1,"),
+        "操作人已记录；部门留空，IP 取保护层解析出的真实对端: {row}"
     );
     assert!(row.contains(",成功,"), "结果列为成功: {row}");
 }
@@ -624,7 +623,6 @@ async fn recorded_client_ip_follows_the_trusted_proxy_chain() {
     assert_eq!(status, StatusCode::OK);
     let row = &logs["data"]["rows"][0];
     assert_eq!(row["ip"], "127.0.0.1", "不可信对端的转发头不能改写来源");
-    assert_eq!(row["location"], "本机");
 
     // 同一条请求在配置了可信代理后按转发头里的真实来源记录。
     let (trusted, trusted_store) =
@@ -653,7 +651,6 @@ async fn recorded_client_ip_follows_the_trusted_proxy_chain() {
     .await;
     let row = &logs["data"]["rows"][0];
     assert_eq!(row["ip"], "10.10.10.10");
-    assert_eq!(row["location"], "内网");
 }
 
 /// 工作台汇总统计的是已落库的操作量：写一次后当天与近 24 小时都能看到。

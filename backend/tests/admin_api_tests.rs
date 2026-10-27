@@ -827,7 +827,8 @@ async fn role_flow_covers_menus_graph_and_guards() {
     .await;
     assert_eq!(
         menus["data"]["menuIds"].as_array().expect("菜单 ID").len(),
-        39
+        42,
+        "含监控下的「真实 IP 查看」目录与两档按钮"
     );
 
     // 不存在的菜单不能写进授权，否则 sys_role_menu 会留下悬空关联。
@@ -1005,7 +1006,7 @@ async fn role_flow_covers_menus_graph_and_guards() {
     );
     assert_eq!(
         graph["data"]["menus"].as_array().expect("菜单节点").len(),
-        39
+        42
     );
     assert_eq!(graph["data"]["userRoles"], json!([[1, 1], [2, 2], [3, 3]]));
 }
@@ -1755,7 +1756,6 @@ async fn login_log_records_success_and_failure() {
     assert_eq!(rows[0]["status"], 1);
     assert_eq!(rows[0]["msg"], "登录成功");
     assert_eq!(rows[0]["ip"], "127.0.0.1");
-    assert_eq!(rows[0]["location"], "本机");
     assert_eq!(
         rows[0]["browser"],
         Value::Null,
@@ -1783,7 +1783,6 @@ async fn login_log_records_trusted_client_source() {
     assert_eq!(row["username"], "admin");
     assert_eq!(row["msg"], "登录成功");
     assert_eq!(row["ip"], "203.0.113.7", "可信代理透传的真实来源");
-    assert_eq!(row["location"], "外网");
     assert_eq!(row["browser"], "Chrome");
     assert_eq!(row["os"], "Windows 10");
 
