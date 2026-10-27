@@ -421,9 +421,8 @@ impl AppConfig {
             ));
         }
 
-        let ip_location_db_path = optional_path("IP_LOCATION_DB_PATH", "data/ip2region_v4.xdb");
-        let ip_location_v6_db_path =
-            optional_path("IP_LOCATION_V6_DB_PATH", "data/ip2region_v6.xdb");
+        let ip_location_db_path = optional_path("IP_LOCATION_DB_PATH");
+        let ip_location_v6_db_path = optional_path("IP_LOCATION_V6_DB_PATH");
 
         let middleware = MiddlewareConfig {
             request_timeout_secs: parse_env_or("MIDDLEWARE_REQUEST_TIMEOUT_SECS", 10_u64)?,
@@ -502,11 +501,8 @@ impl AppConfig {
 ///
 /// 没写这条环境变量时用 `default`（相对路径按启动目录解析）；
 /// 显式写成空白才表示「不启用」。
-fn optional_path(key: &str, default: &str) -> Option<PathBuf> {
-    let value = match std::env::var(key) {
-        Ok(value) => value,
-        Err(_) => default.to_string(),
-    };
+fn optional_path(key: &str) -> Option<PathBuf> {
+    let value = env::var(key).ok()?;
     let value = value.trim();
 
     (!value.is_empty()).then(|| PathBuf::from(value))

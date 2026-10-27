@@ -127,10 +127,10 @@ DATABASE_URL=sqlite://guardian.db?mode=rwc
 REDIS_URL=redis://127.0.0.1:6379
 # 留空表示未设置密码
 REDIS_PASSWORD=
-# 离线地名库，默认 backend/data/ 下；库文件不入库，先跑 scripts/fetch-ip-database.sh
-IP_LOCATION_DB_PATH=data/ip2region_v4.xdb
-# IPv6 地名库，与上一条互相独立；显式留空表示该协议不查库
-IP_LOCATION_V6_DB_PATH=data/ip2region_v6.xdb
+# 留空表示不查 IP 属地，「查询属地」只给出本机 / 内网 / 外网
+IP_LOCATION_DB_PATH=
+# IPv6 地名库，与上一条互相独立；留空则 IPv6 来源同样只区分本机 / 内网 / 外网
+IP_LOCATION_V6_DB_PATH=
 ```
 
 ### 2. 启动服务
@@ -190,7 +190,7 @@ SEED_USERS=ops_admin:运维管理员:ops@example.com:2
 | `sys_oper_log` / `sys_login_log` | 本地联调产生的日志 | 上线前清空 |
 | Redis | `captcha:*`、`auth:token:*`、`auth:user:*` | 切换环境时清空，避免旧会话残留 |
 | `log/` | 本地运行日志 | 不入库，部署时按需清理 |
-| 建议配置 | `.env` 的 `IP_LOCATION_DB_PATH` / `IP_LOCATION_V6_DB_PATH`（默认 `data/` 下的 v4 / v6 库） | 日志页的「查询属地」按钮按需现查；库文件不随仓库分发，先跑 `scripts/fetch-ip-database.sh`，下载与更新见 [生产部署](../docs/DEPLOYMENT.md) |
+| 建议配置 | `.env` 的 `IP_LOCATION_DB_PATH` / `IP_LOCATION_V6_DB_PATH`（默认空） | 配置后日志页的「查询属地」按钮查到具体属地，未配置只区分本机 / 内网 / 外网；库文件不随仓库分发，可跑 `scripts/fetch-ip-database.sh`，下载与更新见 [生产部署](../docs/DEPLOYMENT.md) |
 | 新增权限 | `sys_menu` 的「真实 IP 查看」（ID 203）及其两个按钮（2031 / 2032） | 前端与角色授权的权限码来源；`sys_admin` 默认只授权二级查看（2032），只有超级管理员能改 |
 | `.env` | `MIDDLEWARE_TRUSTED_PROXIES`（默认空） | 部署在反向代理后时必须填写代理 IP/CIDR，否则所有用户共用代理 IP 的额度，日志里的来源也会记成代理地址；不要用 `*`（生产环境会拒绝启动）。各形态的填法见 [生产部署](../docs/DEPLOYMENT.md) |
 

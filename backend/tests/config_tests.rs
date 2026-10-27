@@ -211,15 +211,11 @@ fn valid_config_loads_with_defaults() {
             assert_eq!(config.middleware.client_max_entries, 16384);
             assert_eq!(config.middleware.client_idle_secs, 60);
             assert_eq!(config.middleware.slow_request_ms, 1000);
-            assert_eq!(
-                config.ip_location_db_path.as_deref(),
-                Some(Path::new("data/ip2region_v4.xdb")),
-                "未配置时默认使用仓库内 data/ 下的库文件"
+            assert!(
+                config.ip_location_db_path.is_none(),
+                "未配置时不查库，地点只区分本机 / 内网 / 外网"
             );
-            assert_eq!(
-                config.ip_location_v6_db_path.as_deref(),
-                Some(Path::new("data/ip2region_v6.xdb"))
-            );
+            assert!(config.ip_location_v6_db_path.is_none());
         },
     );
 }

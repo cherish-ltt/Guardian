@@ -604,9 +604,9 @@ msrv = "1.99.0"
 - 禁止把 `User-Agent` 原样或版本号写入日志列；`Column` 名称级的解析结果在
   `tests/admin_api_tests.rs` 与 `tests/monitor_api_tests.rs` 各有一条断言，
   调整采集字段或解析规则时同步这两处。
-- 地名库按 IPv4 / IPv6 分别配置（`IP_LOCATION_DB_PATH` 与 `IP_LOCATION_V6_DB_PATH`，
-  各用一个 `Searcher`）：**未设置**时默认 `data/ip2region_v4.xdb` / `data/ip2region_v6.xdb`，
-  **显式写成空白**表示该协议不查库，配置了却加载不了必须启动失败，不得静默降级。
+- 地名库是**可选**的：`IP_LOCATION_DB_PATH` 留空时不查库（属地只有本机 / 内网 / 外网三档），
+  配置了却加载不了必须启动失败，不得静默降级。库按 IPv4 / IPv6 分别配置（`IP_LOCATION_DB_PATH` 与
+  `IP_LOCATION_V6_DB_PATH`，各用一个 `Searcher`），两个都可留空，**不得设置任何默认路径**。
   库文件不入库（`backend/.gitignore` 排除 `data/*.xdb`），由 `scripts/fetch-ip-database.sh` 下载。
   修改解析口径要同步 `docs/ADMIN.md` 的字段表、`docs/DEPLOYMENT.md` 的「离线 IP 地名库」
   与 `src/infrastructure/ip_location.rs` 的单测。

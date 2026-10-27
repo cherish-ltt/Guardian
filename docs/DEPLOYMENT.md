@@ -214,10 +214,10 @@ IP 属地**不入库**：日志页的「查询属地」按钮（单条）与表�
 记「内网」，其余查库。库命中时返回**库里的原始串**，如 `中国|广东省|茂名市|电信|CN`、
 `United States|California|0|Google LLC|US`；未收录或落在保留地址段时返回「外网」。
 
-库文件不随仓库分发（v4 约 10.6 MiB、v6 约 35.6 MiB，且上游每周更新），克隆后下载一次：
+库文件不随仓库分发（v4 约 10.6 MiB、v6 约 35.6 MiB，且上游每周更新），需要属地时下载一次：
 
 ```bash
-# 默认落到 backend/data/，与 .env-example 的默认路径一致
+# 默认落到 backend/data/，下载后在 .env 里指向这两个文件
 backend/scripts/fetch-ip-database.sh
 
 # 国内网络走镜像前缀
@@ -226,8 +226,6 @@ IP_DB_MIRROR=https://proxyhub.520350.xyz/ backend/scripts/fetch-ip-database.sh
 ls -l backend/data/ip2region_v*.xdb
 ```
 
-部署到其它目录时改写两个路径即可：
-
 ```env
 IP_LOCATION_DB_PATH=/var/lib/guardian/ip2region_v4.xdb
 IP_LOCATION_V6_DB_PATH=/var/lib/guardian/ip2region_v6.xdb
@@ -235,9 +233,9 @@ IP_LOCATION_V6_DB_PATH=/var/lib/guardian/ip2region_v6.xdb
 
 - 解析实现是 vendored 的官方 Rust 客户端（`backend/vendor/ip2region`，锁在提交 `1bf6cab`），
   IPv4 与 IPv6 各用一个库文件，两个路径互相独立。
-- **不写这两个变量**：用 `data/` 下的默认路径（相对 backend 启动目录）。
-- **显式留空**：该协议不查库，属地一律返回「外网」。只配其中一个时另一个协议的地址同样返回
-  「外网」，不会回落到另一个库（库头记录的 IP 版本不匹配时查询直接报错）。
+- **留空**（不写或写成空白）：该协议不查库，属地一律返回「外网」，只区分本机 / 内网 / 外网。
+  只配其中一个时另一个协议的地址同样返回「外网」，不会回落到另一个库
+  （库头记录的 IP 版本不匹配时查询直接报错）。
 - **配了却不可用**（文件不存在、不是合法 xdb、库的 IP 版本与配置的变量不符）：启动直接失败，
   不会静默降级。
 - **更新库**：替换文件后重启进程。查询按需读文件（只缓存索引），替换文件不重启会读到不一致的内容。

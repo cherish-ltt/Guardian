@@ -12,7 +12,7 @@
 ## [0.8.0] - 2026-10-27
 
 IP 相关改动的版本：真实 IP 查看权限分三档并在返回前打码，IP 属地不再入库、改为按需现查并缓存到
-Redis，离线地名库改为下载到 `backend/data/` 且默认启用。发布说明见
+Redis。离线地名库仍为可选配置（留空只区分本机 / 内网 / 外网）。发布说明见
 [docs/version/v0.8.0.md](../../docs/version/v0.8.0.md)。
 
 ### 新增
@@ -29,8 +29,7 @@ Redis，离线地名库改为下载到 `backend/data/` 且默认启用。发布�
 ### 变更
 
 - `IpLocation::resolve` 增加「本地网段是否单列」开关：日志采集仍区分本机 / 内网，属地现查一律查库。
-- 未配置 `IP_LOCATION_DB_PATH` / `IP_LOCATION_V6_DB_PATH` 时默认使用 `data/ip2region_v4.xdb` /
-  `data/ip2region_v6.xdb`；显式写成空白仍表示不启用。
+- 地名库路径仍由 `.env` 显式配置（留空即不查库），新增下载脚本便于把库放到 `backend/data/`。
 - 种子新增「真实 IP 查看」菜单（203）与两个按钮（2031 / 2032），`sys_admin` 默认授权监控目录、
   该目录与二级查看按钮（`sys_menu` 共 42 条）。
 
