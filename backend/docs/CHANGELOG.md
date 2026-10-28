@@ -9,6 +9,16 @@
 > [AxumServiceScaffold](https://github.com/cherish-ltt/AxumServiceScaffold)。
 > 下方 `0.5.0` 及更早的条目属于上游项目的历史记录，版本号与本项目不连续。
 
+## [未发布]
+
+### 修复
+
+- **属地现查不再把本机与内网算成「外网」**：`IpLocation` 新增 `local_label` 统一判定回环与内网，
+  `IpLocationService` 先用它给出「本机」「内网」，未配置地名库时这类地址同样落在三档里的前两档
+  （此前 `resolve(.., false)` 一路查库，查不到就退回「外网」）。
+- 属地缓存键前缀升到 `guardian:ip-location:v2`：`v1` 里被记成「外网」的本地网段不再命中；
+  本地网段不查库，也不占缓存条目。
+
 ## [0.8.0] - 2026-10-27
 
 IP 相关改动的版本：真实 IP 查看权限分三档并在返回前打码，IP 属地不再入库、改为按需现查并缓存到

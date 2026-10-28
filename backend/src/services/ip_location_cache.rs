@@ -4,12 +4,18 @@
 //! 缓存落在 Redis（与基础数据缓存共用连接），条目上限 [`MAX_ENTRIES`] 条、
 //! 有效期 [`TTL_SECS`] 秒，库文件更新后最迟一个有效期即全部失效；
 //! Redis 不可用时退回每次现查，不因缓存故障挡住查询。
+//!
+//! 回环与内网不查库，直接给「本机」「内网」：没有库文件时它们同样要落在这两档，
+//! 不能因为查不到记录就算成外网。
 
 use std::sync::Arc;
 
 use crate::{
     domain::models::ip_location::IpLocationItem,
-    infrastructure::{ip_location::IpLocation, services::cache_store::CacheStore},
+    infrastructure::{
+        ip_location::{IpLocation, local_label},
+        services::cache_store::CacheStore,
+    },
 };
 
 /// 缓存条目上限：`0` 表示不缓存，超出后不再写入新地址（已缓存的仍可命中）。
@@ -18,7 +24,8 @@ pub const MAX_ENTRIES: usize = 255;
 /// 缓存有效期（秒）。
 pub const TTL_SECS: u64 = 3 * 60 * 60;
 
-const KEY_PREFIX: &str = "guardian:ip-location:v1";
+/// v2 起本地网段不再落「外网」，v1 里这类旧值不得继续命中。
+const KEY_PREFIX: &str = "guardian:ip-location:v2";
 
 pub struct IpLocationService {
     location: Arc<IpLocation>,
@@ -48,8 +55,11 @@ impl IpLocationService {
     }
 
     async fn lookup_one(&self, ip: &str) -> String {
-        if ip.is_empty() {
+        let Ok(addr) = ip.parse::<std::net::IpAddr>() else {
             return String::new();
+        };
+        if let Some(label) = local_label(addr) {
+            return label.to_string();
         }
         let key = cache_key(ip);
         if let Some(cached) = self.cached(&key).await {
@@ -213,8 +223,29 @@ mod tests {
     async fn without_a_store_every_lookup_hits_the_database() {
         let service = service_with(None);
 
-        let items = service.lookup(&["127.0.0.1".to_string()]).await;
+        let items = service.lookup(&["8.8.8.8".to_string()]).await;
 
-        assert_eq!(items[0].location, "外网", "属地现查不单列本地网段");
+        assert_eq!(items[0].location, "外网");
+    }
+
+    /// 没有库文件时本地网段也必须落回三档里的前两档，而不是一律外网。
+    #[tokio::test]
+    async fn local_networks_are_labelled_without_the_database() {
+        let store = std::sync::Arc::new(RecordingStore::default());
+        let service = service_with(Some(store.clone()));
+
+        let items = service
+            .lookup(&[
+                "127.0.0.1".to_string(),
+                "::1".to_string(),
+                "192.168.1.1".to_string(),
+                "fe80::1".to_string(),
+            ])
+            .await;
+
+        let locations: Vec<&str> = items.iter().map(|item| item.location.as_str()).collect();
+        assert_eq!(locations, ["本机", "本机", "内网", "内网"]);
+        // 本地网段不查库，也就不占缓存条目。
+        assert!(store.entries.lock().expect("读取缓存").is_empty());
     }
 }

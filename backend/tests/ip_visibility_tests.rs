@@ -141,15 +141,18 @@ async fn only_the_full_level_may_query_the_location() {
         post_json_with_bearer(
             "/api/v1/monitor/ip-locations",
             &admin,
-            json!({ "ips": [FORWARDED_FOR, "127.0.0.1"] }),
+            json!({ "ips": [FORWARDED_FOR, "127.0.0.1", "192.168.1.1"] }),
         ),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{batch}");
     let items = batch["data"].as_array().expect("批量结果");
-    assert_eq!(items.len(), 2);
+    assert_eq!(items.len(), 3);
     assert_eq!(items[0]["ip"], FORWARDED_FOR);
     assert_eq!(items[1]["ip"], "127.0.0.1");
+    // 未配置地名库时本地网段也要落在三档里的前两档，不能算外网。
+    assert_eq!(items[1]["location"], "本机");
+    assert_eq!(items[2]["location"], "内网");
 
     for (method, request) in [
         (

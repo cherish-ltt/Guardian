@@ -41,8 +41,8 @@ impl IpLocation {
     /// 回环「本机」、私网与链路本地「内网」，其余查对应协议的库；库未配置或未命中时「外网」。
     ///
     /// 地名保留库里的原始串（如 `中国|广东省|茂名市|电信|CN`），不裁剪字段。
-    /// `label_local` 为 false 时回环与私网也查库：日志地点要标明它们是本机 / 内网，
-    /// 而属地现查只关心「这条地址在哪」。
+    /// `label_local` 为 false 时回环与私网也查库；调用方要保证本地网段不落成「外网」，
+    /// 用 [`local_label`] 先判定（属地现查即如此）。
     pub fn resolve(&self, ip: Option<&str>, label_local: bool) -> Option<String> {
         let ip = ip.filter(|value| !value.is_empty())?;
         let addr = ip.parse::<IpAddr>().ok()?.to_canonical();
@@ -98,6 +98,16 @@ fn is_lan(addr: IpAddr) -> bool {
         IpAddr::V4(addr) => addr.is_private() || addr.is_link_local(),
         IpAddr::V6(addr) => addr.is_unique_local() || addr.is_unicast_link_local(),
     }
+}
+
+/// 本地网段无需查库：没有库文件时它们同样要落回「本机」与「内网」，
+/// 否则日志与属地现查会把这些地址一律算成外网。
+pub fn local_label(addr: IpAddr) -> Option<&'static str> {
+    if addr.is_loopback() {
+        return Some(LOOPBACK);
+    }
+
+    is_lan(addr).then_some(LAN)
 }
 
 /// 库对未收录的地址返回空串，对保留地址段返回 `Reserved|...`，两者都不是地名。
@@ -180,18 +190,24 @@ mod tests {
         assert!(!super::is_region("Reserved|Reserved|Reserved|0|0"));
     }
 
-    /// 属地现查不把本地网段单列：库里没有对应记录时同样退回「外网」。
+    /// 属地现查一律查库，但本地网段由调用方先按 [`super::local_label`] 给出三档结论；
+    /// 没有库文件时它们不能落成「外网」。
     #[test]
-    fn location_lookup_does_not_label_local_segments() {
+    fn location_lookup_labels_local_segments_before_the_database() {
         let location = without_database();
 
-        for ip in ["127.0.0.1", "192.168.1.1", "fe80::1"] {
-            assert_eq!(
-                location.resolve(Some(ip), false).as_deref(),
-                Some("外网"),
-                "{ip}"
-            );
+        for (ip, expected) in [
+            ("127.0.0.1", "本机"),
+            ("192.168.1.1", "内网"),
+            ("fe80::1", "内网"),
+        ] {
+            let addr = ip.parse().expect("合法地址");
+            assert_eq!(super::local_label(addr), Some(expected), "{ip}");
         }
+        assert_eq!(
+            location.resolve(Some("8.8.8.8"), false).as_deref(),
+            Some("外网")
+        );
     }
 
     #[test]

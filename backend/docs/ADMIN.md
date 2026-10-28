@@ -102,6 +102,9 @@ src/middleware/audit.rs                       写操作留痕
 | GET | `/monitor/ip-locations?ip=` | `monitor:ip:view:full` | 单条属地现查，返回 `{ip, location}` |
 | POST | `/monitor/ip-locations` | `monitor:ip:view:full` | 整页批量现查，请求 `{"ips": [...]}`，返回顺序与请求一致 |
 
+`location` 的取值与日志地点同口径：回环「本机」、RFC1918 私网 / 链路本地 / IPv6 ULA「内网」
+（这两档不查库，未配置地名库时同样成立），其余查库，库未命中或落在保留地址段为「外网」。
+
 真实 IP 的查看粒度由三个按钮级权限码决定，角色在「角色管理」里勾选，只有超级管理员能授权：
 
 | 权限码 | 默认持有 | 列表里的 `ip` |
