@@ -110,7 +110,7 @@ async fn update(
     user.require("system:user:edit")?;
     container
         .admin_service
-        .update_user(id, command, user.username(), user.is_super_admin())
+        .update_user(id, command, user.username())
         .await?;
 
     Ok(done())
