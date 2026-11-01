@@ -31,6 +31,7 @@ pub struct GenColumnRow {
     pub required: bool,
     /// 数据库列是否允许 NULL：生成物用 `Option<T>` 表示可空列。
     pub nullable: bool,
+    pub primary_key: bool,
 }
 
 /// 可导入的数据库表：`imported` 表示已导入过生成配置。
@@ -99,6 +100,8 @@ pub struct DatabaseColumn {
     /// `YES` / `NO`，与 MySQL `information_schema.columns.is_nullable` 语义一致。
     pub nullable: String,
     pub sort: i64,
+    pub primary_key: bool,
+    pub indexed_primary_key: bool,
 }
 
 /// 新导入的表：类名、模块与业务名由表名推导后一次传入。
@@ -129,6 +132,7 @@ pub struct NewGenColumn {
     pub form_type: String,
     pub required: i64,
     pub nullable: i64,
+    pub primary_key: i64,
     pub sort: i64,
 }
 

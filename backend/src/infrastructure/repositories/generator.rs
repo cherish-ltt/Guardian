@@ -201,8 +201,10 @@ impl GeneratorRepository for SeaOrmGeneratorRepository {
         let rows = query_all(
             db,
             "SELECT p.name AS column_name, p.type AS column_type, p.\"notnull\" AS not_null, \
-             p.cid AS sort FROM pragma_table_info(?) p ORDER BY p.cid",
-            vec![table_name.into()],
+             p.cid AS sort, p.pk AS primary_key, \
+             EXISTS(SELECT 1 FROM pragma_index_list(?) WHERE origin = 'pk') AS indexed_primary_key \
+             FROM pragma_table_info(?) p ORDER BY p.cid",
+            vec![table_name.into(), table_name.into()],
         )
         .await?;
 
@@ -222,6 +224,8 @@ impl GeneratorRepository for SeaOrmGeneratorRepository {
                         "YES".to_string()
                     },
                     sort: int_or_zero(row, "sort"),
+                    primary_key: int_or_zero(row, "primary_key") > 0,
+                    indexed_primary_key: int_or_zero(row, "indexed_primary_key") == 1,
                 }
             })
             .collect())
@@ -275,7 +279,7 @@ impl GeneratorRepository for SeaOrmGeneratorRepository {
             db,
             "INSERT INTO gen_table_column (table_id, column_name, rust_field, rust_type, jdbc_type, \
              column_comment, is_insert, is_edit, is_list, is_query, query_type, form_type, required, \
-             nullable, sort) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+             nullable, primary_key, sort) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             vec![
                 column.table_id.into(),
                 column.column_name.clone().into(),
@@ -291,6 +295,7 @@ impl GeneratorRepository for SeaOrmGeneratorRepository {
                 column.form_type.clone().into(),
                 column.required.into(),
                 column.nullable.into(),
+                column.primary_key.into(),
                 column.sort.into(),
             ],
         )
@@ -329,7 +334,7 @@ impl GeneratorRepository for SeaOrmGeneratorRepository {
         let rows = query_all(
             db,
             "SELECT id, column_name, rust_field, rust_type, jdbc_type, column_comment, is_insert, \
-             is_edit, is_list, is_query, query_type, form_type, required, nullable \
+             is_edit, is_list, is_query, query_type, form_type, required, nullable, primary_key \
              FROM gen_table_column WHERE table_id = ? ORDER BY sort, id",
             vec![table_id.into()],
         )
@@ -352,6 +357,7 @@ impl GeneratorRepository for SeaOrmGeneratorRepository {
                 form_type: text(row, "form_type").unwrap_or_default(),
                 required: int_or_zero(row, "required") == 1,
                 nullable: int_or_zero(row, "nullable") == 1,
+                primary_key: int_or_zero(row, "primary_key") == 1,
             })
             .collect())
     }

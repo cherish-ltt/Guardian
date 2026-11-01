@@ -25,7 +25,7 @@ use crate::{
 /// 预览里默认展开的文件：实体对应的 Controller。
 /// 控制器产物路径：默认展开它，预览与下载文件名都从这里取。
 const ACTIVE_FILE_PATH: &str = "backend/src/api/controllers";
-/// 主键列名：`id` 列不参与新增 / 编辑 / 列表展示。
+/// 页面没有可展示列时使用的默认字段名。
 const PRIMARY_COLUMN: &str = "id";
 
 pub struct GeneratorService {
@@ -49,6 +49,25 @@ impl GeneratorService {
             .columns(&self.database, table.id)
             .await?;
 
+        let database_columns = SeaOrmGeneratorRepository
+            .database_columns(&self.database, &table.table_name)
+            .await?;
+        validate_primary_key(&table.table_name, &database_columns)?;
+        if columns
+            .iter()
+            .filter(|column| column.primary_key)
+            .map(|column| &column.col)
+            .collect::<Vec<_>>()
+            != database_columns
+                .iter()
+                .filter(|column| column.primary_key)
+                .map(|column| &column.column_name)
+                .collect::<Vec<_>>()
+        {
+            return Err(AppError::business(
+                "生成配置与数据库主键不一致，请检查数据库表和生成配置",
+            ));
+        }
         Ok(render_files(table, &columns))
     }
 
@@ -105,6 +124,10 @@ impl GeneratorUseCase for GeneratorService {
                     else {
                         return Err(AppError::business(format!("数据库表不存在：{table_name}")));
                     };
+                    let columns = repository
+                        .database_columns(transaction, &table_name)
+                        .await?;
+                    validate_primary_key(&table_name, &columns)?;
                     if let Some(existing) = repository
                         .table_id_by_name(transaction, &table_name)
                         .await?
@@ -126,10 +149,7 @@ impl GeneratorUseCase for GeneratorService {
                             },
                         )
                         .await?;
-                    for column in repository
-                        .database_columns(transaction, &table_name)
-                        .await?
-                    {
+                    for column in columns {
                         repository
                             .insert_column(transaction, &column_row(table_id, &column))
                             .await?;
@@ -192,6 +212,7 @@ impl GeneratorUseCase for GeneratorService {
 
     async fn generate(&self, table_id: i64) -> Result<GenGenerateResult, AppError> {
         let table = self.table_detail(table_id).await?;
+        self.rendered_files(&table).await?;
 
         Ok(GenGenerateResult {
             table_name: table.table_name,
@@ -224,9 +245,22 @@ impl GeneratorUseCase for GeneratorService {
     }
 }
 
+fn validate_primary_key(table_name: &str, columns: &[DatabaseColumn]) -> Result<(), AppError> {
+    let primary: Vec<_> = columns.iter().filter(|column| column.primary_key).collect();
+    if primary.len() != 1
+        || !primary[0].column_type.eq_ignore_ascii_case("INTEGER")
+        || primary[0].indexed_primary_key
+    {
+        return Err(AppError::business(format!(
+            "表 {table_name} 仅支持单列 INTEGER 行号主键"
+        )));
+    }
+    Ok(())
+}
+
 /// 数据库列 → 生成配置行：主键不进表单与列表，名称/编码/状态/类型默认作为查询条件。
 fn column_row(table_id: i64, column: &DatabaseColumn) -> NewGenColumn {
-    let primary_like = column.column_name == PRIMARY_COLUMN;
+    let primary_like = column.primary_key;
     let query_field = query_field(&column.column_name);
 
     NewGenColumn {
@@ -244,6 +278,7 @@ fn column_row(table_id: i64, column: &DatabaseColumn) -> NewGenColumn {
         form_type: form_type(&column.data_type).to_string(),
         required: i64::from(column.nullable == "NO" && !primary_like),
         nullable: i64::from(column.nullable == "YES" && !primary_like),
+        primary_key: i64::from(primary_like),
         sort: column.sort,
     }
 }
@@ -319,7 +354,7 @@ fn entity_code(table_name: &str, columns: &[GenColumnRow]) -> String {
         {
             fields.push_str(&format!("    /// {comment}\n"));
         }
-        if column.col == PRIMARY_COLUMN {
+        if column.primary_key {
             fields.push_str("    #[sea_orm(primary_key)]\n");
         }
         fields.push_str(&format!(
@@ -354,7 +389,7 @@ fn domain_model_code(class_name: &str, columns: &[GenColumnRow]) -> String {
         .collect::<String>();
     let command_fields = columns
         .iter()
-        .filter(|column| column.col != PRIMARY_COLUMN)
+        .filter(|column| !column.primary_key)
         .map(|column| {
             format!(
                 "    pub {}: Option<{}>,\n",
@@ -423,7 +458,7 @@ fn repository_code(
     };
     let order = columns
         .iter()
-        .find(|column| column.col == PRIMARY_COLUMN)
+        .find(|column| column.primary_key)
         .map_or_else(|| "1".to_string(), |column| column.col.clone());
     let row_build = columns
         .iter()
@@ -694,7 +729,7 @@ fn readme_code(module: &str, class_name: &str, table_name: &str, business: &str)
 fn row_value_of(column: &GenColumnRow) -> String {
     let name = &column.rust_field;
     // 主键恒非空：SQLite 的 `pragma_table_info` 对 INTEGER PRIMARY KEY 报 notnull=0。
-    let nullable = column.nullable && column.col != PRIMARY_COLUMN;
+    let nullable = column.nullable && !column.primary_key;
     match (column.rust_type.as_str(), nullable) {
         ("i64", false) => format!("int_or_zero(row, \"{name}\")"),
         ("i64", true) => format!("int(row, \"{name}\")"),
@@ -709,7 +744,7 @@ fn row_value_of(column: &GenColumnRow) -> String {
 
 /// 列表行与实体里的字段类型：可空列包一层 `Option`，与数据库的 NULL 语义对齐。
 fn rust_field_type(column: &GenColumnRow) -> String {
-    if column.nullable && column.col != PRIMARY_COLUMN {
+    if column.nullable && !column.primary_key {
         format!("Option<{}>", column.rust_type)
     } else {
         column.rust_type.clone()
@@ -804,6 +839,8 @@ mod tests {
             column_comment: None,
             nullable: nullable.to_string(),
             sort,
+            primary_key: name == "id",
+            indexed_primary_key: false,
         }
     }
 
@@ -823,6 +860,7 @@ mod tests {
             form_type: "文本框".to_string(),
             required: true,
             nullable: false,
+            primary_key: name == "id",
         }
     }
 

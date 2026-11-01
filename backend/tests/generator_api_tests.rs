@@ -5,6 +5,7 @@ mod support;
 use std::io::{Cursor, Read};
 
 use axum::http::StatusCode;
+use sea_orm::ConnectionTrait;
 use serde_json::json;
 use zip::ZipArchive;
 
@@ -579,4 +580,200 @@ async fn generate_and_download_returns_zip_with_every_file() {
     .await;
     assert_eq!(status, StatusCode::METHOD_NOT_ALLOWED);
     assert_eq!(body["message"], "不支持的请求方法: DELETE");
+}
+
+#[tokio::test]
+async fn generator_checks_actual_primary_keys_and_compiles_entities() {
+    let (app, store, container) = setup_app_with_container().await;
+    let token = admin_token(&app, store.as_ref()).await;
+    for sql in [
+        "CREATE TABLE pk_standard (id INTEGER PRIMARY KEY, label TEXT NOT NULL)",
+        "CREATE TABLE pk_named (device_id INTEGER PRIMARY KEY, id TEXT)",
+        "CREATE TABLE pk_text (code TEXT PRIMARY KEY)",
+        "CREATE TABLE pk_composite (a INTEGER, b INTEGER, PRIMARY KEY (a, b))",
+        "CREATE TABLE pk_missing (name TEXT)",
+        "CREATE TABLE pk_without_rowid (id INTEGER PRIMARY KEY) WITHOUT ROWID",
+        "CREATE TABLE pk_desc (id INTEGER PRIMARY KEY DESC)",
+    ] {
+        container
+            .database
+            .execute_unprepared(sql)
+            .await
+            .expect("创建测试表");
+    }
+    let mut generated = String::new();
+    let mut named_id = 0;
+    for (table, field) in [("pk_standard", "id"), ("pk_named", "device_id")] {
+        let (status, body) = send(
+            app.clone(),
+            post_json_with_bearer(
+                "/api/v1/tool/generator/import",
+                &token,
+                json!({"tableNames": [table]}),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        let id = body["data"]["ids"][0].as_i64().expect("配置 ID");
+        let (status, preview) = send(
+            app.clone(),
+            get_with_bearer(
+                &format!("/api/v1/tool/generator/tables/{id}/preview"),
+                &token,
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{preview}");
+        let files = preview["data"]["files"].as_array().expect("生成文件");
+        let entity = files[0]["code"].as_str().expect("实体");
+        assert!(entity.contains(&format!("#[sea_orm(primary_key)]\n    pub {field}: i64,")));
+        if table == "pk_named" {
+            named_id = id;
+            assert!(entity.contains("pub id: Option<String>"));
+        }
+        generated.push_str(&format!("mod {table} {{\n{entity}\n}}\n"));
+    }
+    for table in [
+        "pk_text",
+        "pk_composite",
+        "pk_missing",
+        "pk_without_rowid",
+        "pk_desc",
+    ] {
+        let (status, body) = send(
+            app.clone(),
+            post_json_with_bearer(
+                "/api/v1/tool/generator/import",
+                &token,
+                json!({"tableNames": [table]}),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+        assert!(
+            body["message"]
+                .as_str()
+                .expect("错误信息")
+                .contains("单列 INTEGER 行号主键")
+        );
+    }
+    let (_, page) = send(
+        app.clone(),
+        get_with_bearer("/api/v1/tool/generator/tables", &token),
+    )
+    .await;
+    assert_eq!(page["data"]["total"], 2);
+    let (status, _) = send(
+        app.clone(),
+        post_json_with_bearer(
+            "/api/v1/tool/generator/import",
+            &token,
+            json!({"tableNames": ["sys_post", "pk_text"]}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let (_, page) = send(
+        app.clone(),
+        get_with_bearer("/api/v1/tool/generator/tables", &token),
+    )
+    .await;
+    assert_eq!(page["data"]["total"], 2, "批量导入失败时必须回滚");
+    container
+        .database
+        .execute_unprepared("DROP TABLE pk_named")
+        .await
+        .expect("删除表");
+    container
+        .database
+        .execute_unprepared("CREATE TABLE pk_named (other_id INTEGER PRIMARY KEY)")
+        .await
+        .expect("更换主键");
+    let (status, _) = send(
+        app.clone(),
+        get_with_bearer(
+            &format!("/api/v1/tool/generator/tables/{named_id}/preview"),
+            &token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let (status, _) = send(
+        app,
+        post_json_with_bearer(
+            &format!("/api/v1/tool/generator/tables/{named_id}/generate"),
+            &token,
+            json!({}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    let deps = std::env::current_exe()
+        .expect("测试程序路径")
+        .parent()
+        .expect("依赖目录")
+        .to_path_buf();
+    let library = std::fs::read_dir(&deps)
+        .expect("依赖目录")
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with("libsea_orm-") && name.ends_with(".rlib"))
+        })
+        .max_by_key(|path| path.metadata().and_then(|meta| meta.modified()).ok())
+        .expect("SeaORM 编译产物");
+    let dir = std::env::temp_dir().join(format!("guardian-generator-{}", uuid::Uuid::now_v7()));
+    std::fs::create_dir(&dir).expect("临时目录");
+    let source = dir.join("generated.rs");
+    std::fs::write(&source, generated).expect("保存生成实体");
+    let result = std::process::Command::new("rustc")
+        .args(["--edition=2024", "--crate-type=lib"])
+        .arg(&source)
+        .arg("--out-dir")
+        .arg(&dir)
+        .arg("-L")
+        .arg(format!("dependency={}", deps.display()))
+        .arg("--extern")
+        .arg(format!("sea_orm={}", library.display()))
+        .output()
+        .expect("编译生成实体");
+    std::fs::remove_dir_all(dir).expect("清理临时目录");
+    assert!(
+        result.status.success(),
+        "生成实体编译失败：{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+}
+
+#[tokio::test]
+async fn migration_backfills_existing_generator_primary_keys() {
+    use sea_orm::{Database, DbBackend, Statement};
+    let db = Database::connect("sqlite::memory:").await.expect("数据库");
+    for sql in [
+        "CREATE TABLE gen_table (id INTEGER PRIMARY KEY, table_name TEXT)",
+        "CREATE TABLE gen_table_column (table_id INTEGER, column_name TEXT, nullable INTEGER, is_insert INTEGER, is_edit INTEGER, is_list INTEGER, required INTEGER)",
+        "CREATE TABLE legacy_device (device_id INTEGER PRIMARY KEY, id TEXT)",
+        "INSERT INTO gen_table VALUES (1, 'legacy_device')",
+        "INSERT INTO gen_table_column VALUES (1, 'device_id', 1, 1, 1, 1, 0), (1, 'id', 0, 0, 0, 0, 0)",
+        include_str!("../migrations/0011_generator_primary_key.sql"),
+    ] {
+        db.execute_unprepared(sql).await.expect("迁移设置");
+    }
+    let rows = db.query_all_raw(Statement::from_string(DbBackend::Sqlite,
+        "SELECT column_name, primary_key, nullable, is_insert, is_edit, is_list FROM gen_table_column ORDER BY column_name".to_string()))
+        .await.expect("查询迁移结果");
+    let values = |row: &sea_orm::QueryResult| {
+        (
+            row.try_get::<i64>("", "primary_key").unwrap(),
+            row.try_get::<i64>("", "nullable").unwrap(),
+            row.try_get::<i64>("", "is_insert").unwrap(),
+            row.try_get::<i64>("", "is_edit").unwrap(),
+            row.try_get::<i64>("", "is_list").unwrap(),
+        )
+    };
+    assert_eq!(values(&rows[0]), (1, 0, 0, 0, 0));
+    assert_eq!(values(&rows[1]), (0, 1, 1, 1, 1));
 }

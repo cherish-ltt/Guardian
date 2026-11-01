@@ -121,6 +121,13 @@ async fn upgrade_grants_reset2fa_once_without_restoring_revoked_grants() {
     .unwrap();
     execute(
         db,
+        "ALTER TABLE gen_table_column DROP COLUMN primary_key",
+        vec![],
+    )
+    .await
+    .unwrap();
+    execute(
+        db,
         "ALTER TABLE gen_table_column DROP COLUMN nullable",
         vec![],
     )
