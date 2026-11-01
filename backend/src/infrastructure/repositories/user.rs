@@ -248,8 +248,8 @@ impl UserRepository for SeaOrmUserRepository {
     {
         execute(
             db,
-            "UPDATE sys_user SET nickname = COALESCE(?, nickname), phone = COALESCE(?, phone), \
-             email = COALESCE(?, email), dept_id = COALESCE(?, dept_id), \
+            "UPDATE sys_user SET nickname = COALESCE(?, nickname), phone = NULLIF(COALESCE(?, phone), ''), \
+             email = NULLIF(COALESCE(?, email), ''), dept_id = COALESCE(?, dept_id), \
              status = COALESCE(?, status), update_by = ?, update_time = ? \
              WHERE id = ? AND deleted = 0",
             vec![
