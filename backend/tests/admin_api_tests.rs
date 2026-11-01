@@ -389,6 +389,45 @@ async fn users_page_supports_paging_filters_and_options() {
 }
 
 #[tokio::test]
+async fn user_contact_updates_preserve_omitted_fields_and_clear_empty_strings() {
+    let (app, store) = setup_app_with_store().await;
+    let admin = admin_token(&app, store.as_ref()).await;
+    let path = "/api/v1/system/users/3";
+    for (payload, phone, email) in [
+        (
+            json!({"phone": "13800138000", "email": "first@example.test"}),
+            Some("13800138000"),
+            Some("first@example.test"),
+        ),
+        (
+            json!({"nickname": "昵称"}),
+            Some("13800138000"),
+            Some("first@example.test"),
+        ),
+        (json!({"phone": "", "email": ""}), None, None),
+        (
+            json!({"phone": "13900139000", "email": "next@example.test"}),
+            Some("13900139000"),
+            Some("next@example.test"),
+        ),
+    ] {
+        assert_eq!(
+            send(app.clone(), put_json_with_bearer(path, &admin, payload))
+                .await
+                .0,
+            StatusCode::OK
+        );
+        let (_, page) = send(
+            app.clone(),
+            get_with_bearer("/api/v1/system/users?keyword=heyj", &admin),
+        )
+        .await;
+        assert_eq!(page["data"]["rows"][0]["phone"].as_str(), phone);
+        assert_eq!(page["data"]["rows"][0]["email"].as_str(), email);
+    }
+}
+
+#[tokio::test]
 async fn user_list_keeps_relation_ids_when_names_duplicate_and_roles_are_disabled() {
     let (app, store, container) = setup_app_with_container().await;
     let admin = admin_token(&app, store.as_ref()).await;

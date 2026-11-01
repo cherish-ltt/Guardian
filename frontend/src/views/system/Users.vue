@@ -216,8 +216,8 @@ async function submit() {
   const payload = {
     username: form.username.trim(),
     nickname: form.nickname.trim(),
-    phone: form.phone || undefined,
-    email: form.email || undefined,
+    phone: form.phone,
+    email: form.email,
     deptId: form.deptId ?? undefined,
     status: form.status,
     roleIds: !form.id || form.roleIds.length !== originalRoleIds.value.length || form.roleIds.some(id => !originalRoleIds.value.includes(id)) ? form.roleIds : undefined,
