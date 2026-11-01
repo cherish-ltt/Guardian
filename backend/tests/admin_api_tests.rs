@@ -2273,6 +2273,86 @@ async fn user_relations_must_point_to_existing_records() {
 
 /// 授予内置超管角色属于提权：只有超管本人可以，普通「用户编辑」账号不行。
 #[tokio::test]
+async fn only_super_admin_may_change_ip_visibility_grants() {
+    let (app, store) = setup_app_with_store().await;
+    let admin = admin_token(&app, store.as_ref()).await;
+    assert_eq!(
+        send(
+            app.clone(),
+            put_json_with_bearer(
+                "/api/v1/system/roles/2",
+                &admin,
+                json!({"menuIds": [1021, 1022, 2032], "dataScope": "SELF"}),
+            )
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let scoped = login(&app, store.as_ref(), "linjh", DEMO_PASSWORD).await;
+    for menu_ids in [vec![1021, 1022, 2031, 2032], vec![1021, 1022]] {
+        assert_eq!(
+            send(
+                app.clone(),
+                put_json_with_bearer(
+                    "/api/v1/system/roles/2",
+                    &scoped,
+                    json!({"menuIds": menu_ids}),
+                )
+            )
+            .await
+            .0,
+            StatusCode::FORBIDDEN
+        );
+    }
+    assert_eq!(
+        send(
+            app.clone(),
+            post_json_with_bearer(
+                "/api/v1/system/roles",
+                &scoped,
+                json!({"name": "受限角色", "code": "restricted_grant", "menuIds": [2031]}),
+            )
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    let (_, menus) = send(
+        app.clone(),
+        get_with_bearer("/api/v1/system/roles/2/menus", &admin),
+    )
+    .await;
+    assert_eq!(menus["data"]["menuIds"], json!([1021, 1022, 2032]));
+    assert_eq!(
+        send(
+            app.clone(),
+            put_json_with_bearer(
+                "/api/v1/system/roles/2",
+                &scoped,
+                json!({"name": "普通编辑"}),
+            )
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        send(
+            app.clone(),
+            put_json_with_bearer(
+                "/api/v1/system/roles/2",
+                &admin,
+                json!({"menuIds": [1021, 1022, 2031]}),
+            )
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+}
+
+#[tokio::test]
 async fn granting_super_admin_role_requires_super_admin() {
     let (app, store) = setup_app_with_store().await;
     let token = admin_token(&app, store.as_ref()).await;
