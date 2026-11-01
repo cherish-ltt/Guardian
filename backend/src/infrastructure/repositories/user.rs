@@ -150,7 +150,7 @@ impl UserRepository for SeaOrmUserRepository {
     {
         let (filter, mut values) = filter_of(query, scope);
         let sql = format!(
-            "SELECT u.id, u.username, u.nickname, u.phone, u.email, d.dept_name AS dept_name, \
+            "SELECT u.id, u.username, u.nickname, u.phone, u.email, u.dept_id, d.dept_name AS dept_name, \
              u.status, substr(u.create_time, 1, 16) AS create_time, \
              substr(u.last_login_time, 1, 16) AS last_login \
              FROM sys_user u LEFT JOIN sys_dept d ON d.id = u.dept_id \
@@ -160,6 +160,8 @@ impl UserRepository for SeaOrmUserRepository {
         values.push(page.offset().into());
         let rows = query_all(db, &sql, values).await?;
         let ids: Vec<i64> = rows.iter().map(|row| int_or_zero(row, "id")).collect();
+        let post_ids = ids_of(db, &ids, "sys_user_post", "post_id").await?;
+        let role_ids = ids_of(db, &ids, "sys_user_role", "role_id").await?;
         let post_names = names_of(db, &ids, POST_NAMES).await?;
         let role_names = names_of(db, &ids, ROLE_NAMES).await?;
 
@@ -174,6 +176,9 @@ impl UserRepository for SeaOrmUserRepository {
                     nickname: text(row, "nickname").unwrap_or_default(),
                     phone: text_or_none(row, "phone"),
                     email: text_or_none(row, "email"),
+                    dept_id: super::sql::int(row, "dept_id"),
+                    role_ids: role_ids.get(&id).cloned().unwrap_or_default(),
+                    post_ids: post_ids.get(&id).cloned().unwrap_or_default(),
                     dept_name: text_or_none(row, "dept_name"),
                     post_name: joined(post_names.get(&id)),
                     role_name: joined(role_names.get(&id)),
@@ -467,6 +472,30 @@ fn filter_of(query: &UserQuery, scope: &DataScope) -> (String, Vec<Value>) {
     }
 
     (clauses.join(" AND "), values)
+}
+
+async fn ids_of<C: ConnectionTrait>(
+    db: &C,
+    user_ids: &[i64],
+    table: &str,
+    column: &str,
+) -> Result<HashMap<i64, Vec<i64>>, AppError> {
+    let mut grouped: HashMap<i64, Vec<i64>> = HashMap::new();
+    if user_ids.is_empty() {
+        return Ok(grouped);
+    }
+    let placeholders = vec!["?"; user_ids.len()].join(", ");
+    let sql = format!(
+        "SELECT user_id, {column} AS relation_id FROM {table} WHERE user_id IN ({placeholders}) ORDER BY user_id, relation_id"
+    );
+    let values = user_ids.iter().map(|id| (*id).into()).collect();
+    for row in query_all(db, &sql, values).await? {
+        grouped
+            .entry(int_or_zero(&row, "user_id"))
+            .or_default()
+            .push(int_or_zero(&row, "relation_id"));
+    }
+    Ok(grouped)
 }
 
 /// 按用户聚名字，顺序由 SQL 的 ORDER BY 决定。
