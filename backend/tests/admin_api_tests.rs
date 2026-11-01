@@ -389,6 +389,142 @@ async fn users_page_supports_paging_filters_and_options() {
 }
 
 #[tokio::test]
+async fn user_list_keeps_relation_ids_when_names_duplicate_and_roles_are_disabled() {
+    let (app, store, container) = setup_app_with_container().await;
+    let admin = admin_token(&app, store.as_ref()).await;
+    container
+        .database
+        .execute_unprepared("UPDATE sys_role SET role_name = '同名,角色' WHERE id IN (2, 3)")
+        .await
+        .unwrap();
+    container
+        .database
+        .execute_unprepared("UPDATE sys_role SET status = 0 WHERE id = 3")
+        .await
+        .unwrap();
+    container
+        .database
+        .execute_unprepared("UPDATE sys_dept SET dept_name = '同名部门' WHERE id IN (5, 6)")
+        .await
+        .unwrap();
+    let (_, page) = send(
+        app.clone(),
+        get_with_bearer("/api/v1/system/users?keyword=heyj", &admin),
+    )
+    .await;
+    let row = &page["data"]["rows"][0];
+    assert_eq!(row["roleIds"], json!([3]));
+    let dept_id = row["deptId"].as_i64().unwrap();
+    let post_ids = row["postIds"].clone();
+    let (status, _) = send(
+        app.clone(),
+        put_json_with_bearer(
+            "/api/v1/system/users/3",
+            &admin,
+            json!({"nickname": "仅改昵称"}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, page) = send(
+        app.clone(),
+        get_with_bearer("/api/v1/system/users?keyword=heyj", &admin),
+    )
+    .await;
+    let row = &page["data"]["rows"][0];
+    assert_eq!(row["deptId"], dept_id);
+    assert_eq!(row["roleIds"], json!([3]));
+    assert_eq!(row["postIds"], post_ids);
+}
+
+#[tokio::test]
+async fn ordinary_user_cannot_reset_super_admin_credentials() {
+    let replacement = "example-new-123";
+    let (app, store, container) = setup_app_with_container().await;
+    let admin = admin_token(&app, store.as_ref()).await;
+    assert_eq!(
+        send(
+            app.clone(),
+            put_json_with_bearer(
+                "/api/v1/system/roles/2",
+                &admin,
+                json!({"menuIds": [1014], "dataScope": "SELF"}),
+            )
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        send(
+            app.clone(),
+            put_json_with_bearer("/api/v1/system/users/3", &admin, json!({"roleIds": [1, 3]}),)
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let scoped = login(&app, store.as_ref(), "linjh", DEMO_PASSWORD).await;
+    let other_admin = login(&app, store.as_ref(), "heyj", DEMO_PASSWORD).await;
+    for (id, token) in [(1, &admin), (3, &other_admin)] {
+        let before = AccountRepository::security(&container.database, id)
+            .await
+            .unwrap()
+            .auth_version;
+        let (status, _) = send(
+            app.clone(),
+            put_json_with_bearer(
+                &format!("/api/v1/system/users/{id}/password"),
+                &scoped,
+                json!({"password": replacement}),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert_eq!(
+            AccountRepository::security(&container.database, id)
+                .await
+                .unwrap()
+                .auth_version,
+            before
+        );
+        assert_eq!(
+            send(app.clone(), get_with_bearer("/api/v1/auth/me", token))
+                .await
+                .0,
+            StatusCode::OK
+        );
+    }
+    let _ = login(&app, store.as_ref(), "admin", DEMO_PASSWORD).await;
+    assert_eq!(
+        send(
+            app.clone(),
+            put_json_with_bearer(
+                "/api/v1/system/users/2/password",
+                &scoped,
+                json!({"password": replacement}),
+            )
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        send(
+            app.clone(),
+            put_json_with_bearer(
+                "/api/v1/system/users/3/password",
+                &admin,
+                json!({"password": replacement}),
+            )
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+}
+
+#[tokio::test]
 async fn reset_password_bumps_auth_version_so_old_tokens_die() {
     let (app, store, container) = setup_app_with_container().await;
     let token = admin_token(&app, store.as_ref()).await;
@@ -1009,6 +1145,66 @@ async fn role_flow_covers_menus_graph_and_guards() {
         42
     );
     assert_eq!(graph["data"]["userRoles"], json!([[1, 1], [2, 2], [3, 3]]));
+}
+
+#[tokio::test]
+async fn menus_reject_cycles_and_missing_parents_without_losing_the_tree() {
+    let (app, store) = setup_app_with_store().await;
+    let admin = admin_token(&app, store.as_ref()).await;
+    let mut parent = 0;
+    let mut ids = Vec::new();
+    for (name, kind) in [
+        ("cycle-parent", "dir"),
+        ("cycle-child", "dir"),
+        ("cycle-leaf", "menu"),
+    ] {
+        let (status, body) = send(app.clone(), post_json_with_bearer(
+            "/api/v1/system/menus", &admin, json!({"name": name, "type": kind, "parentId": parent, "path": "/cycle-leaf", "component": "system/user/index"}),
+        )).await;
+        assert_eq!(status, StatusCode::OK);
+        parent = body["data"]["id"].as_i64().unwrap();
+        ids.push(parent);
+    }
+    for bad_parent in [ids[0], ids[1], ids[2], 999999] {
+        let (status, _) = send(
+            app.clone(),
+            put_json_with_bearer(
+                &format!("/api/v1/system/menus/{}", ids[0]),
+                &admin,
+                json!({"parentId": bad_parent}),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+    let (status, _) = send(
+        app.clone(),
+        post_json_with_bearer(
+            "/api/v1/system/menus",
+            &admin,
+            json!({"name": "orphan", "parentId": 999999}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    for path in ["/api/v1/system/menus/tree", "/api/v1/auth/routes"] {
+        let (status, tree) = send(app.clone(), get_with_bearer(path, &admin)).await;
+        assert_eq!(status, StatusCode::OK);
+        let text = tree.to_string();
+        for name in ["cycle-parent", "cycle-child", "cycle-leaf"] {
+            assert!(text.contains(name), "{path} {name}");
+        }
+    }
+    let (status, _) = send(
+        app.clone(),
+        put_json_with_bearer(
+            &format!("/api/v1/system/menus/{}", ids[2]),
+            &admin,
+            json!({"parentId": 0}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
 }
 
 #[tokio::test]
@@ -2269,6 +2465,161 @@ async fn user_relations_must_point_to_existing_records() {
     )
     .await;
     assert_ne!(page["data"]["rows"][0]["nickname"], "不该生效");
+}
+
+#[tokio::test]
+async fn only_super_admin_may_change_ip_visibility_grants() {
+    let (app, store) = setup_app_with_store().await;
+    let admin = admin_token(&app, store.as_ref()).await;
+    assert_eq!(
+        send(
+            app.clone(),
+            put_json_with_bearer(
+                "/api/v1/system/roles/2",
+                &admin,
+                json!({"menuIds": [1021, 1022, 2032], "dataScope": "SELF"}),
+            )
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let scoped = login(&app, store.as_ref(), "linjh", DEMO_PASSWORD).await;
+    for menu_ids in [vec![1021, 1022, 2031, 2032], vec![1021, 1022]] {
+        assert_eq!(
+            send(
+                app.clone(),
+                put_json_with_bearer(
+                    "/api/v1/system/roles/2",
+                    &scoped,
+                    json!({"menuIds": menu_ids}),
+                )
+            )
+            .await
+            .0,
+            StatusCode::FORBIDDEN
+        );
+    }
+    assert_eq!(
+        send(
+            app.clone(),
+            post_json_with_bearer(
+                "/api/v1/system/roles",
+                &scoped,
+                json!({"name": "受限角色", "code": "restricted_grant", "menuIds": [2031]}),
+            )
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    let (_, menus) = send(
+        app.clone(),
+        get_with_bearer("/api/v1/system/roles/2/menus", &admin),
+    )
+    .await;
+    assert_eq!(menus["data"]["menuIds"], json!([1021, 1022, 2032]));
+    assert_eq!(
+        send(
+            app.clone(),
+            put_json_with_bearer(
+                "/api/v1/system/roles/2",
+                &scoped,
+                json!({"name": "普通编辑"}),
+            )
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        send(
+            app.clone(),
+            put_json_with_bearer(
+                "/api/v1/system/roles/2",
+                &admin,
+                json!({"menuIds": [1021, 1022, 2031]}),
+            )
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+}
+
+#[tokio::test]
+async fn super_admin_role_cannot_be_removed_by_an_ordinary_editor_or_from_the_last_admin() {
+    let (app, store) = setup_app_with_store().await;
+    let admin = admin_token(&app, store.as_ref()).await;
+    assert_eq!(
+        send(
+            app.clone(),
+            put_json_with_bearer(
+                "/api/v1/system/roles/2",
+                &admin,
+                json!({"menuIds": [1012], "dataScope": "SELF"}),
+            )
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let scoped = login(&app, store.as_ref(), "linjh", DEMO_PASSWORD).await;
+    assert_eq!(
+        send(
+            app.clone(),
+            put_json_with_bearer("/api/v1/system/users/1", &scoped, json!({"roleIds": []}),)
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        send(
+            app.clone(),
+            put_json_with_bearer("/api/v1/system/users/1", &admin, json!({"roleIds": []}),)
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        send(
+            app.clone(),
+            put_json_with_bearer("/api/v1/system/users/3", &admin, json!({"roleIds": [1, 3]}),)
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        send(
+            app.clone(),
+            put_json_with_bearer("/api/v1/system/users/3", &scoped, json!({"roleIds": [3]}),)
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    let other = login(&app, store.as_ref(), "heyj", DEMO_PASSWORD).await;
+    let (_, me) = send(app.clone(), get_with_bearer("/api/v1/auth/me", &other)).await;
+    assert!(
+        me["data"]["roles"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("super_admin"))
+    );
+    assert_eq!(
+        send(
+            app.clone(),
+            put_json_with_bearer("/api/v1/system/users/3", &admin, json!({"roleIds": [3]}),)
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let (_, me) = send(app.clone(), get_with_bearer("/api/v1/auth/me", &admin)).await;
+    assert_eq!(me["data"]["roles"], json!(["super_admin"]));
 }
 
 /// 授予内置超管角色属于提权：只有超管本人可以，普通「用户编辑」账号不行。
