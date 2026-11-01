@@ -47,6 +47,14 @@ pub trait UserRepository: Send + Sync {
     where
         C: ConnectionTrait;
 
+    async fn count_other_active_super_admins<C>(
+        &self,
+        db: &C,
+        user_id: i64,
+    ) -> Result<i64, AppError>
+    where
+        C: ConnectionTrait;
+
     async fn insert_user<C>(
         &self,
         db: &C,
@@ -207,6 +215,26 @@ impl UserRepository for SeaOrmUserRepository {
 
         row.map(|row| row.try_get("", "username").map_err(AppError::from))
             .transpose()
+    }
+
+    async fn count_other_active_super_admins<C>(
+        &self,
+        db: &C,
+        user_id: i64,
+    ) -> Result<i64, AppError>
+    where
+        C: ConnectionTrait,
+    {
+        query_count(
+            db,
+            "SELECT COUNT(DISTINCT u.id) AS value FROM sys_user u \
+            JOIN sys_user_role ur ON ur.user_id = u.id \
+            JOIN sys_role r ON r.id = ur.role_id \
+            WHERE u.id != ? AND u.deleted = 0 AND u.status = 1 \
+            AND r.role_code = 'super_admin' AND r.deleted = 0 AND r.status = 1",
+            vec![user_id.into()],
+        )
+        .await
     }
 
     async fn insert_user<C>(

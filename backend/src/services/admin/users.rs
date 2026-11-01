@@ -12,6 +12,7 @@ use crate::{
     },
     infrastructure::repositories::{
         account::AccountRepository,
+        admin_auth::{AdminAuthRepository, SeaOrmAdminAuthRepository},
         config::{ConfigRepository, SeaOrmConfigRepository},
         dept::{DeptRepository, SeaOrmDeptRepository},
         post::{PostRepository, SeaOrmPostRepository},
@@ -211,7 +212,6 @@ impl UserAdminUseCase for AdminService {
         id: i64,
         command: UserWriteCommand,
         operator: &str,
-        operator_is_super: bool,
     ) -> Result<(), AppError> {
         let _cache_write = self.cache.begin_write().await;
         // 昵称为空字符串时按「不修改」处理，与 Spring 的 trimToNull 一致。
@@ -240,7 +240,48 @@ impl UserAdminUseCase for AdminService {
             let post_ids = post_ids.clone();
             Box::pin(async move {
                 ensure_relations(transaction, &command).await?;
-                ensure_grant_allowed(transaction, &command, operator_is_super).await?;
+                let (operator_id, _) = SeaOrmAdminAuthRepository
+                    .active_user_profile(transaction, &operator)
+                    .await?
+                    .ok_or_else(|| AppError::forbidden("没有访问权限"))?;
+                let operator_roles = SeaOrmAdminAuthRepository
+                    .role_codes(transaction, operator_id)
+                    .await?;
+                let is_super = operator_roles.iter().any(|role| role == "super_admin");
+                ensure_grant_allowed(transaction, &command, is_super).await?;
+                if let Some(role_ids) = role_ids.as_deref() {
+                    let roles = SeaOrmAdminAuthRepository
+                        .role_codes(transaction, id)
+                        .await?;
+                    if roles.iter().any(|role| role == "super_admin") {
+                        if !is_super {
+                            return Err(AppError::forbidden(
+                                "只有超级管理员可以修改超级管理员的角色",
+                            ));
+                        }
+                        let super_id = SeaOrmRoleRepository
+                            .find_role_id_by_code(transaction, "super_admin")
+                            .await?;
+                        if !super_id.is_some_and(|role_id| role_ids.contains(&role_id)) {
+                            let username =
+                                SeaOrmUserRepository.find_username(transaction, id).await?;
+                            if let Some(username) = username
+                                && SeaOrmAdminAuthRepository
+                                    .active_user_profile(transaction, &username)
+                                    .await?
+                                    .is_some()
+                                && SeaOrmUserRepository
+                                    .count_other_active_super_admins(transaction, id)
+                                    .await?
+                                    == 0
+                            {
+                                return Err(AppError::business(
+                                    "不能撤销最后一个可用超级管理员的角色",
+                                ));
+                            }
+                        }
+                    }
+                }
                 if SeaOrmUserRepository
                     .update_user(transaction, id, &command, &operator)
                     .await?
@@ -311,6 +352,31 @@ impl UserAdminUseCase for AdminService {
             let hashed = hashed.clone();
             let operator = operator.clone();
             Box::pin(async move {
+                let (operator_id, _) = SeaOrmAdminAuthRepository
+                    .active_user_profile(transaction, &operator)
+                    .await?
+                    .ok_or_else(|| AppError::forbidden("没有访问权限"))?;
+                let operator_roles = SeaOrmAdminAuthRepository
+                    .role_codes(transaction, operator_id)
+                    .await?;
+                let is_super = operator_roles.iter().any(|role| role == "super_admin");
+                if !is_super {
+                    let permissions = SeaOrmAdminAuthRepository
+                        .permissions(transaction, operator_id)
+                        .await?;
+                    if !permissions
+                        .iter()
+                        .any(|permission| permission == "system:user:resetPwd")
+                    {
+                        return Err(AppError::forbidden("没有访问权限"));
+                    }
+                }
+                let target_roles = SeaOrmAdminAuthRepository
+                    .role_codes(transaction, id)
+                    .await?;
+                if !is_super && target_roles.iter().any(|role| role == "super_admin") {
+                    return Err(AppError::forbidden("不能重置超级管理员的密码"));
+                }
                 if SeaOrmUserRepository
                     .reset_user_password(transaction, id, &hashed, &operator)
                     .await?

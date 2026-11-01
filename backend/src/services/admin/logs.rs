@@ -42,6 +42,7 @@ impl LogAdminUseCase for AdminService {
         &self,
         keyword: Option<&str>,
         result: Option<i64>,
+        visibility: IpVisibility,
     ) -> Result<String, AppError> {
         let rows = SeaOrmAuditLogRepository
             .list_oper_logs(&self.database, keyword, result, Page::export(EXPORT_LIMIT))
@@ -57,7 +58,7 @@ impl LogAdminUseCase for AdminService {
                     row.params.clone(),
                     row.oper_name.clone(),
                     row.dept.clone(),
-                    Some(row.ip.clone()),
+                    Some(visibility.display(Some(&row.ip))),
                     csv::number_cell(row.cost),
                     csv::result_text(Some(row.result)),
                     row.oper_time.clone(),
@@ -129,6 +130,7 @@ impl LogAdminUseCase for AdminService {
         &self,
         keyword: Option<&str>,
         status: Option<i64>,
+        visibility: IpVisibility,
     ) -> Result<String, AppError> {
         let rows = SeaOrmAuditLogRepository
             .list_login_logs(&self.database, keyword, status, Page::export(EXPORT_LIMIT))
@@ -138,7 +140,7 @@ impl LogAdminUseCase for AdminService {
             .map(|row| {
                 vec![
                     row.username.clone(),
-                    Some(row.ip.clone()),
+                    Some(visibility.display(Some(&row.ip))),
                     row.browser.clone(),
                     row.os.clone(),
                     csv::result_text(Some(row.status)),
