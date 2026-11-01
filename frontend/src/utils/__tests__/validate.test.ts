@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { email, maxLength, phone, required, validate } from '../validate.ts'
+import { email, maxLength, passwordLength, phone, required, validate } from '../validate.ts'
 
 test('validate returns the first failing message per field', () => {
   const errors = validate(
@@ -17,4 +17,12 @@ test('validate returns the first failing message per field', () => {
 
 test('optional format rules skip empty values', () => {
   assert.deepEqual(validate({ phone: '', email: '  ' }, { phone: [phone], email: [email] }), {})
+})
+
+test('按 Unicode 字符校验密码长度', () => {
+  for (const size of [1, 5, 6, 64, 65]) {
+    for (const character of ['a', '界', '🙂']) {
+      assert.equal(passwordLength(character.repeat(size)) === undefined, size >= 6 && size <= 64)
+    }
+  }
 })
