@@ -52,7 +52,7 @@ src/middleware/audit.rs                       写操作留痕
 
 | 方法 | 路径 | 权限 | 说明 |
 | --- | --- | --- | --- |
-| GET | `/system/users` | `system:user:list` | 分页列表，支持 `keyword` / `status` / `deptId` / `postId`，受数据范围约束 |
+| GET | `/system/users` | `system:user:list` | 返回 `deptId`、`roleIds`、`postIds` 的分页列表，支持 `keyword` / `status` / `deptId` / `postId`，受数据范围约束 |
 | GET | `/system/users/options` | 同上 | 表单下拉（角色、岗位、部门树、初始密码，只读权限返回空） |
 | GET | `/system/users/export` | 同上 | `users.csv` |
 | POST | `/system/users` | `system:user:add` | 新增（口令留空取系统参数 `sys.user.initPassword`，参数为空才回退 `SEED_ADMIN_PASSWORD`） |
@@ -279,6 +279,7 @@ Redis 超时/错误/坏数据触发短暂熔断，回源 SQLite；故障时不�
 
 ## 与 Spring 版的差异
 
+- 非超级管理员不得重置任何拥有有效超级管理员角色的账号的密码。
 - 用户编辑时手机号和邮箱省略表示不修改，传空字符串表示清空。
 
 | 项 | Spring 版 | 本实现 | 原因 |

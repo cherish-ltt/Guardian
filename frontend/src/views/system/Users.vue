@@ -14,7 +14,6 @@ import { useViewMode } from '@/composables/view'
 import { hasPermission } from '@/directives/permission'
 import { confirm } from '@/composables/confirm'
 import { pushToast, toastError } from '@/composables/toast'
-import { flattenDepts } from '@/composables/dept'
 import type { Dept } from '@/data'
 import { email, phone, required, validate } from '@/utils/validate'
 
@@ -121,8 +120,16 @@ const roles = ref<Array<{ id: number; name: string }>>([])
 const posts = ref<Array<{ id: number; name: string }>>([])
 const departments = ref<Dept[]>([])
 const initPassword = ref('')
-const roleOptions = computed(() => roles.value.map(r => ({ label: r.name, value: r.id })))
-const postOptions = computed(() => posts.value.map(p => ({ label: p.name, value: p.id })))
+const originalRoleIds = ref<number[]>([])
+const originalPostIds = ref<number[]>([])
+const roleOptions = computed(() => [
+  ...roles.value.map(r => ({ label: r.name, value: r.id })),
+  ...originalRoleIds.value.filter(id => !roles.value.some(r => r.id === id)).map(id => ({ label: `不可用角色（${id}）`, value: id })),
+])
+const postOptions = computed(() => [
+  ...posts.value.map(p => ({ label: p.name, value: p.id })),
+  ...originalPostIds.value.filter(id => !posts.value.some(p => p.id === id)).map(id => ({ label: `不可用岗位（${id}）`, value: id })),
+])
 
 onMounted(async () => {
   try {
@@ -168,27 +175,16 @@ watch(initPassword, (value) => {
 })
 
 function openCreate() {
+  originalRoleIds.value = []
+  originalPostIds.value = []
   Object.assign(form, emptyForm(), { id: undefined })
   errors.value = {}
   dialog.value = true
 }
 
-/**
- * 后端返回的 `roleName` / `postName` 是逗号拼接的多值，这里按名字逐个还原成 ID。
- * 只回填能匹配上的，匹配不到的保持缺席（用户提交时会整体替换）。
- */
-function idsOfNames(names: string | undefined, options: Array<{ id: number; name: string }>) {
-  if (!names) return []
-  return names
-    .split(',')
-    .map(name => name.trim())
-    .filter(Boolean)
-    .map(name => options.find(option => option.name === name)?.id)
-    .filter((id): id is number => typeof id === 'number')
-}
-
 function openEdit(row: UserRow) {
-  const dept = flattenDepts(departments.value).find(d => d.dept.name === row.deptName)
+  originalRoleIds.value = [...row.roleIds]
+  originalPostIds.value = [...row.postIds]
   Object.assign(form, {
     id: row.id,
     username: row.username,
@@ -196,9 +192,9 @@ function openEdit(row: UserRow) {
     password: '',
     phone: row.phone ?? '',
     email: row.email ?? '',
-    deptId: dept?.dept.id ?? null,
-    roleIds: idsOfNames(row.roleName, roles.value),
-    postIds: idsOfNames(row.postName, posts.value),
+    deptId: row.deptId,
+    roleIds: [...row.roleIds],
+    postIds: [...row.postIds],
     status: row.status,
   })
   errors.value = {}
@@ -224,8 +220,8 @@ async function submit() {
     email: form.email,
     deptId: form.deptId ?? undefined,
     status: form.status,
-    roleIds: form.roleIds,
-    postIds: form.postIds,
+    roleIds: !form.id || form.roleIds.length !== originalRoleIds.value.length || form.roleIds.some(id => !originalRoleIds.value.includes(id)) ? form.roleIds : undefined,
+    postIds: !form.id || form.postIds.length !== originalPostIds.value.length || form.postIds.some(id => !originalPostIds.value.includes(id)) ? form.postIds : undefined,
   }
   try {
     if (form.id) {
