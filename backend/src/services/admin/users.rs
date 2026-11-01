@@ -12,6 +12,7 @@ use crate::{
     },
     infrastructure::repositories::{
         account::AccountRepository,
+        admin_auth::{AdminAuthRepository, SeaOrmAdminAuthRepository},
         config::{ConfigRepository, SeaOrmConfigRepository},
         dept::{DeptRepository, SeaOrmDeptRepository},
         post::{PostRepository, SeaOrmPostRepository},
@@ -311,6 +312,31 @@ impl UserAdminUseCase for AdminService {
             let hashed = hashed.clone();
             let operator = operator.clone();
             Box::pin(async move {
+                let (operator_id, _) = SeaOrmAdminAuthRepository
+                    .active_user_profile(transaction, &operator)
+                    .await?
+                    .ok_or_else(|| AppError::forbidden("没有访问权限"))?;
+                let operator_roles = SeaOrmAdminAuthRepository
+                    .role_codes(transaction, operator_id)
+                    .await?;
+                let is_super = operator_roles.iter().any(|role| role == "super_admin");
+                if !is_super {
+                    let permissions = SeaOrmAdminAuthRepository
+                        .permissions(transaction, operator_id)
+                        .await?;
+                    if !permissions
+                        .iter()
+                        .any(|permission| permission == "system:user:resetPwd")
+                    {
+                        return Err(AppError::forbidden("没有访问权限"));
+                    }
+                }
+                let target_roles = SeaOrmAdminAuthRepository
+                    .role_codes(transaction, id)
+                    .await?;
+                if !is_super && target_roles.iter().any(|role| role == "super_admin") {
+                    return Err(AppError::forbidden("不能重置超级管理员的密码"));
+                }
                 if SeaOrmUserRepository
                     .reset_user_password(transaction, id, &hashed, &operator)
                     .await?

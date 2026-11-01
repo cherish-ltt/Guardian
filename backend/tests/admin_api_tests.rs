@@ -389,6 +389,93 @@ async fn users_page_supports_paging_filters_and_options() {
 }
 
 #[tokio::test]
+async fn ordinary_user_cannot_reset_super_admin_credentials() {
+    let replacement = "example-new-123";
+    let (app, store, container) = setup_app_with_container().await;
+    let admin = admin_token(&app, store.as_ref()).await;
+    assert_eq!(
+        send(
+            app.clone(),
+            put_json_with_bearer(
+                "/api/v1/system/roles/2",
+                &admin,
+                json!({"menuIds": [1014], "dataScope": "SELF"}),
+            )
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        send(
+            app.clone(),
+            put_json_with_bearer("/api/v1/system/users/3", &admin, json!({"roleIds": [1, 3]}),)
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let scoped = login(&app, store.as_ref(), "linjh", DEMO_PASSWORD).await;
+    let other_admin = login(&app, store.as_ref(), "heyj", DEMO_PASSWORD).await;
+    for (id, token) in [(1, &admin), (3, &other_admin)] {
+        let before = AccountRepository::security(&container.database, id)
+            .await
+            .unwrap()
+            .auth_version;
+        let (status, _) = send(
+            app.clone(),
+            put_json_with_bearer(
+                &format!("/api/v1/system/users/{id}/password"),
+                &scoped,
+                json!({"password": replacement}),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert_eq!(
+            AccountRepository::security(&container.database, id)
+                .await
+                .unwrap()
+                .auth_version,
+            before
+        );
+        assert_eq!(
+            send(app.clone(), get_with_bearer("/api/v1/auth/me", token))
+                .await
+                .0,
+            StatusCode::OK
+        );
+    }
+    let _ = login(&app, store.as_ref(), "admin", DEMO_PASSWORD).await;
+    assert_eq!(
+        send(
+            app.clone(),
+            put_json_with_bearer(
+                "/api/v1/system/users/2/password",
+                &scoped,
+                json!({"password": replacement}),
+            )
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        send(
+            app.clone(),
+            put_json_with_bearer(
+                "/api/v1/system/users/3/password",
+                &admin,
+                json!({"password": replacement}),
+            )
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+}
+
+#[tokio::test]
 async fn reset_password_bumps_auth_version_so_old_tokens_die() {
     let (app, store, container) = setup_app_with_container().await;
     let token = admin_token(&app, store.as_ref()).await;
