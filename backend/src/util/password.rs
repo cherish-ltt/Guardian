@@ -2,6 +2,10 @@ use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 
 use crate::error::AppError;
 
+pub fn valid_length(value: &str) -> bool {
+    (6..=64).contains(&value.chars().count())
+}
+
 pub fn hash_password(password: &str) -> Result<String, AppError> {
     if password.trim().is_empty() {
         return Err(AppError::bad_request("password must not be empty"));

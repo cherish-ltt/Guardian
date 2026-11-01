@@ -326,8 +326,7 @@ impl AdminAuthUseCase for AdminAuthService {
         username: &str,
         command: ChangePasswordCommand,
     ) -> Result<(), AppError> {
-        let length = command.new_password.chars().count();
-        if !(6..=64).contains(&length) {
+        if !password::valid_length(&command.new_password) {
             return Err(AppError::business("newPassword 长度必须在6到64位之间"));
         }
 

@@ -2715,6 +2715,61 @@ async fn raw_multibyte_query_values_are_decoded_without_panicking() {
     assert_eq!(body["data"]["total"], 0);
 }
 
+#[tokio::test]
+async fn creating_users_validates_effective_password_length() {
+    let (app, store, container) = setup_app_with_container().await;
+    let token = admin_token(&app, store.as_ref()).await;
+    for (index, (plain, valid)) in [
+        ("a".to_string(), false),
+        ("a".repeat(5), false),
+        ("a".repeat(6), true),
+        ("a".repeat(64), true),
+        ("a".repeat(65), false),
+        ("界".repeat(6), true),
+        ("🙂".repeat(6), true),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let username = format!("lengthcase{index}");
+        let (status, _) = send(app.clone(), post_json_with_bearer(
+            "/api/v1/system/users", &token,
+            json!({ "username": username, "nickname": "长度校验", "password": plain, "deptId": 6, "roleIds": [3] }),
+        )).await;
+        assert_eq!(
+            status,
+            if valid {
+                StatusCode::OK
+            } else {
+                StatusCode::BAD_REQUEST
+            }
+        );
+        let (_, page) = send(
+            app.clone(),
+            get_with_bearer(&format!("/api/v1/system/users?keyword={username}"), &token),
+        )
+        .await;
+        assert_eq!(page["data"]["total"], if valid { 1 } else { 0 });
+        if valid {
+            login(&app, store.as_ref(), &username, &plain).await;
+        }
+    }
+    container.database.execute_unprepared(
+        "UPDATE sys_config SET config_value = 'short' WHERE config_key = 'sys.user.initPassword'"
+    ).await.expect("设置短初始密码");
+    let (status, _) = send(app.clone(), post_json_with_bearer(
+        "/api/v1/system/users", &token,
+        json!({ "username": "baddefault", "nickname": "配置校验", "deptId": 6, "roleIds": [3] }),
+    )).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let (_, page) = send(
+        app,
+        get_with_bearer("/api/v1/system/users?keyword=baddefault", &token),
+    )
+    .await;
+    assert_eq!(page["data"]["total"], 0);
+}
+
 /// 新增用户未传口令时取系统参数 `sys.user.initPassword`（种子值为 `Yy@123456`），
 /// 而不是 `.env` 的 `SEED_ADMIN_PASSWORD`。这条与 `docs/ADMIN.md` 的说明、
 /// 前端「初始密码取自系统参数」的提示一致。
