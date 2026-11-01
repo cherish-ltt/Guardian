@@ -389,6 +389,73 @@ async fn users_page_supports_paging_filters_and_options() {
 }
 
 #[tokio::test]
+async fn user_department_must_exist_and_failed_writes_are_atomic() {
+    let (app, store, container) = setup_app_with_container().await;
+    let admin = admin_token(&app, store.as_ref()).await;
+    container
+        .database
+        .execute_unprepared("UPDATE sys_dept SET deleted = 1 WHERE id = 7")
+        .await
+        .unwrap();
+    let target = login(&app, store.as_ref(), "heyj", DEMO_PASSWORD).await;
+    let (_, before) = send(app.clone(), get_with_bearer("/api/v1/auth/me", &target)).await;
+    for dept_id in [7, 999999] {
+        let (status, _) = send(app.clone(), post_json_with_bearer(
+            "/api/v1/system/users", &admin,
+            json!({"username": "bad_dept", "nickname": "无效部门", "deptId": dept_id, "roleIds": [3]}),
+        )).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        let (_, page) = send(
+            app.clone(),
+            get_with_bearer("/api/v1/system/users?keyword=bad_dept", &admin),
+        )
+        .await;
+        assert_eq!(page["data"]["total"], 0);
+        let (status, _) = send(
+            app.clone(),
+            put_json_with_bearer(
+                "/api/v1/system/users/3",
+                &admin,
+                json!({"deptId": dept_id, "nickname": "不应生效", "roleIds": [2]}),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+    let (_, me) = send(
+        app.clone(),
+        get_with_bearer("/api/v1/system/users?keyword=heyj", &admin),
+    )
+    .await;
+    assert_ne!(me["data"]["rows"][0]["nickname"], "不应生效");
+    let (_, after) = send(app.clone(), get_with_bearer("/api/v1/auth/me", &target)).await;
+    assert_eq!(after["data"]["roles"], before["data"]["roles"]);
+    assert_eq!(after["data"]["deptId"], before["data"]["deptId"]);
+    assert_eq!(
+        send(
+            app.clone(),
+            put_json_with_bearer("/api/v1/system/users/3", &admin, json!({"deptId": 6}),)
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        send(
+            app.clone(),
+            post_json_with_bearer(
+                "/api/v1/system/users",
+                &admin,
+                json!({"username": "no_dept", "nickname": "无部门"}),
+            )
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+}
+
+#[tokio::test]
 async fn user_contact_updates_preserve_omitted_fields_and_clear_empty_strings() {
     let (app, store) = setup_app_with_store().await;
     let admin = admin_token(&app, store.as_ref()).await;

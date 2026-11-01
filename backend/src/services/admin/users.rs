@@ -425,6 +425,11 @@ async fn ensure_relations(
     db: &sea_orm::DatabaseTransaction,
     command: &UserWriteCommand,
 ) -> Result<(), AppError> {
+    if let Some(dept_id) = command.dept_id
+        && SeaOrmDeptRepository.count_dept_ids(db, &[dept_id]).await? != 1
+    {
+        return Err(AppError::business("部门不存在或已删除"));
+    }
     if let Some(role_ids) = command.role_ids.as_deref() {
         let found = SeaOrmRoleRepository.count_role_ids(db, role_ids).await?;
         if found as usize != dedup_ids(role_ids).len() {
