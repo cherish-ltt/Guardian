@@ -328,6 +328,9 @@ async fn users_page_supports_paging_filters_and_options() {
     assert_eq!(page["data"]["rows"].as_array().expect("用户行").len(), 2);
     let first = &page["data"]["rows"][0];
     assert_eq!(first["username"], "admin");
+    assert_eq!(first["deptId"], 5);
+    assert_eq!(first["roleIds"], json!([1]));
+    assert_eq!(first["postIds"], json!([3]));
     assert_eq!(first["deptName"], "平台架构部");
     assert_eq!(first["roleName"], "超级管理员");
     assert_eq!(first["postName"], "技术总监");
@@ -386,6 +389,55 @@ async fn users_page_supports_paging_filters_and_options() {
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert_eq!(body["message"], "参数 status 必须是整数");
+}
+
+#[tokio::test]
+async fn user_list_keeps_relation_ids_when_names_duplicate_and_roles_are_disabled() {
+    let (app, store, container) = setup_app_with_container().await;
+    let admin = admin_token(&app, store.as_ref()).await;
+    container
+        .database
+        .execute_unprepared("UPDATE sys_role SET role_name = '同名,角色' WHERE id IN (2, 3)")
+        .await
+        .unwrap();
+    container
+        .database
+        .execute_unprepared("UPDATE sys_role SET status = 0 WHERE id = 3")
+        .await
+        .unwrap();
+    container
+        .database
+        .execute_unprepared("UPDATE sys_dept SET dept_name = '同名部门' WHERE id IN (5, 6)")
+        .await
+        .unwrap();
+    let (_, page) = send(
+        app.clone(),
+        get_with_bearer("/api/v1/system/users?keyword=heyj", &admin),
+    )
+    .await;
+    let row = &page["data"]["rows"][0];
+    assert_eq!(row["roleIds"], json!([3]));
+    let dept_id = row["deptId"].as_i64().unwrap();
+    let post_ids = row["postIds"].clone();
+    let (status, _) = send(
+        app.clone(),
+        put_json_with_bearer(
+            "/api/v1/system/users/3",
+            &admin,
+            json!({"nickname": "仅改昵称"}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, page) = send(
+        app.clone(),
+        get_with_bearer("/api/v1/system/users?keyword=heyj", &admin),
+    )
+    .await;
+    let row = &page["data"]["rows"][0];
+    assert_eq!(row["deptId"], dept_id);
+    assert_eq!(row["roleIds"], json!([3]));
+    assert_eq!(row["postIds"], post_ids);
 }
 
 #[tokio::test]
