@@ -1012,6 +1012,66 @@ async fn role_flow_covers_menus_graph_and_guards() {
 }
 
 #[tokio::test]
+async fn menus_reject_cycles_and_missing_parents_without_losing_the_tree() {
+    let (app, store) = setup_app_with_store().await;
+    let admin = admin_token(&app, store.as_ref()).await;
+    let mut parent = 0;
+    let mut ids = Vec::new();
+    for (name, kind) in [
+        ("cycle-parent", "dir"),
+        ("cycle-child", "dir"),
+        ("cycle-leaf", "menu"),
+    ] {
+        let (status, body) = send(app.clone(), post_json_with_bearer(
+            "/api/v1/system/menus", &admin, json!({"name": name, "type": kind, "parentId": parent, "path": "/cycle-leaf", "component": "system/user/index"}),
+        )).await;
+        assert_eq!(status, StatusCode::OK);
+        parent = body["data"]["id"].as_i64().unwrap();
+        ids.push(parent);
+    }
+    for bad_parent in [ids[0], ids[1], ids[2], 999999] {
+        let (status, _) = send(
+            app.clone(),
+            put_json_with_bearer(
+                &format!("/api/v1/system/menus/{}", ids[0]),
+                &admin,
+                json!({"parentId": bad_parent}),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+    let (status, _) = send(
+        app.clone(),
+        post_json_with_bearer(
+            "/api/v1/system/menus",
+            &admin,
+            json!({"name": "orphan", "parentId": 999999}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    for path in ["/api/v1/system/menus/tree", "/api/v1/auth/routes"] {
+        let (status, tree) = send(app.clone(), get_with_bearer(path, &admin)).await;
+        assert_eq!(status, StatusCode::OK);
+        let text = tree.to_string();
+        for name in ["cycle-parent", "cycle-child", "cycle-leaf"] {
+            assert!(text.contains(name), "{path} {name}");
+        }
+    }
+    let (status, _) = send(
+        app.clone(),
+        put_json_with_bearer(
+            &format!("/api/v1/system/menus/{}", ids[2]),
+            &admin,
+            json!({"parentId": 0}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
 async fn menu_tree_export_and_crud() {
     let (app, store) = setup_app_with_store().await;
     let token = admin_token(&app, store.as_ref()).await;

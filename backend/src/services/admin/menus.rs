@@ -73,7 +73,6 @@ impl MenuAdminUseCase for AdminService {
     ) -> Result<IdResponse, AppError> {
         let _cache_write = self.cache.begin_write().await;
         let name = required(command.name.clone(), "菜单名称不能为空")?;
-        let id = SeaOrmMenuRepository.next_menu_id(&self.database).await?;
         let command = MenuWriteCommand {
             parent_id: Some(command.parent_id.unwrap_or(0)),
             name: Some(name),
@@ -84,8 +83,18 @@ impl MenuAdminUseCase for AdminService {
             ..command
         };
 
-        SeaOrmMenuRepository
-            .insert_menu(&self.database, id, &command, operator)
+        let operator = operator.to_string();
+        let id = self
+            .in_transaction(|transaction| {
+                Box::pin(async move {
+                    let id = SeaOrmMenuRepository.next_menu_id(transaction).await?;
+                    ensure_menu_parent(transaction, id, command.parent_id.unwrap_or(0)).await?;
+                    SeaOrmMenuRepository
+                        .insert_menu(transaction, id, &command, &operator)
+                        .await?;
+                    Ok(id)
+                })
+            })
             .await?;
 
         Ok(IdResponse { id })
@@ -103,15 +112,23 @@ impl MenuAdminUseCase for AdminService {
             type_: trim_to_null(command.type_.clone()),
             ..command
         };
-        if SeaOrmMenuRepository
-            .update_menu(&self.database, id, &command, operator)
-            .await?
-            == 0
-        {
-            return Err(AppError::business("菜单不存在"));
-        }
-
-        Ok(())
+        let operator = operator.to_string();
+        self.in_transaction(|transaction| {
+            Box::pin(async move {
+                if let Some(parent_id) = command.parent_id {
+                    ensure_menu_parent(transaction, id, parent_id).await?;
+                }
+                if SeaOrmMenuRepository
+                    .update_menu(transaction, id, &command, &operator)
+                    .await?
+                    == 0
+                {
+                    return Err(AppError::business("菜单不存在"));
+                }
+                Ok(())
+            })
+        })
+        .await
     }
 
     async fn delete_menu(&self, id: i64, _operator: &str) -> Result<(), AppError> {
@@ -136,4 +153,27 @@ impl MenuAdminUseCase for AdminService {
 
         Ok(())
     }
+}
+
+async fn ensure_menu_parent(
+    db: &sea_orm::DatabaseTransaction,
+    id: i64,
+    parent_id: i64,
+) -> Result<(), AppError> {
+    let menus = SeaOrmMenuRepository.list_menus(db, None, None).await?;
+    let parents: std::collections::HashMap<_, _> = menus
+        .into_iter()
+        .map(|menu| (menu.id, menu.parent_id))
+        .collect();
+    let mut cursor = parent_id;
+    let mut seen = std::collections::HashSet::new();
+    while cursor != 0 {
+        if cursor == id || !seen.insert(cursor) {
+            return Err(AppError::business("上级菜单不能是自身或其下级"));
+        }
+        cursor = *parents
+            .get(&cursor)
+            .ok_or_else(|| AppError::business("上级菜单不存在"))?;
+    }
+    Ok(())
 }
