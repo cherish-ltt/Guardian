@@ -3,11 +3,13 @@
 mod support;
 
 use axum::http::StatusCode;
+use sea_orm::ConnectionTrait;
 use serde_json::{Value, json};
 
 use support::{
     admin_token, delete_with_bearer, get, get_with_bearer, login, post_json, post_json_with_bearer,
-    send, send_raw, setup_app_with_store, setup_app_with_store_with_trusted_proxies, take_captcha,
+    send, send_raw, setup_app_with_container, setup_app_with_store,
+    setup_app_with_store_with_trusted_proxies, take_captcha,
 };
 
 fn with_forwarded_for(
@@ -254,6 +256,59 @@ async fn oper_stats_and_timeline_aggregate_recorded_operations() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["data"]["lanes"].as_array().expect("泳道").len(), 0);
     assert_eq!(body["data"]["nowSec"], Value::Null);
+}
+
+#[tokio::test]
+async fn ip_visibility_applies_to_exports_and_heatmap() {
+    let (app, store, container) = setup_app_with_container().await;
+    let admin = admin_token(&app, store.as_ref()).await;
+    for ip in ["198.51.100.42", "2001:db8::42", "127.0.0.1", "192.168.1.10"] {
+        container.database.execute_unprepared(&format!(
+            "INSERT INTO sys_oper_log(module,action,ip,result) VALUES ('ip_probe','audit','{ip}',1)"
+        )).await.unwrap();
+        for _ in 0..5 {
+            container.database.execute_unprepared(&format!(
+                "INSERT INTO sys_login_log(username,ip,status,msg) VALUES ('ip_probe','{ip}',0,'failure')"
+            )).await.unwrap();
+        }
+    }
+    let scoped = login(&app, store.as_ref(), "linjh", support::DEMO_PASSWORD).await;
+    for (menus, expected) in [
+        (vec![201, 202], "198.x.x.42"),
+        (vec![201, 202, 2032], "198.51.x.x"),
+        (vec![201, 202, 2031], "198.51.100.42"),
+    ] {
+        let (status, _) = send(
+            app.clone(),
+            support::put_json_with_bearer(
+                "/api/v1/system/roles/2",
+                &admin,
+                json!({"menuIds": menus}),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        for path in [
+            "/api/v1/monitor/oper-logs?keyword=ip_probe&pageSize=100",
+            "/api/v1/monitor/login-logs?keyword=ip_probe&pageSize=100",
+            "/api/v1/monitor/oper-logs/export?keyword=ip_probe",
+            "/api/v1/monitor/login-logs/export?keyword=ip_probe",
+            "/api/v1/monitor/login-logs/heatmap",
+        ] {
+            let (status, _, bytes) = send_raw(app.clone(), get_with_bearer(path, &scoped)).await;
+            assert_eq!(status, StatusCode::OK, "{path}");
+            let body = String::from_utf8(bytes).unwrap();
+            assert!(body.contains(expected), "{path}: {body}");
+            if expected != "198.51.100.42" {
+                for ip in ["198.51.100.42", "2001:db8::42", "127.0.0.1", "192.168.1.10"] {
+                    assert!(!body.contains(ip), "{path} exposed {ip}");
+                }
+            }
+            if path.ends_with("heatmap") {
+                assert!(body.contains("ip_probe"));
+            }
+        }
+    }
 }
 
 #[tokio::test]

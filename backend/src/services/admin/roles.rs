@@ -10,6 +10,7 @@ use crate::{
         services::admin::roles::RoleAdminUseCase,
     },
     infrastructure::repositories::{
+        admin_auth::{AdminAuthRepository, SeaOrmAdminAuthRepository},
         dept::{DeptRepository, SeaOrmDeptRepository},
         menu::{MenuRepository, SeaOrmMenuRepository},
         role::{RoleRepository, SeaOrmRoleRepository},
@@ -119,6 +120,7 @@ impl RoleAdminUseCase for AdminService {
                         ensure_depts_exist(transaction, dept_ids).await?;
                     }
                     ensure_menus_exist(transaction, &menu_ids).await?;
+                    ensure_ip_grants_unchanged(transaction, &operator, &[], &menu_ids).await?;
                     let id = SeaOrmRoleRepository
                         .insert_role(transaction, &command, &operator)
                         .await?;
@@ -164,6 +166,8 @@ impl RoleAdminUseCase for AdminService {
                 }
                 if let Some(menu_ids) = menu_ids.as_deref() {
                     ensure_menus_exist(transaction, menu_ids).await?;
+                    let existing = SeaOrmRoleRepository.role_menu_ids(transaction, id).await?;
+                    ensure_ip_grants_unchanged(transaction, &operator, &existing, menu_ids).await?;
                 }
                 if SeaOrmRoleRepository
                     .update_role(transaction, id, &command, &operator)
@@ -220,6 +224,35 @@ impl RoleAdminUseCase for AdminService {
         })
         .await
     }
+}
+
+async fn ensure_ip_grants_unchanged(
+    db: &sea_orm::DatabaseTransaction,
+    operator: &str,
+    existing: &[i64],
+    requested: &[i64],
+) -> Result<(), AppError> {
+    let (operator_id, _) = SeaOrmAdminAuthRepository
+        .active_user_profile(db, operator)
+        .await?
+        .ok_or_else(|| AppError::forbidden("没有访问权限"))?;
+    let roles = SeaOrmAdminAuthRepository
+        .role_codes(db, operator_id)
+        .await?;
+    if roles.iter().any(|role| role == "super_admin") {
+        return Ok(());
+    }
+    let menus = SeaOrmMenuRepository.list_menus(db, None, None).await?;
+    for menu in menus {
+        if matches!(
+            menu.permission.as_deref(),
+            Some("monitor:ip:view:full" | "monitor:ip:view:partial")
+        ) && existing.contains(&menu.id) != requested.contains(&menu.id)
+        {
+            return Err(AppError::forbidden("只有超级管理员可以修改真实IP查看权限"));
+        }
+    }
+    Ok(())
 }
 
 /// 自定义数据范围里的部门必须真实存在，否则会在 `sys_role_dept` 留下悬空关联。
