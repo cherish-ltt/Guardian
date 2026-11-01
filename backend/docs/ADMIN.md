@@ -132,6 +132,8 @@ src/middleware/audit.rs                       写操作留痕
 | POST | `/tool/generator/tables/{id}/generate` | 同上 | 生成结果提示 |
 | GET | `/tool/generator/tables/{id}/download` | 同上 | ZIP（条目为完整相对路径） |
 
+代码生成器仅支持 SQLite 单列 `INTEGER` 行号主键；文本主键、复合主键、无主键和非行号主键在导入时会被拒绝。
+
 ### 其它
 
 `GET /api/v1/health`（新增：`status` / `time` / `serviceName`）、骨架既有的
