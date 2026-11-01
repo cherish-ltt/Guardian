@@ -13,6 +13,11 @@ export const pattern = (regexp: RegExp, message: string): Rule =>
 export const maxLength = (max: number, message?: string): Rule =>
   value => (isEmpty(value) || String(value).length <= max ? undefined : message ?? `不能超过 ${max} 个字符`)
 
+export const passwordLength: Rule = value => {
+  const length = Array.from(String(value)).length
+  return length >= 6 && length <= 64 ? undefined : '密码长度必须为 6 到 64 个字符'
+}
+
 export const phone = pattern(/^[\d-]{7,20}$/, '手机号格式不正确')
 export const email = pattern(/^\S+@\S+\.\S+$/, '邮箱格式不正确')
 

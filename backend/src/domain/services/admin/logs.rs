@@ -23,6 +23,7 @@ pub trait LogAdminUseCase: Send + Sync {
         &self,
         keyword: Option<&str>,
         result: Option<i64>,
+        visibility: IpVisibility,
     ) -> Result<String, AppError>;
 
     async fn delete_oper_log(&self, id: i64) -> Result<(), AppError>;
@@ -40,6 +41,7 @@ pub trait LogAdminUseCase: Send + Sync {
         &self,
         keyword: Option<&str>,
         status: Option<i64>,
+        visibility: IpVisibility,
     ) -> Result<String, AppError>;
 
     async fn delete_login_log(&self, id: i64) -> Result<(), AppError>;

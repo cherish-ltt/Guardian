@@ -20,7 +20,10 @@ export interface UserRow {
   nickname: string
   phone: string
   email: string
-  deptName: string
+  deptId: number | null
+  roleIds: number[]
+  postIds: number[]
+  deptName: string | null
   postName: string
   roleName: string
   status: number
