@@ -116,7 +116,11 @@ async fn export_oper_logs(
     let query = QueryString::parse(raw.as_deref());
     let csv = container
         .admin_service
-        .export_oper_logs(query.text("keyword").as_deref(), query.int("result")?)
+        .export_oper_logs(
+            query.text("keyword").as_deref(),
+            query.int("result")?,
+            IpVisibility::of(|code| user.has_permission(code)),
+        )
         .await?;
 
     Ok(csv_attachment("oper-logs.csv", csv))
@@ -188,11 +192,17 @@ async fn login_heatmap(
 ) -> Result<ApiResponse<LoginHeatmap>, AppError> {
     user.require("monitor:loginlog:list")?;
     let query = QueryString::parse(raw.as_deref());
-    let heatmap = container
+    let mut heatmap = container
         .monitor_service
         .login_heatmap(query.int("days")?)
         .await?;
 
+    let visibility = IpVisibility::of(|code| user.has_permission(code));
+    for anomaly in &mut heatmap.anomalies {
+        if anomaly.kind == "ip" {
+            anomaly.key = visibility.display(Some(&anomaly.key));
+        }
+    }
     Ok(ok(heatmap))
 }
 
@@ -205,7 +215,11 @@ async fn export_login_logs(
     let query = QueryString::parse(raw.as_deref());
     let csv = container
         .admin_service
-        .export_login_logs(query.text("keyword").as_deref(), query.int("status")?)
+        .export_login_logs(
+            query.text("keyword").as_deref(),
+            query.int("status")?,
+            IpVisibility::of(|code| user.has_permission(code)),
+        )
         .await?;
 
     Ok(csv_attachment("login-logs.csv", csv))

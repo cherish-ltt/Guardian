@@ -5,6 +5,7 @@ import { setPermissions } from '@/directives/permission'
 import type { NavGroup, NavLeaf } from '@/data'
 import { clearDictCache } from './dict'
 import { clearDeptCache } from './dept'
+import { menuPages } from '@/utils/menu-pages'
 
 /* ============================================================
    登录态、权限与动态菜单。
@@ -75,7 +76,8 @@ function buildNav(tree: RouteItem[]): NavGroup[] {
       if (leaf) groups.push({ key: leaf.key, label: leaf.label, icon: leaf.icon, single: true, items: [leaf] })
       continue
     }
-    const items = children.map(leafOf).filter((leaf): leaf is NavLeaf => Boolean(leaf))
+    const items = menuPages(children, item => leafOf(item) !== null)
+      .map(leafOf).filter((leaf): leaf is NavLeaf => leaf !== null)
     if (items.length) groups.push({ key: `group-${node.id ?? node.name}`, label: node.name, icon: node.icon || 'file', items })
   }
   return groups
