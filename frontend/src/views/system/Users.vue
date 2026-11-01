@@ -15,7 +15,7 @@ import { hasPermission } from '@/directives/permission'
 import { confirm } from '@/composables/confirm'
 import { pushToast, toastError } from '@/composables/toast'
 import type { Dept } from '@/data'
-import { email, phone, required, validate } from '@/utils/validate'
+import { email, passwordLength, phone, required, validate } from '@/utils/validate'
 
 const route = useRoute()
 const router = useRouter()
@@ -205,7 +205,7 @@ async function submit() {
   errors.value = validate(form, {
     username: [required('请输入登录账号')],
     nickname: [required('请输入用户姓名')],
-    password: isEdit.value ? [] : [required('请输入初始密码'), v => (String(v).length < 6 ? '密码至少 6 位' : undefined)],
+    password: isEdit.value ? [] : [required('请输入初始密码'), v => passwordLength(String(v).trim())],
     phone: [phone],
     email: [email],
     deptId: [required('请选择所属部门')],
@@ -254,8 +254,9 @@ function openReset(row: UserRow) {
 
 async function submitReset() {
   if (!resetTarget.value) return
-  if (resetPassword.value.length < 6) {
-    resetError.value = '密码至少 6 位'
+  const lengthError = passwordLength(resetPassword.value.trim())
+  if (lengthError) {
+    resetError.value = lengthError
     return
   }
   resetting.value = true
@@ -462,7 +463,7 @@ async function resetTwoFactor() {
         <TextInput v-model="form.nickname" placeholder="真实姓名" :invalid="!!errors.nickname" />
       </Field>
       <Field v-if="!isEdit" label="初始密码" required :error="errors.password" hint="默认取自系统参数中的用户初始密码" span>
-        <TextInput v-model="form.password" placeholder="至少 6 位" :invalid="!!errors.password" autocomplete="new-password" />
+        <TextInput v-model="form.password" placeholder="6 到 64 个字符" :invalid="!!errors.password" autocomplete="new-password" />
       </Field>
       <Field label="手机号码" :error="errors.phone">
         <TextInput v-model="form.phone" type="tel" placeholder="选填" :invalid="!!errors.phone" />

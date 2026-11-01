@@ -165,7 +165,11 @@ impl UserAdminUseCase for AdminService {
         // 未传口令时取系统参数 `sys.user.initPassword`；参数未配置才回退到
         // `.env` 的 SEED_ADMIN_PASSWORD，保持与文档、前端提示一致。
         let fallback = self.initial_password().await?;
-        let hashed = password::hash_password(&default_string(command.password.clone(), &fallback))?;
+        let plain = default_string(command.password.clone(), &fallback);
+        if !password::valid_length(&plain) {
+            return Err(AppError::business("密码长度必须在6到64位之间"));
+        }
+        let hashed = password::hash_password(&plain)?;
         let command = UserWriteCommand {
             username: Some(username),
             nickname: Some(nickname),
@@ -338,8 +342,7 @@ impl UserAdminUseCase for AdminService {
     ) -> Result<(), AppError> {
         // 不再有默认口令：重置必须显式指定新口令，否则一律拒绝。
         let plain = required(password, "新密码不能为空")?;
-        let length = plain.chars().count();
-        if !(6..=64).contains(&length) {
+        if !password::valid_length(&plain) {
             return Err(AppError::business("密码长度必须在6到64位之间"));
         }
 

@@ -85,6 +85,8 @@ src/middleware/audit.rs                       写操作留痕
 | GET | `/system/configs/export` | 同上 | `configs.csv` |
 | POST / PUT / DELETE | `/system/configs`、`/system/configs/{id}` | `system:config:add` / `edit` / `remove` | 内置参数不可改删，键名唯一 |
 
+新增用户采用指定密码或系统初始密码，密码长度须为 6 至 64 个 Unicode 字符；重置和修改密码同样适用此限制。
+
 ### 监控（`/monitor`）
 
 | 方法 | 路径 | 权限 | 说明 |
