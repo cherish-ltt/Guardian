@@ -36,7 +36,6 @@ pub trait UserAdminUseCase: Send + Sync {
         id: i64,
         command: UserWriteCommand,
         operator: &str,
-        operator_is_super: bool,
     ) -> Result<(), AppError>;
 
     async fn update_user_status(

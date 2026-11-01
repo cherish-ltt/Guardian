@@ -2273,6 +2273,81 @@ async fn user_relations_must_point_to_existing_records() {
 
 /// 授予内置超管角色属于提权：只有超管本人可以，普通「用户编辑」账号不行。
 #[tokio::test]
+async fn super_admin_role_cannot_be_removed_by_an_ordinary_editor_or_from_the_last_admin() {
+    let (app, store) = setup_app_with_store().await;
+    let admin = admin_token(&app, store.as_ref()).await;
+    assert_eq!(
+        send(
+            app.clone(),
+            put_json_with_bearer(
+                "/api/v1/system/roles/2",
+                &admin,
+                json!({"menuIds": [1012], "dataScope": "SELF"}),
+            )
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let scoped = login(&app, store.as_ref(), "linjh", DEMO_PASSWORD).await;
+    assert_eq!(
+        send(
+            app.clone(),
+            put_json_with_bearer("/api/v1/system/users/1", &scoped, json!({"roleIds": []}),)
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        send(
+            app.clone(),
+            put_json_with_bearer("/api/v1/system/users/1", &admin, json!({"roleIds": []}),)
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        send(
+            app.clone(),
+            put_json_with_bearer("/api/v1/system/users/3", &admin, json!({"roleIds": [1, 3]}),)
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        send(
+            app.clone(),
+            put_json_with_bearer("/api/v1/system/users/3", &scoped, json!({"roleIds": [3]}),)
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    let other = login(&app, store.as_ref(), "heyj", DEMO_PASSWORD).await;
+    let (_, me) = send(app.clone(), get_with_bearer("/api/v1/auth/me", &other)).await;
+    assert!(
+        me["data"]["roles"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("super_admin"))
+    );
+    assert_eq!(
+        send(
+            app.clone(),
+            put_json_with_bearer("/api/v1/system/users/3", &admin, json!({"roleIds": [3]}),)
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let (_, me) = send(app.clone(), get_with_bearer("/api/v1/auth/me", &admin)).await;
+    assert_eq!(me["data"]["roles"], json!(["super_admin"]));
+}
+
+#[tokio::test]
 async fn granting_super_admin_role_requires_super_admin() {
     let (app, store) = setup_app_with_store().await;
     let token = admin_token(&app, store.as_ref()).await;
