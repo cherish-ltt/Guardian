@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { Button, Drawer, Field, Metric, SectionLabel, Segmented, Select, Tag, TextInput, type Column } from '@/components/ui'
+import { Button, DateTimePicker, Drawer, Field, Metric, SectionLabel, Segmented, Select, Tag, TextInput, type Column } from '@/components/ui'
 import { ListPage, PermissionButton } from '@/components/business'
 import TrendChart from '@/components/charts/TrendChart.vue'
 import Swimlane from '@/components/charts/Swimlane.vue'
@@ -199,12 +199,13 @@ async function clearAll() {
       <Field label="结果">
         <Select v-model="list.query.result" :options="RESULTS" />
       </Field>
-      <Field label="开始时间" wide hint="服务端本地时间，包含起点">
-        <TextInput v-model="list.query.startTime" placeholder="YYYY-MM-DD HH:MM:SS" clearable />
+      <Field label="开始时间" wide group>
+        <DateTimePicker v-model="list.query.startTime" label="开始时间" />
       </Field>
-      <Field label="结束时间" wide hint="不含终点；仅筛选明细与导出">
-        <TextInput v-model="list.query.endTime" placeholder="YYYY-MM-DD HH:MM:SS" clearable />
+      <Field label="结束时间" wide group>
+        <DateTimePicker v-model="list.query.endTime" label="结束时间" />
       </Field>
+      <p class="search-hint">时间按服务端本地时间，包含开始、不含结束；仅筛选明细与导出，不影响上方统计。</p>
     </template>
 
     <template #tools>

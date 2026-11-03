@@ -140,6 +140,34 @@
 }
 .input-shell .input-clear:hover { color: var(--ink-muted); }
 
+/* 日期时间选择器沿用站内令牌，弹层传送到 body 后仍继承主题。 */
+.datetime-picker, .datetime-menu {
+  --dp-font-family: inherit;
+  --dp-font-size: 13px;
+  --dp-border-radius: var(--r-sm);
+  --dp-background-color: var(--surface-solid);
+  --dp-text-color: var(--ink);
+  --dp-hover-color: var(--hover-bg);
+  --dp-hover-text-color: var(--ink);
+  --dp-primary-color: var(--blue);
+  --dp-primary-text-color: #fff;
+  --dp-secondary-color: var(--ink-soft);
+  --dp-border-color: var(--line-strong);
+  --dp-menu-border-color: var(--line-strong);
+  --dp-border-color-hover: var(--ink-soft);
+  --dp-icon-color: var(--ink-soft);
+  --dp-disabled-color: var(--groove-bg);
+}
+.datetime-picker .dp--input {
+  height: var(--control-h);
+  background: var(--input-bg);
+  box-shadow: var(--edge);
+  font-size: 13px;
+}
+.datetime-picker .dp--input::placeholder { color: var(--ink-faint); opacity: 1; }
+.datetime-picker .dp--input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.datetime-menu { box-shadow: var(--e3); }
+
 /* ── 下拉选择 ───────────────────────────────────────────────── */
 .select-trigger {
   width: 100%;
