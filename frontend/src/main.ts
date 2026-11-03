@@ -5,6 +5,7 @@ import { installPermissionDirective } from './directives/permission'
 import { installHoverLift, installPressFeedback, installRipple } from './composables/motion'
 
 // 设计令牌 → 基础 → 材质 → 控件 → 外壳 → 页面
+import '@vuepic/vue-datepicker/dist/main.css'
 import './styles/tokens.css'
 import './styles/base.css'
 import './styles/materials.css'
