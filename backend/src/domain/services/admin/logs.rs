@@ -21,8 +21,7 @@ pub trait LogAdminUseCase: Send + Sync {
 
     async fn export_oper_logs(
         &self,
-        keyword: Option<&str>,
-        result: Option<i64>,
+        query: &OperLogQuery,
         visibility: IpVisibility,
     ) -> Result<String, AppError>;
 
@@ -39,8 +38,7 @@ pub trait LogAdminUseCase: Send + Sync {
 
     async fn export_login_logs(
         &self,
-        keyword: Option<&str>,
-        status: Option<i64>,
+        query: &LoginLogQuery,
         visibility: IpVisibility,
     ) -> Result<String, AppError>;
 

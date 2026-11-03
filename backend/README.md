@@ -6,6 +6,9 @@
 Guardian 的后端服务：提供登录会话（验证码 + 可选认证器 2FA + JWT + Redis 撤销）、本人资料与恢复码、系统管理（用户 / 角色 / 菜单 / 部门 /
 岗位 / 字典 / 参数）、操作与登录日志、工作台聚合与代码生成，配套前端见 [../frontend](../frontend)。
 
+操作与登录日志支持按服务端本地时间窗口查询和导出 CSV（含起点、不含终点，最多 5000 行），
+参数与时区限制见 [监控接口契约](docs/ADMIN.md#监控monitor)。
+
 代码模板来自 [cherish-ltt/AxumServiceScaffold](https://github.com/cherish-ltt/AxumServiceScaffold)：
 分层结构、中间件栈、统一响应、日志与事务实现沿用该骨架，业务模块（后台管理）在本仓库实现。
 接口契约对齐 `scaffold-master` 的 Spring Boot 版本，逐条差异见 [后台管理模块](docs/ADMIN.md)。

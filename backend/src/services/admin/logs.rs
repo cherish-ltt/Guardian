@@ -24,12 +24,11 @@ impl LogAdminUseCase for AdminService {
         visibility: IpVisibility,
     ) -> Result<PageResult<OperLogRow>, AppError> {
         let page = Page::from_query(Some(&query.page))?;
-        let keyword = query.keyword.as_deref();
         let total = SeaOrmAuditLogRepository
-            .count_oper_logs(&self.database, keyword, query.result)
+            .count_oper_logs(&self.database, query)
             .await?;
         let mut rows = SeaOrmAuditLogRepository
-            .list_oper_logs(&self.database, keyword, query.result, page)
+            .list_oper_logs(&self.database, query, page)
             .await?;
         for row in &mut rows {
             row.ip = visibility.display(Some(row.ip.as_str()));
@@ -40,12 +39,11 @@ impl LogAdminUseCase for AdminService {
 
     async fn export_oper_logs(
         &self,
-        keyword: Option<&str>,
-        result: Option<i64>,
+        query: &OperLogQuery,
         visibility: IpVisibility,
     ) -> Result<String, AppError> {
         let rows = SeaOrmAuditLogRepository
-            .list_oper_logs(&self.database, keyword, result, Page::export(EXPORT_LIMIT))
+            .list_oper_logs(&self.database, query, Page::export(EXPORT_LIMIT))
             .await?;
         let data = rows
             .iter()
@@ -112,12 +110,11 @@ impl LogAdminUseCase for AdminService {
         visibility: IpVisibility,
     ) -> Result<PageResult<LoginLogRow>, AppError> {
         let page = Page::from_query(Some(&query.page))?;
-        let keyword = query.keyword.as_deref();
         let total = SeaOrmAuditLogRepository
-            .count_login_logs(&self.database, keyword, query.status)
+            .count_login_logs(&self.database, query)
             .await?;
         let mut rows = SeaOrmAuditLogRepository
-            .list_login_logs(&self.database, keyword, query.status, page)
+            .list_login_logs(&self.database, query, page)
             .await?;
         for row in &mut rows {
             row.ip = visibility.display(Some(row.ip.as_str()));
@@ -128,12 +125,11 @@ impl LogAdminUseCase for AdminService {
 
     async fn export_login_logs(
         &self,
-        keyword: Option<&str>,
-        status: Option<i64>,
+        query: &LoginLogQuery,
         visibility: IpVisibility,
     ) -> Result<String, AppError> {
         let rows = SeaOrmAuditLogRepository
-            .list_login_logs(&self.database, keyword, status, Page::export(EXPORT_LIMIT))
+            .list_login_logs(&self.database, query, Page::export(EXPORT_LIMIT))
             .await?;
         let data = rows
             .iter()

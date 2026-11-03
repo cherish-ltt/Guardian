@@ -67,8 +67,7 @@ async fn list_oper_logs(
         .list_oper_logs(
             &OperLogQuery {
                 page: query.page()?,
-                keyword: query.text("keyword"),
-                result: query.int("result")?,
+                ..oper_log_query(&query)?
             },
             visibility,
         )
@@ -117,8 +116,7 @@ async fn export_oper_logs(
     let csv = container
         .admin_service
         .export_oper_logs(
-            query.text("keyword").as_deref(),
-            query.int("result")?,
+            &oper_log_query(&query)?,
             IpVisibility::of(|code| user.has_permission(code)),
         )
         .await?;
@@ -160,8 +158,7 @@ async fn list_login_logs(
         .list_login_logs(
             &LoginLogQuery {
                 page: query.page()?,
-                keyword: query.text("keyword"),
-                status: query.int("status")?,
+                ..login_log_query(&query)?
             },
             visibility,
         )
@@ -216,13 +213,45 @@ async fn export_login_logs(
     let csv = container
         .admin_service
         .export_login_logs(
-            query.text("keyword").as_deref(),
-            query.int("status")?,
+            &login_log_query(&query)?,
             IpVisibility::of(|code| user.has_permission(code)),
         )
         .await?;
 
     Ok(csv_attachment("login-logs.csv", csv))
+}
+
+fn oper_log_query(query: &QueryString) -> Result<OperLogQuery, AppError> {
+    let (start_time, end_time) = log_time_window(query)?;
+    Ok(OperLogQuery {
+        keyword: query.text("keyword"),
+        result: query.int("result")?,
+        start_time,
+        end_time,
+        ..Default::default()
+    })
+}
+
+fn login_log_query(query: &QueryString) -> Result<LoginLogQuery, AppError> {
+    let (start_time, end_time) = log_time_window(query)?;
+    Ok(LoginLogQuery {
+        keyword: query.text("keyword"),
+        status: query.int("status")?,
+        start_time,
+        end_time,
+        ..Default::default()
+    })
+}
+
+fn log_time_window(query: &QueryString) -> Result<(Option<String>, Option<String>), AppError> {
+    let start = query.datetime("startTime")?;
+    let end = query.datetime("endTime")?;
+    if let (Some(start), Some(end)) = (&start, &end)
+        && start >= end
+    {
+        return Err(AppError::business("startTime 必须早于 endTime"));
+    }
+    Ok((start, end))
 }
 
 async fn delete_login_log(

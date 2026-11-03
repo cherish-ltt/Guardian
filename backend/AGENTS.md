@@ -488,6 +488,8 @@ msrv = "1.99.0"
   生成物必须能通过 `cargo check`，模板之间不能出现「服务调用了仓储里不存在的方法」这类断裂。
 - **时间字段**：SQLite 没有原生日期类型，统一存 `TEXT`（`YYYY-MM-DD HH:MM:SS` 本地时间，
   `src/util/time.rs` 提供格式化与解析），比较用字典序，SQL 侧用 `strftime` / `julianday` / `substr`。
+- 日志明细与导出的可选 `startTime` / `endTime` 使用半开区间，查询 / 计数 / CSV 共用过滤；
+  显式空值、非规范时间和逆序 / 相等边界返回 400，不能用 `QueryString::text` 丢弃非法时间条件。
 - **会话与验证码必须经过 `AuthStore`**：生产用 `RedisAuthStore`（`REDIS_URL` / `REDIS_PASSWORD`），
   测试用 `MemoryAuthStore`（`Container::memory_auth_store()`）；禁止绕开抽象直接操作 Redis 客户端。
 - 新增页面级模块时按 `src/api/controllers/admin/` + `src/domain/services/admin/` + `src/services/admin/`
