@@ -3,6 +3,38 @@ import assert from 'node:assert/strict'
 import { createHttpClient } from '../http.ts'
 import { createSystemApi } from '../system.ts'
 
+test('log lists and exports preserve server-local time windows without timezone conversion', async () => {
+  const calls: URL[] = []
+  const api = createSystemApi(createHttpClient({
+    baseUrl: 'http://localhost/api/v1',
+    fetcher: async url => {
+      calls.push(new URL(String(url)))
+      return String(url).includes('/export')
+        ? new Response('fixture')
+        : new Response(JSON.stringify({ code: 200, data: { rows: [], total: 0 } }))
+    },
+  }))
+  for (const logs of [api.operLogs, api.loginLogs]) {
+    for (const bounds of [
+      { startTime: '2026-01-02 10:00:00', endTime: '2026-01-02 11:00:00' },
+      { startTime: '2026-01-02 10:00:00' },
+      { endTime: '2026-01-02 11:00:00' },
+      {},
+    ]) {
+      const query = { keyword: '日志', ...bounds }
+      await logs.list({ ...query, pageNum: 2, pageSize: 10 })
+      await logs.export(query)
+      const [list, exported] = calls.slice(-2)
+      assert.equal(list!.searchParams.get('pageNum'), '2')
+      assert.equal(exported!.searchParams.has('pageNum'), false)
+      for (const key of ['startTime', 'endTime', 'keyword'] as const) {
+        assert.equal(list!.searchParams.get(key), query[key] ?? null)
+        assert.equal(exported!.searchParams.get(key), query[key] ?? null)
+      }
+    }
+  }
+})
+
 test('system api maps user list and CRUD calls to backend endpoints', async () => {
   const calls: Array<{ url: string; method: string; body?: string }> = []
   const fetcher = async (url: string | URL | Request, init?: RequestInit) => {

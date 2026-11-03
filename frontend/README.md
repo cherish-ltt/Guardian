@@ -60,6 +60,7 @@ npm run build
 | `src/views` | 登录与两步验证、工作台、个人资料、10 个管理页、无权限与未匹配页面 |
 | `scripts/session-regression.py` | 真实浏览器会话、路由竞态与低权限回归 |
 | `scripts/account-regression.mjs` | 资料、2FA 绑定与恢复码的浏览器回归 |
+| `scripts/log-window-regression.py` | 日志时间窗口、翻页、CSV、重置及桌面 / 窄屏回归 |
 
 ## 扩展约定
 
@@ -81,8 +82,25 @@ npm run build
 - 分页返回 `{pageNum, pageSize, total, rows}`；列表页的导出走 CSV（`text/csv`），
   代码生成下载走 ZIP。
 - 401 触发统一会话清理并跳登录；403 表示权限不足，页面按权限码隐藏入口。
+- 操作与登录日志支持可选开始 / 结束时间，输入 `YYYY-MM-DD HH:MM:SS` 服务端本地时间，
+  包含开始、不含结束；只影响明细与 CSV（最多 5000 行），不转换浏览器时区或改变统计窗口。
+  清空可只保留单边界，重置同时清除时间并返回第一页。
 
 ## 浏览器回归
+
+日志时间筛选回归使用独立 SQLite 测试库和已启动的前后端，脚本按唯一关键词创建并清理夹具，
+不得连接生产数据库。已安装 Python Playwright / Chromium 后运行：
+
+```bash
+GUARDIAN_TEST_URL=http://127.0.0.1:5173 \
+GUARDIAN_TEST_DB=/absolute/path/to/test.db \
+GUARDIAN_TEST_PASSWORD='<测试管理员口令>' \
+python scripts/log-window-regression.py
+```
+
+可用 `GUARDIAN_TEST_BROWSER` 指定本机 Chromium 路径，`GUARDIAN_TEST_SCREENSHOTS` 指定截图目录。
+脚本使用纽约浏览器时区验证时间文本原样发送，并检查 1440 / 390 像素宽度下的输入可用性。
+验收截图：[桌面](../docs/screenshots/log-window-desktop.png)、[窄屏](../docs/screenshots/log-window-mobile.png)。
 
 资料/2FA 浏览器回归（独立测试库；脚本创建并删除无菜单权限用户）：
 
