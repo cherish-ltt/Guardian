@@ -17,8 +17,8 @@ import { pushToast, toastError } from '@/composables/toast'
 
 interface LoginRow { id: number; username: string; status: number; msg?: string; ip?: string; browser?: string; os?: string; loginTime: string }
 
-const list = useListPage<LoginRow, { keyword: string; status: string }>({
-  query: { keyword: '', status: '' },
+const list = useListPage<LoginRow, { keyword: string; status: string; startTime: string; endTime: string }>({
+  query: { keyword: '', status: '', startTime: '', endTime: '' },
   fetch: params => systemApi.loginLogs.list(params) as Promise<any>,
   exporter: params => systemApi.loginLogs.export(params),
   exportName: '登录日志.csv',
@@ -201,6 +201,12 @@ async function clearAll() {
       </Field>
       <Field label="结果">
         <Select v-model="list.query.status" :options="STATUSES" />
+      </Field>
+      <Field label="开始时间" wide hint="服务端本地时间，包含起点">
+        <TextInput v-model="list.query.startTime" placeholder="YYYY-MM-DD HH:MM:SS" clearable />
+      </Field>
+      <Field label="结束时间" wide hint="不含终点；仅筛选明细与导出">
+        <TextInput v-model="list.query.endTime" placeholder="YYYY-MM-DD HH:MM:SS" clearable />
       </Field>
     </template>
 

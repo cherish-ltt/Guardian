@@ -3,7 +3,7 @@ use sea_orm::{ConnectionTrait, Value};
 
 use crate::{
     domain::models::{
-        audit_log::{LoginLogRow, OperLogRow, OperationLogEntry},
+        audit_log::{LoginLogQuery, LoginLogRow, OperLogQuery, OperLogRow, OperationLogEntry},
         pagination::Page,
     },
     error::AppError,
@@ -16,39 +16,27 @@ use crate::{
 /// 操作日志与登录日志的读写。
 #[async_trait]
 pub trait AuditLogRepository: Send + Sync {
-    async fn count_oper_logs<C>(
-        &self,
-        db: &C,
-        keyword: Option<&str>,
-        result: Option<i64>,
-    ) -> Result<i64, AppError>
+    async fn count_oper_logs<C>(&self, db: &C, query: &OperLogQuery) -> Result<i64, AppError>
     where
         C: ConnectionTrait;
 
     async fn list_oper_logs<C>(
         &self,
         db: &C,
-        keyword: Option<&str>,
-        result: Option<i64>,
+        query: &OperLogQuery,
         page: Page,
     ) -> Result<Vec<OperLogRow>, AppError>
     where
         C: ConnectionTrait;
 
-    async fn count_login_logs<C>(
-        &self,
-        db: &C,
-        keyword: Option<&str>,
-        status: Option<i64>,
-    ) -> Result<i64, AppError>
+    async fn count_login_logs<C>(&self, db: &C, query: &LoginLogQuery) -> Result<i64, AppError>
     where
         C: ConnectionTrait;
 
     async fn list_login_logs<C>(
         &self,
         db: &C,
-        keyword: Option<&str>,
-        status: Option<i64>,
+        query: &LoginLogQuery,
         page: Page,
     ) -> Result<Vec<LoginLogRow>, AppError>
     where
@@ -80,16 +68,11 @@ pub struct SeaOrmAuditLogRepository;
 
 #[async_trait]
 impl AuditLogRepository for SeaOrmAuditLogRepository {
-    async fn count_oper_logs<C>(
-        &self,
-        db: &C,
-        keyword: Option<&str>,
-        result: Option<i64>,
-    ) -> Result<i64, AppError>
+    async fn count_oper_logs<C>(&self, db: &C, query: &OperLogQuery) -> Result<i64, AppError>
     where
         C: ConnectionTrait,
     {
-        let (filter, values) = oper_filter(keyword, result);
+        let (filter, values) = oper_filter(query);
         let sql = format!("SELECT COUNT(*) AS value FROM sys_oper_log l WHERE {filter}");
 
         query_count(db, &sql, values).await
@@ -98,14 +81,13 @@ impl AuditLogRepository for SeaOrmAuditLogRepository {
     async fn list_oper_logs<C>(
         &self,
         db: &C,
-        keyword: Option<&str>,
-        result: Option<i64>,
+        query: &OperLogQuery,
         page: Page,
     ) -> Result<Vec<OperLogRow>, AppError>
     where
         C: ConnectionTrait,
     {
-        let (filter, mut values) = oper_filter(keyword, result);
+        let (filter, mut values) = oper_filter(query);
         let sql = format!(
             "SELECT l.id, l.module, l.action, l.request_method, l.request_url, l.request_params, \
              l.oper_name, l.dept_name, l.ip, l.cost, l.result, l.error_msg, \
@@ -136,16 +118,11 @@ impl AuditLogRepository for SeaOrmAuditLogRepository {
             .collect())
     }
 
-    async fn count_login_logs<C>(
-        &self,
-        db: &C,
-        keyword: Option<&str>,
-        status: Option<i64>,
-    ) -> Result<i64, AppError>
+    async fn count_login_logs<C>(&self, db: &C, query: &LoginLogQuery) -> Result<i64, AppError>
     where
         C: ConnectionTrait,
     {
-        let (filter, values) = login_filter(keyword, status);
+        let (filter, values) = login_filter(query);
         let sql = format!("SELECT COUNT(*) AS value FROM sys_login_log l WHERE {filter}");
 
         query_count(db, &sql, values).await
@@ -154,14 +131,13 @@ impl AuditLogRepository for SeaOrmAuditLogRepository {
     async fn list_login_logs<C>(
         &self,
         db: &C,
-        keyword: Option<&str>,
-        status: Option<i64>,
+        query: &LoginLogQuery,
         page: Page,
     ) -> Result<Vec<LoginLogRow>, AppError>
     where
         C: ConnectionTrait,
     {
-        let (filter, mut values) = login_filter(keyword, status);
+        let (filter, mut values) = login_filter(query);
         let sql = format!(
             "SELECT l.id, l.username, l.ip, l.browser, l.os, l.status, l.msg, \
              l.login_time FROM sys_login_log l WHERE {filter} \
@@ -249,11 +225,11 @@ impl AuditLogRepository for SeaOrmAuditLogRepository {
     }
 }
 
-fn oper_filter(keyword: Option<&str>, result: Option<i64>) -> (String, Vec<Value>) {
+fn oper_filter(query: &OperLogQuery) -> (String, Vec<Value>) {
     let mut clauses = vec!["1 = 1".to_string()];
     let mut values = Vec::new();
 
-    if let Some(keyword) = keyword.filter(|value| !value.is_empty()) {
+    if let Some(keyword) = query.keyword.as_deref().filter(|value| !value.is_empty()) {
         clauses.push(
             "(l.module LIKE ? OR l.action LIKE ? OR l.oper_name LIKE ? OR l.request_url LIKE ? \
              OR l.request_params LIKE ?)"
@@ -264,28 +240,46 @@ fn oper_filter(keyword: Option<&str>, result: Option<i64>) -> (String, Vec<Value
             values.push(pattern.clone().into());
         }
     }
-    if let Some(result) = result {
+    if let Some(result) = query.result {
         clauses.push("l.result = ?".to_string());
         values.push(result.into());
+    }
+
+    if let Some(start) = &query.start_time {
+        clauses.push("l.oper_time >= ?".to_string());
+        values.push(start.clone().into());
+    }
+    if let Some(end) = &query.end_time {
+        clauses.push("l.oper_time < ?".to_string());
+        values.push(end.clone().into());
     }
 
     (clauses.join(" AND "), values)
 }
 
-fn login_filter(keyword: Option<&str>, status: Option<i64>) -> (String, Vec<Value>) {
+fn login_filter(query: &LoginLogQuery) -> (String, Vec<Value>) {
     let mut clauses = vec!["1 = 1".to_string()];
     let mut values = Vec::new();
 
-    if let Some(keyword) = keyword.filter(|value| !value.is_empty()) {
+    if let Some(keyword) = query.keyword.as_deref().filter(|value| !value.is_empty()) {
         clauses.push("(l.username LIKE ? OR l.ip LIKE ? OR l.msg LIKE ?)".to_string());
         let pattern = format!("%{keyword}%");
         for _ in 0..3 {
             values.push(pattern.clone().into());
         }
     }
-    if let Some(status) = status {
+    if let Some(status) = query.status {
         clauses.push("l.status = ?".to_string());
         values.push(status.into());
+    }
+
+    if let Some(start) = &query.start_time {
+        clauses.push("l.login_time >= ?".to_string());
+        values.push(start.clone().into());
+    }
+    if let Some(end) = &query.end_time {
+        clauses.push("l.login_time < ?".to_string());
+        values.push(end.clone().into());
     }
 
     (clauses.join(" AND "), values)

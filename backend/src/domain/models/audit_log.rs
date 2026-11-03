@@ -8,6 +8,8 @@ pub struct OperLogQuery {
     pub page: PageQuery,
     pub keyword: Option<String>,
     pub result: Option<i64>,
+    pub start_time: Option<String>,
+    pub end_time: Option<String>,
 }
 
 /// 登录日志列表查询。
@@ -16,6 +18,8 @@ pub struct LoginLogQuery {
     pub page: PageQuery,
     pub keyword: Option<String>,
     pub status: Option<i64>,
+    pub start_time: Option<String>,
+    pub end_time: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

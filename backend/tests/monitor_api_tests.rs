@@ -289,10 +289,10 @@ async fn ip_visibility_applies_to_exports_and_heatmap() {
         .await;
         assert_eq!(status, StatusCode::OK);
         for path in [
-            "/api/v1/monitor/oper-logs?keyword=ip_probe&pageSize=100",
-            "/api/v1/monitor/login-logs?keyword=ip_probe&pageSize=100",
-            "/api/v1/monitor/oper-logs/export?keyword=ip_probe",
-            "/api/v1/monitor/login-logs/export?keyword=ip_probe",
+            "/api/v1/monitor/oper-logs?keyword=ip_probe&pageSize=100&startTime=2000-01-01%2000:00:00&endTime=9999-12-31%2023:59:59",
+            "/api/v1/monitor/login-logs?keyword=ip_probe&pageSize=100&startTime=2000-01-01%2000:00:00&endTime=9999-12-31%2023:59:59",
+            "/api/v1/monitor/oper-logs/export?keyword=ip_probe&startTime=2000-01-01%2000:00:00&endTime=9999-12-31%2023:59:59",
+            "/api/v1/monitor/login-logs/export?keyword=ip_probe&startTime=2000-01-01%2000:00:00&endTime=9999-12-31%2023:59:59",
             "/api/v1/monitor/login-logs/heatmap",
         ] {
             let (status, _, bytes) = send_raw(app.clone(), get_with_bearer(path, &scoped)).await;

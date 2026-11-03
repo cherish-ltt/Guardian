@@ -30,9 +30,9 @@ interface OperRow {
 }
 
 const route = useRoute()
-const list = useListPage<OperRow, { keyword: string; result: string }>({
+const list = useListPage<OperRow, { keyword: string; result: string; startTime: string; endTime: string }>({
   // 从工作台泳道跳转时带入模块关键词
-  query: { keyword: typeof route.query.keyword === 'string' ? route.query.keyword : '', result: '' },
+  query: { keyword: typeof route.query.keyword === 'string' ? route.query.keyword : '', result: '', startTime: '', endTime: '' },
   fetch: params => systemApi.operLogs.list(params) as Promise<any>,
   exporter: params => systemApi.operLogs.export(params),
   exportName: '操作日志.csv',
@@ -198,6 +198,12 @@ async function clearAll() {
       </Field>
       <Field label="结果">
         <Select v-model="list.query.result" :options="RESULTS" />
+      </Field>
+      <Field label="开始时间" wide hint="服务端本地时间，包含起点">
+        <TextInput v-model="list.query.startTime" placeholder="YYYY-MM-DD HH:MM:SS" clearable />
+      </Field>
+      <Field label="结束时间" wide hint="不含终点；仅筛选明细与导出">
+        <TextInput v-model="list.query.endTime" placeholder="YYYY-MM-DD HH:MM:SS" clearable />
       </Field>
     </template>
 

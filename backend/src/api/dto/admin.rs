@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use serde::Deserialize;
 
 use crate::domain::{error::AppError, models::pagination::PageQuery};
+use crate::util::time;
 
 /// 已解析的查询串：只做取值与类型转换，不做业务校验。
 #[derive(Debug, Default)]
@@ -40,6 +41,22 @@ impl QueryString {
             .get(key)
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty())
+    }
+
+    /// 显式空值与非规范格式不能退化成无时间过滤。
+    pub fn datetime(&self, key: &str) -> Result<Option<String>, AppError> {
+        let Some(value) = self.0.get(key) else {
+            return Ok(None);
+        };
+        if value.len() != 19
+            || !time::parse_datetime(value)
+                .is_some_and(|parsed| time::format_datetime(parsed) == *value)
+        {
+            return Err(AppError::business(format!(
+                "参数 {key} 必须是有效的服务端本地时间 YYYY-MM-DD HH:MM:SS"
+            )));
+        }
+        Ok(Some(value.clone()))
     }
 
     /// 非负整数条件：负数与非法值都返回 400。

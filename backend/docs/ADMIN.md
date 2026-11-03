@@ -91,18 +91,31 @@ src/middleware/audit.rs                       写操作留痕
 
 | 方法 | 路径 | 权限 | 说明 |
 | --- | --- | --- | --- |
-| GET | `/monitor/oper-logs` | `monitor:operlog:list` | 分页列表（`keyword` / `result`），`ip` 按查看权限打码 |
+| GET | `/monitor/oper-logs` | `monitor:operlog:list` | 分页列表（`keyword` / `result` / `startTime` / `endTime`），`ip` 按查看权限打码 |
 | GET | `/monitor/oper-logs/stats` | 同上 | 统计卡 + 趋势（`range=24h` 按小时、`7d` / `30d` 按天，缺省桶补零） |
 | GET | `/monitor/oper-logs/timeline` | 同上 | 泳道时间线（同一模块相邻操作合并，间隔超过 900s 断开） |
-| GET | `/monitor/oper-logs/export` | 同上 | `oper-logs.csv` |
+| GET | `/monitor/oper-logs/export` | 同上 | `oper-logs.csv`，与列表共用关键词、结果及时间条件，最多 5000 行 |
 | DELETE | `/monitor/oper-logs/{id}`、`/monitor/oper-logs` | `monitor:operlog:remove` | 删除单条 / 清空 |
-| GET | `/monitor/login-logs` | `monitor:loginlog:list` | 分页列表（`keyword` / `status`），`ip` 按查看权限打码 |
+| GET | `/monitor/login-logs` | `monitor:loginlog:list` | 分页列表（`keyword` / `status` / `startTime` / `endTime`），`ip` 按查看权限打码 |
 | GET | `/monitor/login-logs/stats` | 同上 | 统计卡 + 趋势 |
 | GET | `/monitor/login-logs/heatmap` | 同上 | 7×24 热力格与异常告警（`days` 可选，阈值默认 5） |
-| GET | `/monitor/login-logs/export` | 同上 | `login-logs.csv` |
+| GET | `/monitor/login-logs/export` | 同上 | `login-logs.csv`，与列表共用关键词、状态及时间条件，最多 5000 行 |
 | DELETE | `/monitor/login-logs/{id}`、`/monitor/login-logs` | `monitor:loginlog:remove` | 删除单条 / 清空 |
 | GET | `/monitor/ip-locations?ip=` | `monitor:ip:view:full` | 单条属地现查，返回 `{ip, location}` |
 | POST | `/monitor/ip-locations` | `monitor:ip:view:full` | 整页批量现查，请求 `{"ips": [...]}`，返回顺序与请求一致 |
+
+日志明细与导出时间条件：
+
+- `startTime` / `endTime` 均可省略，支持只传一个边界；全部省略保持原有行为。
+- 格式严格为 `YYYY-MM-DD HH:MM:SS`，按服务端本地时间文本解释；区间为
+  `[startTime, endTime)`（包含起点、不含终点），与关键词及结果 / 状态取交集。
+  例如 `?startTime=2026-01-02%2010:00:00&endTime=2026-01-02%2011:00:00`。
+- 无效日期、缺时间部分、显式空串 / 空白、非规范格式、开始不早于结束均返回明确的 400，
+  不会静默忽略条件；前端清空输入时省略对应参数，重置清除时间并返回第一页。
+- 列表、`total` 与 CSV 使用相同过滤及时间倒序 / ID 倒序；导出忽略分页，最多 5000 行，
+  不是全量归档。权限、IP 三档脱敏与 CSV 公式中和保持不变。
+- 明细条件不影响概览、趋势、泳道或热力图的独立窗口；不转换浏览器时区，
+  不迁移历史数据。历史时间没有偏移信息，无法区分夏令时重复时刻。
 
 `location` 的取值与日志地点同口径：回环「本机」、RFC1918 私网 / 链路本地 / IPv6 ULA「内网」
 （这两档不查库，未配置地名库时同样成立），其余查库，库未命中或落在保留地址段为「外网」。
@@ -288,6 +301,7 @@ Redis 超时/错误/坏数据触发短暂熔断，回源 SQLite；故障时不�
 
 | 项 | Spring 版 | 本实现 | 原因 |
 | --- | --- | --- | --- |
+| 日志明细时间窗口 | 列表与导出仅关键词、结果 / 状态 | 增加可选 `startTime` / `endTime`，服务端本地时间半开区间，非法边界返回 400 | 按事件窗口排查与导出，沿用既有时间索引及导出上限，不改变统计窗口 |
 | 个人资料与 2FA | 本轮环境未提供参考目录，未核实上游对应契约 | 按本文新增本人接口、第二因素与独立重置权限 | 本次明确需求，非声称逐字兼容 |
 | 基础数据缓存 | 本轮未核实上游缓存策略 | 单实例写屏障/换代、有界回源及空值缓存 | 本次明确的一致性及故障约束 |
 | 验证码开关 | `sys.account.captchaEnabled` 参数控制是否校验验证码 | 同名参数，`builtin=0` 可在参数页直接开关 | 关闭后 `/auth/captcha` 返回 `enabled=false` 且不写 Redis，登录不再校验验证码 |
