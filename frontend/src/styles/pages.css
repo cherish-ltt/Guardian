@@ -34,6 +34,10 @@
 .profile-enrollment img { max-width: 100%; height: auto; border-radius: var(--r-xs); }
 .profile-error { color: var(--red-text); }
 .profile-security-hint { font-size: 12px; line-height: 1.65; }
+.profile-sessions { margin-top: 20px; min-width: 0; }
+.profile-session-intro { display: flex; flex-direction: column; gap: 10px; font-size: 12px; line-height: 1.65; }
+.profile-session-client { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.profile-session-more { display: flex; justify-content: center; }
 @media (max-width: 1180px) {
   .profile-grid { grid-template-columns: minmax(0, 1fr); gap: 16px; }
 }

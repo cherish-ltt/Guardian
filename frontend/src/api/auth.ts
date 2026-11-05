@@ -22,6 +22,15 @@ export interface Profile {
 export interface SecurityProof { password: string; secondFactor?: string }
 export interface Enrollment { secret: string; otpauthUrl: string; expiresIn: number }
 export interface RecoveryCodes { recoveryCodes: string[] }
+export interface LoginSession {
+  id: string
+  current: boolean
+  issuedAt: number
+  expiresAt: number
+  browser: string
+  os: string
+}
+export interface SessionPage { items: LoginSession[]; nextCursor: string | null }
 
 export interface CaptchaResponse {
   /** 参数 sys.account.captchaEnabled 为 false 时为 false，此时 uuid / image 为空串 */
@@ -75,6 +84,8 @@ export function createAuthApi(client: HttpClient) {
   return {
     profile: () => client.get<Profile>('/auth/profile'),
     updateProfile: (body: Pick<Profile, 'nickname' | 'phone' | 'email'>) => client.put<void>('/auth/profile', body),
+    sessions: (cursor?: string) => client.get<SessionPage>('/auth/sessions', { cursor }),
+    revokeSession: (id: string, body: SecurityProof) => client.post<{ revoked: boolean }>(`/auth/sessions/${encodeURIComponent(id)}/revoke`, body),
     setupTwoFactor: (body: SecurityProof) => client.post<Enrollment>('/auth/2fa/setup', body),
     enableTwoFactor: (body: SecurityProof) => client.post<RecoveryCodes>('/auth/2fa/enable', body),
     disableTwoFactor: (body: SecurityProof) => client.post<void>('/auth/2fa/disable', body),

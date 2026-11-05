@@ -7,7 +7,7 @@
 
 ```
 src/api/controllers/auth_controller.rs       登录、验证码、当前账号、动态路由、修改密码
-src/api/controllers/account_controller.rs    本人资料、2FA 绑定/恢复/关闭、管理员重置
+src/api/controllers/account_controller.rs    本人资料与会话、2FA 绑定/恢复/关闭、管理员重置
 src/api/controllers/admin/                   系统管理八个页面各一个控制器
 src/api/controllers/monitor_controller.rs    操作日志与登录日志
 src/api/controllers/dashboard_controller.rs  工作台
@@ -22,7 +22,7 @@ src/middleware/audit.rs                       写操作留痕
 
 ## 接口清单
 
-列表接口统一用 `pageNum` / `pageSize` 分页（页码从 1 开始，`pageSize` 上限 100，
+除本人会话列表使用游标外，列表接口统一用 `pageNum` / `pageSize` 分页（页码从 1 开始，`pageSize` 上限 100，
 排序由各接口的 SQL 固定给出）。`pageNum` / `pageSize` 与 `status` 等过滤参数同语义：
 非整数或负数一律 `400`，不静默回落默认值。
 
@@ -43,6 +43,8 @@ src/middleware/audit.rs                       写操作留痕
 | GET | `/auth/session` | 登录态 | 骨架自带的演示会话接口 |
 | GET | `/auth/profile` | 登录态 | 本人资料与 2FA 状态，无需菜单权限 |
 | PUT | `/auth/profile` | 登录态 | 只修改昵称、手机、邮箱 |
+| GET | `/auth/sessions` | 登录态 | 本人有效会话，游标分页，无需菜单权限 |
+| POST | `/auth/sessions/{id}/revoke` | 登录态 + 密码 + 已启用的第二因素 | 仅撤销本人其他会话，无需菜单权限 |
 | POST | `/auth/2fa/setup` | 登录态 + 密码 | 创建待确认绑定信息 |
 | POST | `/auth/2fa/enable` | 登录态 + 密码 + 动态码 | 确认绑定，返回一次性恢复码 |
 | POST | `/auth/2fa/disable` | 登录态 + 密码 + 第二因素 | 关闭 2FA |
@@ -169,9 +171,9 @@ src/middleware/audit.rs                       写操作留痕
 
 ## 留痕（审计）
 
-`src/middleware/audit.rs` 挂在 `nest` 之后的路由层，按「请求方法 + 路径段模式（`:id` 通配）」匹配 37 条规则，
+`src/middleware/audit.rs` 挂在 `nest` 之后的路由层，按「请求方法 + 路径段模式（`:id` 通配）」匹配规则，
 命中后记录模块与动作，例如 `POST /system/posts` → 「岗位管理 / 新增」、`POST /tool/generator/import` →
-「代码生成 / 导入表」。
+「代码生成 / 导入表」、`POST /auth/sessions/{id}/revoke` → 「账号安全 / 撤销会话」。
 
 与 Spring `@OperLog` 切面的差异（有意为之）：
 
@@ -220,20 +222,61 @@ src/middleware/audit.rs                       写操作留痕
 `src/infrastructure/services/auth_store.rs` 定义 `AuthStore` 接口：
 
 - `MemoryAuthStore`：集成测试用，进程内存 + TTL。
-- `RedisAuthStore`：`CAPTCHA_KEY_PREFIX="captcha:"`、`TOKEN_KEY_PREFIX="auth:token:"`、`USER_KEY_PREFIX="auth:user:"`，TTL 300s；
-  连接串与口令来自 `REDIS_URL` / `REDIS_PASSWORD`（`RedisConfig::connection_url()`）。
+- `RedisAuthStore`：连接串与口令来自 `REDIS_URL` / `REDIS_PASSWORD`（`RedisConfig::connection_url()`），
+  验证码 TTL 为 300 秒，会话 TTL 按签发 JWT 的有效期设置。
+
+| Redis 键 | 内容与用途 |
+| --- | --- |
+| `captcha:<uuid>` | 一次性验证码，300 秒过期 |
+| `auth:token:<JWT>` | 令牌所属账号；认证时必须存在，按 JWT 有效期过期 |
+| `auth:user:<username>` | 该账号令牌的 SET 索引，兼容旧格式；新会话不会缩短索引中较长会话的剩余 TTL |
+| `auth:session:<username>:<id>` | 仅服务端可读的归属、令牌与浏览器 / 系统名称映射，沿用令牌剩余 TTL；撤销后保留归属和令牌至原到期时间，供本人重试确认，不能用于认证 |
 
 登录后 JWT 与 Redis 会话令牌必须同时有效：登出即删除令牌，旧令牌立刻失效（返回
 「未认证或登录已过期」）。测试通过 `Container::bootstrap_with_auth_store(config, Container::memory_auth_store())`
-装配，不依赖外部 Redis。
+装配，默认不依赖外部 Redis；真实 Redis 用例单独执行，见 [测试说明](TESTING.md)。
 
 改密码会撤销该账号的全部会话（`AuthStore::revoke_user_tokens`）：Redis 侧按
-`auth:user:<username>` 集合索引该账号已签发的令牌，一次清空集合与对应 `auth:token:*` 键，
-其它账号的会话不受影响。因此改完密码后，当前会话与其它设备上的旧会话都需重新登录。
+`auth:user:<username>` 集合读取待撤销令牌，逐项删除对应 `auth:token:*` 并 `SREM` 索引成员，
+不在最后 `DEL` 整个索引，避免误删并发新登录建立的索引；其他账号不受影响。
+因此改完密码后，当前会话与其他设备上的旧会话都需重新登录。
+
+旧 SET 索引无需迁移；读取仍有效且归属匹配的旧令牌时按其剩余 TTL 补建管理映射，不延长令牌有效期。
+旧 JWT 缺少 `jti` 仍可管理；缺少 `auth_version` 按 0 处理，仍须匹配数据库当前版本。
+旧会话没有客户端信息时浏览器与系统名称为空，不补采 IP 或完整 User-Agent。
+Redis Cluster 未验证，部署限制见 [生产部署](../../docs/DEPLOYMENT.md#会话存储与撤销)。
+
+## 本人会话管理
+
+个人资料页 `/profile` 提供本人会话列表与单会话撤销，所有已登录账号均可使用，无需菜单权限。
+超级管理员也只能管理本人会话，不能通过这组接口管理其他账号。
+
+- `GET /auth/sessions?cursor=<游标>` 返回 `data: {items: [{id, current, issuedAt, expiresAt, browser, os}], nextCursor}`。
+  `issuedAt` / `expiresAt` 为 Unix 秒；`current` 标记发起请求的会话。浏览器和系统只返回解析后的名称，
+  未识别时为空字符串；不返回 JWT、Redis key、IP 或原始 User-Agent。
+- `id` 是由令牌摘要生成的 Base64URL 标识（43 字符），用于选择会话，不能作为登录凭据。
+  列表只包含账号启用、JWT 验签与归属正确、`auth_version` 匹配、`exp` 严格晚于当前时刻且 Redis 令牌有效的会话；
+  过期、已撤销、换代或归属不符的索引残留不会显示，不受 JWT 验签宽限期影响。
+  只清理无法验签、已过期或同一身份更旧版本的令牌；不同身份或较新版本只过滤，避免旧请求误撤销并发新登录。
+- 首次省略 `cursor`（或传 `0`）；后续原样传回 `nextCursor`，为 `null` 时结束。
+  游标是非负 `u64` 十进制字符串；显式空值、负数、小数或越界值返回 400。
+  Redis 使用本人索引的 `SSCAN COUNT 50`，不扫描全库；`COUNT 50` 只是工作量提示，**不是每页固定条数或上限**。
+  过滤后可能出现空页但仍有下一游标；扫描不是固定排序快照，客户端应按 `id` 去重并继续读取至 `nextCursor=null`。
+- `POST /auth/sessions/{id}/revoke` 接受 `{password, secondFactor?}`：每次校验当前密码，
+  已启用 2FA 时还必须提供有效动态码或未使用恢复码。密码与第二因素分别累计失败次数，
+  各自连续失败 5 次封禁 300 秒；密码成功不清除第二因素的失败计数或封禁。
+- 目标是当前会话时返回 400「当前会话请使用退出登录」；跨账号、未知 ID 或已无法校验的目标返回 404。
+  成功返回 `data: {revoked: true}`，只使所选会话失效，其余会话、密码和 2FA 设置不变。
+  本人映射仍在且 JWT 尚可验签，但目标已撤销、已过 `exp` 或已换代时，仍校验并消费证明、清理存储，
+  返回 `data: {revoked: false}`；映射到期或 JWT 已超过验签宽限后返回 404。
+- 密码失败计数、第二因素失败计数及一次性证明消费先在 SQLite 事务提交，再调用 Redis 撤销。
+  Redis 存入、列表、查找或撤销失败返回 503；撤销失败可能发生在令牌已删除之后，不代表目标仍有效。
+  已提交的动态码 / 恢复码消费不会回滚；恢复后用当前密码及新的动态码 / 恢复码对同一 ID 重试确认，
+  未开启 2FA 时只需当前密码。故障边界见 [生产部署](../../docs/DEPLOYMENT.md#会话存储与撤销)。
 
 ## 本人资料与二次认证
 
-所有可登录账号均可自愿启用/关闭，不强制开启；仅登录增加第二因素，不改变既有改密契约。
+所有可登录账号均可自愿启用/关闭，不强制开启；登录与安全操作使用第二因素，不改变既有改密契约。
 前端静态受保护页 `/profile` 无需菜单授权，顶栏「个人资料」进入；账号、部门和角色只读。
 
 - GET `/auth/profile` 返回 `username/nickname/phone/email/deptName/roles/twoFactorEnabled/recoveryCodesRemaining`。
@@ -260,7 +303,7 @@ src/middleware/audit.rs                       写操作留痕
   每枚仅能成功消费一次；更新后旧批次立即失效。绑定二维码、密钥、恢复码只放页面内存，不写浏览器存储；
   `/auth/*` 响应设置 `Cache-Control: no-store`，请勿在网关缓存认证响应。
 - disable / recovery-codes 接受 `{password, secondFactor}`，可用动态码或未使用恢复码证明身份。
-  连续 5 次安全证明失败封禁安全验证 300 秒（数据库持久化）；管理员重置会清除目标封禁。
+  密码与第二因素独立计数，各自连续失败 5 次封禁 300 秒（数据库持久化）；管理员重置会清除目标封禁。
 - 启用、关闭、更新恢复码、管理员重置均在事务内增加 `auth_version`；认证每次比较 JWT 和数据库版本，
   并继续校验 Redis 会话。提交后清理 Redis 旧令牌；清理失败记录告警，旧令牌仍由版本校验拒绝，
   返回已提交结果避免丢失一次性恢复码。前端清理当前会话，保存恢复码后重新登录。
@@ -301,6 +344,7 @@ Redis 超时/错误/坏数据触发短暂熔断，回源 SQLite；故障时不�
 
 | 项 | Spring 版 | 本实现 | 原因 |
 | --- | --- | --- | --- |
+| 本人会话管理 | 本轮未核实上游对应契约 | 本人有效会话游标列表、经安全证明撤销其他单会话、非凭据 ID、失败 503 与新证明重试 | 本次明确需求，保留旧 Redis SET 与 JWT 兼容，不声称兼容上游会话接口 |
 | 日志明细时间窗口 | 列表与导出仅关键词、结果 / 状态 | 增加可选 `startTime` / `endTime`，服务端本地时间半开区间，非法边界返回 400 | 按事件窗口排查与导出，沿用既有时间索引及导出上限，不改变统计窗口 |
 | 个人资料与 2FA | 本轮环境未提供参考目录，未核实上游对应契约 | 按本文新增本人接口、第二因素与独立重置权限 | 本次明确需求，非声称逐字兼容 |
 | 基础数据缓存 | 本轮未核实上游缓存策略 | 单实例写屏障/换代、有界回源及空值缓存 | 本次明确的一致性及故障约束 |
@@ -332,5 +376,7 @@ Redis 超时/错误/坏数据触发短暂熔断，回源 SQLite；故障时不�
 - `tests/admin_api_tests.rs`：认证全流程（含登录 / 退出日志的来源与浏览器采集）、七个系统管理页面的 CRUD / 树 / 导出 / 权限 403 / 数据范围 / 404 / 405 文案。
 - `tests/monitor_api_tests.rs`：留痕内容（含可信代理下的来源 IP）与脱敏、日志统计 / 时间线 / 热力图 / 导出 / 删除清空、工作台聚合。
 - `tests/generator_api_tests.rs`：候选表与导入幂等、字段元数据、10 个生成文件的内容、ZIP 条目、留痕动作。
+- `tests/session_api_tests.rs`：本人身份边界、单目标撤销、独立失败限次、第二因素防重放、旧 JWT 与严格有效性过滤。
+- `tests/account_fault_tests.rs` / `tests/session_redis_tests.rs`：会话存储失败的 503、证明消费不回滚、真实 Redis 类型故障与旧索引 TTL；真实 Redis 用例默认忽略。
 
 测试要求与命令见 [测试与构建检查](TESTING.md)。

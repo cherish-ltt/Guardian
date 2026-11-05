@@ -83,7 +83,7 @@ docs/                  架构、中间件、日志、事务、响应、测试、
 - **总超时含排队**：从进入保护层到响应头生成（含全局排队）计时，超时取消请求并释放额度。
 - **低噪声诊断**：每请求一条访问日志；慢请求、超时与业务 5xx 才输出阶段汇总
   （排队、数据库阶段耗时、是否被中断），不记录 query 与请求体。
-- **审计留痕**：按「请求方法 + 路径段模式」匹配 37 条规则，记录模块、动作、操作人、耗时与
+- **审计留痕**：按「请求方法 + 路径段模式」匹配规则，记录模块、动作、操作人、耗时与
   请求体（敏感字段脱敏），写入失败不影响业务响应。
 - **容量参数**：全部集中在 `.env`（超时、Body 上限、并发、背压队列、全局与单 IP 限流额度、
   可信代理、慢请求阈值、CORS 白名单），调参见 [中间件栈与配置](docs/MIDDLEWARE.md)。
@@ -100,10 +100,18 @@ SQL 侧用 `strftime` / `julianday` / `substr` 等价 MySQL 的 `NOW()` / `CURDA
 
 ## 会话与验证码
 
-`AuthStore` 抽象有两个实现：`RedisAuthStore`（生产，键前缀 `captcha:`、`auth:token:` 与 `auth:user:`，TTL 300s）
-与 `MemoryAuthStore`（测试）。登录要求 JWT 与 Redis 会话令牌同时有效，登出即删除令牌、
-旧令牌立刻失效；改密码会撤销该账号的全部会话。Redis 连接在启动时建立
+`AuthStore` 抽象有两个实现：`RedisAuthStore`（生产）与 `MemoryAuthStore`（默认测试）。
+Redis 验证码键 `captcha:*` 的 TTL 为 300 秒；会话键 `auth:token:*` 与本人管理映射
+`auth:session:*` 按 JWT 有效期过期，`auth:user:*` 保留账号的令牌 SET 索引。
+旧索引及缺少 `jti` 的 JWT 可继续使用，兼容读取不延长原有 TTL。
+登录要求 JWT 与 Redis 会话令牌同时有效，登出即删除令牌、旧令牌立刻失效；
+改密码会撤销该账号的全部会话。Redis 连接在启动时建立
 （`connection-manager` 自动重连），不可用会直接启动失败。
+
+所有已登录账号均可在个人资料页查看本人有效会话，无需菜单授权。列表显示当前会话、签发与到期时间、
+浏览器和系统名称，不返回 JWT、Redis key 或 IP；经当前密码及已启用的第二因素验证后可单独撤销其他会话。
+当前会话使用退出登录。接口契约见 [本人会话管理](docs/ADMIN.md#本人会话管理)，
+Redis 撤销失败可能已生效及重试边界见 [生产部署](../docs/DEPLOYMENT.md#会话存储与撤销)。
 
 ## 个人资料、2FA 与基础缓存
 
@@ -191,7 +199,7 @@ SEED_USERS=ops_admin:运维管理员:ops@example.com:2
 | `sys_dept` / `sys_post` | 演示组织（Guardian 科技集团等 11 个部门、11 位负责人）与 9 个岗位 | 替换为真实组织与岗位 |
 | `transfer_accounts` / `transfer_records` / `transfer_audits` | 演示账户 `acc_alice`、`acc_bob`（各 100000 分）与流水 | 清空或按业务替换；`migrations/0001` 是事务示例 |
 | `sys_oper_log` / `sys_login_log` | 本地联调产生的日志 | 上线前清空 |
-| Redis | `captcha:*`、`auth:token:*`、`auth:user:*` | 切换环境时清空，避免旧会话残留 |
+| Redis | `captcha:*`、`auth:token:*`、`auth:user:*`、`auth:session:*` | 切换环境时清空，避免旧会话残留 |
 | `log/` | 本地运行日志 | 不入库，部署时按需清理 |
 | 建议配置 | `.env` 的 `IP_LOCATION_DB_PATH` / `IP_LOCATION_V6_DB_PATH`（默认空） | 配置后日志页的「查询属地」按钮查到具体属地，未配置只区分本机 / 内网 / 外网；库文件不随仓库分发，可跑 `scripts/fetch-ip-database.sh`，下载与更新见 [生产部署](../docs/DEPLOYMENT.md) |
 | 新增权限 | `sys_menu` 的「真实 IP 查看」（ID 203）及其两个按钮（2031 / 2032） | 前端与角色授权的权限码来源；`sys_admin` 默认只授权二级查看（2032），只有超级管理员能改 |

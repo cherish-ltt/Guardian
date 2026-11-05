@@ -16,7 +16,13 @@ use crate::{
 };
 
 /// 需要留痕的写操作：路径按 `nest("/api/v1")` 之后的段匹配，`:id` 匹配任意一段。
-const AUDIT_ROUTES: [(Method, &[&str], &str, &str); 37] = [
+const AUDIT_ROUTES: [(Method, &[&str], &str, &str); 38] = [
+    (
+        Method::POST,
+        &["auth", "sessions", ":id", "revoke"],
+        "账号安全",
+        "撤销会话",
+    ),
     (Method::PUT, &["auth", "profile"], "个人资料", "修改资料"),
     (
         Method::POST,

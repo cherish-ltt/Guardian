@@ -43,3 +43,26 @@ pub struct Enrollment {
 pub struct RecoveryCodes {
     pub recovery_codes: Vec<String>,
 }
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Session {
+    pub id: String,
+    pub current: bool,
+    pub issued_at: usize,
+    pub expires_at: usize,
+    pub browser: String,
+    pub os: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionPage {
+    pub items: Vec<Session>,
+    pub next_cursor: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct SessionRevocation {
+    pub revoked: bool,
+}

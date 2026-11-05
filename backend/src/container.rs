@@ -111,6 +111,7 @@ impl Container {
             database.clone(),
             crypto,
             auth_store.clone(),
+            jwt_service.clone(),
         ));
         let admin_auth_service: Arc<dyn AdminAuthUseCase> = Arc::new(AdminAuthService::new(
             database.clone(),

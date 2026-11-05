@@ -7,7 +7,7 @@ import { clearSession, refreshUser, sessionVersion } from '@/composables/auth'
 import { pushToast, toastError } from '@/composables/toast'
 import { Avatar, Button, Field, PageHeader, Panel, Tag, TextInput } from '@/components/ui'
 import Icon from '@/components/Icon.vue'
-import { FormDialog } from '@/components/business'
+import { FormDialog, ProfileSessions } from '@/components/business'
 import PasswordDialog from '@/components/layout/PasswordDialog.vue'
 
 const router = useRouter()
@@ -167,6 +167,7 @@ function finish() { codes.value = []; router.replace({ name: 'login' }) }
       </Panel>
     </div>
     <Panel v-else title="基本资料"><div class="panel-body profile-result-body"><p role="status" class="muted">{{ loadingError || '正在加载个人资料…' }}</p><Button v-if="loadingError" icon="refresh" @click="load">重新加载</Button></div></Panel>
+    <ProfileSessions v-if="profile && !finished" :two-factor-enabled="profile.twoFactorEnabled" @revoked="load" />
     <FormDialog :open="editing" title="编辑个人资料" :saving="saving" @close="editing = false" @submit="saveProfile">
       <Field label="昵称" required span><TextInput v-model="form.nickname" :maxlength="64" /></Field>
       <Field label="手机" span><TextInput v-model="form.phone" type="tel" :maxlength="32" /></Field>

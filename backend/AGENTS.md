@@ -399,6 +399,10 @@ msrv = "1.99.0"
   - `tests/contract_tests.rs`：用表格驱动锁定全部端点的鉴权与错误语义（401 / 403 / 404 / 405 / 400）。
     新增或删除路由必须同步四张端点表，否则 `endpoint_tables_cover_every_registered_route` 会失败
     （它解析 `api::router()` 的 `Debug` 输出，与四张表双向比对）。
+  - `tests/session_api_tests.rs` / `tests/account_fault_tests.rs`：本人会话管理、密码与第二因素独立限次、
+    防重放、单目标撤销、旧 JWT 兼容及存储失败 503；故障后已提交的证明消费不得恢复。
+  - `tests/session_redis_tests.rs` 与 `redis_store.rs` 内的真实 Redis 用例默认 `#[ignore]`，
+    通过 `TEST_REDIS_URL` 指向可丢弃隔离实例单独执行，禁止使用生产或共享业务库；命令见 `docs/TESTING.md`。
   - `tests/config_tests.rs`：覆盖 `AppConfig::from_env` 的默认值、覆盖项与全部校验分支。
   - `tests/logging_tests.rs`：覆盖日志初始化与配置校验。
   - `tests/middleware_tests.rs`：覆盖中间件栈的对外行为（含排队的超时、Body 超限、背压、限流、
@@ -492,6 +496,14 @@ msrv = "1.99.0"
   显式空值、非规范时间和逆序 / 相等边界返回 400，不能用 `QueryString::text` 丢弃非法时间条件。
 - **会话与验证码必须经过 `AuthStore`**：生产用 `RedisAuthStore`（`REDIS_URL` / `REDIS_PASSWORD`），
   测试用 `MemoryAuthStore`（`Container::memory_auth_store()`）；禁止绕开抽象直接操作 Redis 客户端。
+- **本人会话管理**：经 `AdminUser` 校验身份，无需菜单权限，只能管理本人；当前会话撤销返回 400，
+  跨账号或未知 ID 返回 404。返回非凭据 ID、有效时间与客户端名称，不返回 JWT、Redis key 或 IP；
+  列表严格校验 `exp`、`auth_version` 与归属，不能使用 JWT 验签宽限期展示已过期会话。
+- 单会话撤销须先提交密码与第二因素各自的失败计数和证明消费，再操作 Redis；Redis 失败返回 503，
+  可能已删除令牌，不能恢复已消费的第二因素。原映射有效期内用新证明重试，已失效返回 `revoked=false`。
+  旧 SET 索引与缺少 `jti` 的 JWT 保持兼容，补建映射沿用原 TTL；验证码 TTL 为 300 秒，会话按 JWT 有效期。
+  `SSCAN COUNT 50` 仅是工作量提示，不能承诺固定页大小；全量撤销逐项 `SREM`，禁止最后删除整个账号索引，
+  以免误删并发新登录。接口契约与 Redis Cluster 未验证的边界见 `docs/ADMIN.md` 及根目录 `docs/DEPLOYMENT.md`。
 - 新增页面级模块时按 `src/api/controllers/admin/` + `src/domain/services/admin/` + `src/services/admin/`
   三处同名文件扩展，`AdminUseCase` 只做子 trait 的合并视图，不写实现。
 
@@ -512,7 +524,7 @@ msrv = "1.99.0"
 | 应清理 | `sys_user` 的 `linjh`、`heyj` 及 `sys_user_role` / `sys_user_post` 关联 | 内置演示账号，用 `SEED_USERS` 覆盖后不会产生 |
 | 应清理 | `sys_dept` 的演示组织（含负责人姓名）、`sys_post` 的演示岗位 | 替换为真实组织与岗位 |
 | 应清理 | `transfer_accounts` / `transfer_records` / `transfer_audits`（`acc_alice`、`acc_bob`） | 事务示例数据，生产应按业务替换或清空 |
-| 应清理 | `sys_oper_log` / `sys_login_log` 的本地联调记录、Redis 的 `captcha:*` 与 `auth:token:*`、`log/` | 环境切换时清空 |
+| 应清理 | `sys_oper_log` / `sys_login_log` 的本地联调记录、Redis 的 `captcha:*`、`auth:token:*`、`auth:user:*`、`auth:session:*`、`log/` | 环境切换时清空 |
 | 建议保留 | `sys_menu` 的目录 / 菜单 / 按钮记录 | 前端动态路由与权限码的来源，清空会导致页面不可用 |
 | 建议保留 | `sys_role` 的内置 `super_admin` 角色及其菜单授权 | `AdminUser` 提取器对该角色直接放行 |
 | 建议保留 | `sys_user` 的首个账号（默认 `admin`，改口令后保留） | 唯一被授予超级管理员的账号，否则没有任何账号能登录后台 |

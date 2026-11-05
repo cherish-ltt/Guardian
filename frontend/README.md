@@ -74,6 +74,7 @@ npm run build
 | `src/views` | 登录与两步验证、工作台、个人资料、10 个管理页、无权限与未匹配页面 |
 | `scripts/session-regression.py` | 真实浏览器会话、路由竞态与低权限回归 |
 | `scripts/account-regression.mjs` | 资料、2FA 绑定与恢复码的浏览器回归 |
+| `scripts/self-session-regression.mjs` | 本人会话列表、单项撤销隔离、故障与慢响应、浅深主题回归 |
 | `scripts/log-window-regression.py` | 日志时间窗口、翻页、CSV、重置及桌面 / 窄屏回归 |
 
 ## 扩展约定
@@ -127,6 +128,19 @@ GUARDIAN_TEST_URL=http://localhost:5173 GUARDIAN_TEST_PASSWORD='<测试管理员
 需要未启用 2FA 的测试管理员；`GUARDIAN_TEST_PASSWORD` **必须**提供（脚本不内置口令），
 验证资料保存、绑定、两步登录（登录框保持三项、跳转独立验证页）、恢复码登录/更新/关闭和移动端布局。
 
+本人会话回归复用上述 Playwright 安装及独立测试环境：
+
+```bash
+GUARDIAN_TEST_URL=http://localhost:5173 GUARDIAN_TEST_PASSWORD='<测试管理员口令>' node scripts/self-session-regression.mjs
+```
+
+可设置 `GUARDIAN_BROWSER_CHANNEL=chrome` 使用本机 Chrome，或通过 `GUARDIAN_PLAYWRIGHT_MODULE` 指向已安装的模块入口。
+脚本创建两个无菜单权限账号和四个独立浏览器上下文，检查当前标记、跨账号隔离、失败不删行、慢请求重复提交、
+目标会话真实 401、其他会话保持登录以及换号后的旧响应隔离；结束后删除本次用户。
+桌面 / 移动端的浅深主题截图写入忽略的 `.test-artifacts/`，表格窄屏沿用内部横向滚动。
+验收截图：[桌面浅色](../docs/screenshots/self-sessions-desktop.png)、[移动深色](../docs/screenshots/self-sessions-mobile.png)。
+本脚本使用 Chrome 引擎；真实 2FA 撤销与 Redis 多页边界由后端回归覆盖。
+
 已有 Python Playwright 与 Chromium、前后端均启动时，可运行原有会话回归：
 
 ```bash
@@ -136,7 +150,7 @@ GUARDIAN_TEST_PASSWORD='<测试管理员口令>' python3 scripts/session-regress
 建议连接独立本地校验库；脚本创建并删除自身的角色 / 用户夹具，不清空任何表。
 `GUARDIAN_TEST_PASSWORD` **必须**提供；脚本需要 Vite 开发服务器来访问应用实际加载的 HTTP 模块。
 
-两个脚本都不内置口令，登录用的验证码由 `scripts/captcha_solver.py` 从 `/auth/captcha`
+这些脚本都不内置口令，登录用的验证码由 `scripts/captcha_solver.py` 从 `/auth/captcha`
 返回的 SVG 图片里还原（明文只留在服务端），因此需要本机有 `python3`。渲染器改动时要同步
 更新求解器里的字模与几何常量。
 

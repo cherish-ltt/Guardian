@@ -2,7 +2,10 @@ use super::{AccountService, security::SecurityAction};
 use crate::{
     domain::{
         error::AppError,
-        models::account::{Enrollment, Profile, RecoveryCodes, SecurityProof, UpdateProfile},
+        models::account::{
+            Enrollment, Profile, RecoveryCodes, SecurityProof, SessionPage, SessionRevocation,
+            UpdateProfile,
+        },
         services::account::AccountUseCase,
     },
     infrastructure::repositories::account::AccountRepository,
@@ -11,6 +14,25 @@ use async_trait::async_trait;
 
 #[async_trait]
 impl AccountUseCase for AccountService {
+    async fn sessions(
+        &self,
+        username: &str,
+        token: &str,
+        cursor: u64,
+    ) -> Result<SessionPage, AppError> {
+        self.list_sessions(username, token, cursor).await
+    }
+
+    async fn revoke_session(
+        &self,
+        username: &str,
+        token: &str,
+        id: &str,
+        proof: SecurityProof,
+    ) -> Result<SessionRevocation, AppError> {
+        self.revoke_other_session(username, token, id, proof).await
+    }
+
     async fn profile(&self, username: &str) -> Result<Profile, AppError> {
         let mut profile = AccountRepository::profile(&self.database, username).await?;
         use crate::infrastructure::repositories::admin_auth::{
