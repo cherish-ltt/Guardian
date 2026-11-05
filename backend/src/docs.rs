@@ -188,6 +188,8 @@ pub struct DocTransferListResponse {
         crate::api::controllers::auth_controller::login,
         crate::api::controllers::auth_controller::verify_login,
         crate::api::controllers::account_controller::profile,
+        crate::api::controllers::account_controller::sessions,
+        crate::api::controllers::account_controller::revoke_session,
         crate::api::controllers::account_controller::update_profile,
         crate::api::controllers::account_controller::setup,
         crate::api::controllers::account_controller::enable,

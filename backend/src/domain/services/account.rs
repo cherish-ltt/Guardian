@@ -1,11 +1,27 @@
 use crate::domain::{
     error::AppError,
-    models::account::{Enrollment, Profile, RecoveryCodes, SecurityProof, UpdateProfile},
+    models::account::{
+        Enrollment, Profile, RecoveryCodes, SecurityProof, SessionPage, SessionRevocation,
+        UpdateProfile,
+    },
 };
 use async_trait::async_trait;
 
 #[async_trait]
 pub trait AccountUseCase: Send + Sync {
+    async fn sessions(
+        &self,
+        username: &str,
+        token: &str,
+        cursor: u64,
+    ) -> Result<SessionPage, AppError>;
+    async fn revoke_session(
+        &self,
+        username: &str,
+        token: &str,
+        id: &str,
+        proof: SecurityProof,
+    ) -> Result<SessionRevocation, AppError>;
     async fn profile(&self, username: &str) -> Result<Profile, AppError>;
     async fn update_profile(&self, username: &str, command: UpdateProfile) -> Result<(), AppError>;
     async fn setup(&self, username: &str, proof: SecurityProof) -> Result<Enrollment, AppError>;

@@ -44,7 +44,8 @@ cargo test --features docs
 约定：
 
 - 每个测试用 `setup_app()` 独立装配一套 `Container` 与临时 SQLite 文件库，互不共享状态；
-  会话用内存实现（`Container::memory_auth_store()`），不依赖外部 Redis。
+  默认会话用内存实现（`Container::memory_auth_store()`），不依赖外部 Redis。
+  真实 Redis 用例显式标记 `#[ignore]`，单独指向可丢弃实例执行，见下文。
 - `tests/api_tests.rs` 自带 `setup_app` / `send` / `send_response` 辅助函数；后台与监控接口改用
   `tests/support/mod.rs` 的公共装置（同样提供 `send()`，并用 `support::send_raw()` 取
   `(StatusCode, HeaderMap, Vec<u8>)` 断言 CSV / ZIP 等非 JSON 响应）。
@@ -72,18 +73,17 @@ cargo llvm-cov --features docs --summary-only
 `AGENTS.md` 第 10.1 节要求**行覆盖率 ≥ 80%**：全局口径，不按文件考核，CI 由
 `scripts/check-coverage.py` 卡这条门槛；
 命令与 CI 的测试口径保持一致（同样带 `--features docs`，否则 `docs` 门控的代码不在统计范围内）。
-当前实测：**行 96.66% / 函数 92.40% / region 94.51%**（320 个用例，其中 2 个需真实 Redis 默认忽略；`cargo-llvm-cov 0.9.1`）。
-这只是当时的快照，改动后需重新测量，不要把数字当常量。
+覆盖率以当前提交实际运行结果为准，不沿用历史用例数量或覆盖率快照。
 
-下面两处不计入覆盖率目标，也无需为它们写测试：
+以下路径不计入覆盖率目标；这不免除相关行为的验证：
 
 | 文件 | 不统计的原因 |
 | --- | --- |
 | `src/main.rs` | 二进制入口：进程启动、信号监听与优雅退出，单测进程覆盖不到（要覆盖必须拉起真实进程与端口）。 |
-| `src/infrastructure/services/redis_store.rs` | 生产用的 `RedisAuthStore` 需要外部 Redis 实例；集成测试统一用 `MemoryAuthStore`，不让测试依赖外部服务。 |
+| `src/infrastructure/services/redis_store.rs` | 生产用的 `RedisAuthStore` 需要外部 Redis 实例；默认测试不依赖 Redis，真实存储与 Router 用例单独执行。 |
 | `vendor/ip2region/` | 从上游复制的第三方查询客户端（见该目录 `README.md`）；覆盖率命令只统计本包，且它的行为由上游保证。 |
 
-除这两处外，剩余未覆盖行只有两类，都不值得为覆盖率補断言：
+评估未覆盖行时应按行为风险选择断言，常见情形包括：
 
 - **防御性兜底**：如各仓储的 `.ok_or_else(|| AppError::internal(...))`（数据库时钟无返回值）、
   `offset` 整数溢出的 `checked_*` 守卫、`seed_user_assignments` 的 `assigned == 0`、
@@ -95,17 +95,19 @@ cargo llvm-cov --features docs --summary-only
 ### 后台管理与监控接口测试
 
 `tests/support/mod.rs` 提供公共装置：临时 SQLite 装配、登录（自动取验证码）与带令牌请求构造、
-原始响应读取。基于它的九个集成测试文件：
+原始响应读取。相关集成测试文件：
 
 | 文件 | 覆盖范围 |
 | --- | --- |
-| `tests/contract_tests.rs` | 全部 91 个 `(方法, 路径)` 的鉴权与错误语义矩阵：77 个受保护端点缺令牌一律 401、65 个权限码端点用零权限账号一律 403、10 个公开端点免令牌；404 / 405 / 400 的统一文案 |
+| `tests/contract_tests.rs` | 全部已注册 `(方法, 路径)` 的鉴权与错误语义矩阵：受保护端点缺令牌返回 401、权限码端点用零权限账号返回 403、公开端点免令牌；404 / 405 / 400 的统一文案 |
 | `tests/admin_api_tests.rs` | 认证全流程（含登录 / 退出日志的客户端来源与浏览器采集）、用户 / 角色 / 菜单 / 部门 / 岗位 / 字典 / 参数的 CRUD 与校验文案、导出、403 与数据范围、404 / 405 文案 |
 | `tests/monitor_api_tests.rs` | 写操作留痕的内容（含可信代理下的来源 IP）与脱敏、操作 / 登录日志的列表与统计、时间线、热力图、导出、删除与清空、工作台聚合 |
 | `tests/generator_api_tests.rs` | 候选表与导入幂等、字段元数据、10 个生成文件的内容、ZIP 条目、留痕动作 |
 | `tests/account_api_tests.rs` | 本人资料字段白名单、2FA 绑定/启用/关闭/恢复码、动态码重放、恢复码并发单次消费、会话撤销、日志脱敏、人工重置的权限与密码校验、失败限次 |
 | `tests/account_security_tests.rs` | 待绑定密钥密文存储与过期、错误动态码不启用、`0003` 权限迁移只授予一次且不恢复已撤销授权、非超管不能重置超管 |
-| `tests/account_fault_tests.rs` | Redis 会话清理失败时仍返回已提交的恢复码、旧令牌被会话版本拒绝；业务缓存故障时已认证读请求降级 SQLite，认证存储故障仍返回 503 |
+| `tests/account_fault_tests.rs` | 安全设置的 Redis 清理失败时仍返回已提交恢复码、旧令牌被版本拒绝；会话存入 / 列表 / 查找 / 删除前后失败返回 503，不误撤销其他会话、已消费第二因素不恢复，新证明重试可确认失效；业务缓存故障可降级 SQLite，认证存储故障不绕过 |
+| `tests/session_api_tests.rs` | 无菜单权限账号管理本人会话、current 400 / foreign 404、单目标撤销与重复 false、密码及第二因素独立锁定、防重放与审计脱敏、旧 JWT 兼容、严格有效性过滤、分页和客户端信息不泄漏 |
+| `tests/session_redis_tests.rs` | 真实 Redis + Router 登录和撤销、旧 SET / JWT 兼容、原 TTL 与自然过期、元数据 / 索引错误类型、删除后故障 503 与重试 false；默认 `#[ignore]` |
 | `tests/login_challenge_tests.rs` | 两步登录：第一步不签发 JWT、挑战一次性、过期/密码变更/失败限次均失效、并发提交只成功一次 |
 | `tests/cache_tests.rs` | 并发未命中只回源一次、写屏障阻止旧值回填、缓存故障降级与回源上限 503、空值缓存与错误不缓存、键数上限；真实 Redis 的读写 / TTL / 换代与验证码原子取用用例默认 `#[ignore]` |
 
@@ -115,4 +117,26 @@ cargo llvm-cov --features docs --summary-only
 `(方法, 路径)`，再与四张表双向比对：新增路由没登记报「未登记」，删了路由而表没跟上
 报「已失效」——它就是为了让「加了接口但忘了加鉴权」在测试里暴露。
 
-这些用例按字节断言生成的 Java / TS / Vue / SQL 文件内容，因此修改代码生成模板必须同步更新断言。
+生成器用例断言生成的 Rust / TS / Vue / SQL 文件内容，因此修改代码生成模板必须同步更新断言。
+
+### 会话管理回归
+
+在 `backend/` 下运行 Router 与故障注入测试：
+
+```bash
+cargo test --features docs --test session_api_tests --test account_fault_tests
+```
+
+真实 Redis 用例需要自行启动可丢弃的隔离实例，`TEST_REDIS_URL` **不得指向生产或共享业务库**。
+以下使用本地隔离端口 `16384` 的测试库 `1`，按实际隔离环境调整：
+
+```bash
+TEST_REDIS_URL=redis://127.0.0.1:16384/1 cargo test --features docs --test session_redis_tests -- --ignored
+TEST_REDIS_URL=redis://127.0.0.1:16384/1 cargo test --features docs --lib infrastructure::services::redis_store::tests -- --ignored
+```
+
+测试为账号和键生成独立标识，清理本次创建的数据，不执行 `FLUSHDB`。
+存储用例补充验证本人索引分页、旧 TTL 不延长、归属校验和清理失败后的重试；Redis Cluster 未验证。
+`account_fault_tests` 还用同步门闩覆盖列表请求跨越会话版本递增、同名账号重建的交错，保证旧请求不删除新登录。
+这些测试不替代前端真实浏览器的多会话、撤销弹窗与响应式样式验证，浏览器命令见
+[前端测试说明](../../frontend/README.md)。

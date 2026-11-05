@@ -11,22 +11,25 @@ use crate::{
         },
         services::{
             auth_store::AuthStore,
+            jwt::JwtService,
             two_factor::{TwoFactorCrypto, authenticator, recovery_hash},
         },
     },
     util::password,
 };
-use sea_orm::{DatabaseConnection, DatabaseTransaction};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DatabaseTransaction};
 use std::sync::Arc;
 
 pub(crate) mod login;
 mod profile;
 mod security;
+mod sessions;
 
 pub struct AccountService {
     database: DatabaseConnection,
     crypto: Arc<TwoFactorCrypto>,
     store: Arc<dyn AuthStore>,
+    jwt: Arc<JwtService>,
 }
 
 impl AccountService {
@@ -34,16 +37,18 @@ impl AccountService {
         database: DatabaseConnection,
         crypto: Arc<TwoFactorCrypto>,
         store: Arc<dyn AuthStore>,
+        jwt: Arc<JwtService>,
     ) -> Self {
         Self {
             database,
             crypto,
             store,
+            jwt,
         }
     }
 }
 
-async fn active_user(tx: &DatabaseTransaction, username: &str) -> Result<AuthUserRow, AppError> {
+async fn active_user(tx: &impl ConnectionTrait, username: &str) -> Result<AuthUserRow, AppError> {
     let user = SeaOrmAdminAuthRepository
         .find_user_by_username(tx, username)
         .await?

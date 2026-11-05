@@ -194,6 +194,8 @@ const AUTH_ENDPOINTS: &[(&str, &str)] = &[
     ("POST", "/api/v1/auth/logout"),
     ("PUT", "/api/v1/auth/password"),
     ("GET", "/api/v1/auth/profile"),
+    ("GET", "/api/v1/auth/sessions"),
+    ("POST", "/api/v1/auth/sessions/1/revoke"),
     ("PUT", "/api/v1/auth/profile"),
     ("POST", "/api/v1/auth/2fa/setup"),
     ("POST", "/api/v1/auth/2fa/enable"),
@@ -390,7 +392,7 @@ async fn protected_endpoints_without_token_are_rejected_with_401() {
         .map(|(method, path, _)| (*method, *path))
         .chain(AUTH_ENDPOINTS.iter().copied())
         .collect();
-    assert_eq!(protected.len(), 79);
+    assert_eq!(protected.len(), 81);
 
     for (method, path) in protected {
         let (status, body) = send(

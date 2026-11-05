@@ -22,7 +22,10 @@ use crate::{
             admin_auth::{AdminAuthRepository, SeaOrmAdminAuthRepository},
             config::{ConfigRepository, SeaOrmConfigRepository},
         },
-        services::{auth_store::AuthStore, jwt::JwtService},
+        services::{
+            auth_store::{AuthStore, SessionMetadata},
+            jwt::JwtService,
+        },
     },
     util::{captcha, password},
 };
@@ -70,10 +73,14 @@ impl AdminAuthService {
             .issue_versioned_token(&user.id.to_string(), &user.username, &roles, version)
             .map_err(AppError::from)?;
         self.auth_store
-            .save_token(
+            .save_session(
                 &token.access_token,
                 &user.username,
                 token.expires_in_seconds.unsigned_abs(),
+                &SessionMetadata {
+                    browser: source.browser.clone().unwrap_or_default(),
+                    os: source.os.clone().unwrap_or_default(),
+                },
             )
             .await?;
 
