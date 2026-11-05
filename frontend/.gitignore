@@ -12,3 +12,6 @@ dist
 # Python 脚本的字节码缓存
 __pycache__/
 *.pyc
+
+# 真实浏览器回归的本地截图、凭据与临时运行依赖
+.test-artifacts/
