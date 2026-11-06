@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { onBeforeUnmount, ref, watch } from 'vue'
 import { Button, Tag } from '@/components/ui'
 import { FormDialog } from '@/components/business'
-import { portalApi, type GeneratorSyncColumn, type GeneratorSyncPreview } from '@/api'
+import { authSession, portalApi, type GeneratorSyncColumn, type GeneratorSyncPreview } from '@/api'
 import { sessionVersion } from '@/composables/auth'
 import { pushToast } from '@/composables/toast'
 
@@ -13,9 +13,22 @@ const loading = ref(false)
 const saving = ref(false)
 const error = ref('')
 let requestId = 0
+let dialogToken: string | null = null
+let dialogVersion = 0
+
+function sessionIsCurrent() {
+  return dialogToken !== null && dialogVersion === sessionVersion.value && dialogToken === authSession.token()
+}
+
+onBeforeUnmount(() => {
+  requestId++
+  dialogToken = null
+})
 
 watch(() => props.table, () => {
   requestId++
+  dialogToken = props.table ? authSession.token() : null
+  dialogVersion = sessionVersion.value
   preview.value = null
   error.value = ''
   loading.value = false
@@ -25,6 +38,7 @@ watch(() => props.table, () => {
 
 watch(sessionVersion, () => {
   requestId++
+  dialogToken = null
   preview.value = null
   loading.value = false
   saving.value = false
@@ -32,50 +46,49 @@ watch(sessionVersion, () => {
 })
 
 async function load() {
-  if (!props.table || saving.value) return
+  if (!props.table || saving.value || !sessionIsCurrent()) return
   const id = props.table.id
   const current = ++requestId
-  const version = sessionVersion.value
   loading.value = true
   preview.value = null
   error.value = ''
   try {
     const result = await portalApi.generator.tables.syncPreview(id)
-    if (current === requestId && version === sessionVersion.value) preview.value = result
+    if (current === requestId && sessionIsCurrent()) preview.value = result
   } catch (cause) {
-    if (current === requestId && version === sessionVersion.value) error.value = cause instanceof Error ? cause.message : '结构差异加载失败'
+    if (current === requestId && sessionIsCurrent()) error.value = cause instanceof Error ? cause.message : '结构差异加载失败'
   } finally {
-    if (current === requestId && version === sessionVersion.value) loading.value = false
+    if (current === requestId && sessionIsCurrent()) loading.value = false
   }
 }
 
 function close() {
   if (saving.value) return
   requestId++
+  dialogToken = null
   emit('close')
 }
 
 async function synchronize() {
-  if (!props.table || !preview.value?.changes.length || loading.value || saving.value) return
+  if (!props.table || !preview.value?.changes.length || loading.value || saving.value || !sessionIsCurrent()) return
   const id = props.table.id
   const current = ++requestId
-  const version = sessionVersion.value
   const revision = preview.value.revision
   saving.value = true
   error.value = ''
   try {
     const result = await portalApi.generator.tables.sync(id, revision)
-    if (current !== requestId || version !== sessionVersion.value) return
+    if (current !== requestId || !sessionIsCurrent()) return
     pushToast(`已同步 ${result.changed} 个字段，请重新确认生成配置`)
     emit('saved')
     emit('close')
   } catch (cause) {
-    if (current === requestId && version === sessionVersion.value) {
+    if (current === requestId && sessionIsCurrent()) {
       error.value = cause instanceof Error ? cause.message : '结构同步失败'
       preview.value = null
     }
   } finally {
-    if (current === requestId && version === sessionVersion.value) saving.value = false
+    if (current === requestId && sessionIsCurrent()) saving.value = false
   }
 }
 
