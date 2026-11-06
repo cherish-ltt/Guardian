@@ -136,6 +136,16 @@ const PERMISSION_ENDPOINTS: &[(&str, &str, &str)] = &[
     ("GET", "/api/v1/tool/generator/tables", "tool:gen:list"),
     (
         "GET",
+        "/api/v1/tool/generator/tables/1/sync-preview",
+        "tool:gen:list",
+    ),
+    (
+        "POST",
+        "/api/v1/tool/generator/tables/1/sync",
+        "tool:gen:list",
+    ),
+    (
+        "GET",
         "/api/v1/tool/generator/tables/1/columns",
         "tool:gen:list",
     ),
@@ -392,7 +402,7 @@ async fn protected_endpoints_without_token_are_rejected_with_401() {
         .map(|(method, path, _)| (*method, *path))
         .chain(AUTH_ENDPOINTS.iter().copied())
         .collect();
-    assert_eq!(protected.len(), 81);
+    assert_eq!(protected.len(), 83);
 
     for (method, path) in protected {
         let (status, body) = send(

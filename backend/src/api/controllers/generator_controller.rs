@@ -3,6 +3,7 @@ use std::sync::Arc;
 use axum::{
     Router,
     extract::{Path, RawQuery, State},
+    response::{IntoResponse, Response},
     routing::{get, post, put},
 };
 
@@ -18,8 +19,8 @@ use crate::{
         error::AppError,
         models::{
             generator::{
-                GenColumnRow, GenGenerateResult, GenImportResult, GenPreview, GenTableRow,
-                GenTableUpdateCommand, ImportableTable,
+                GenColumnRow, GenGenerateResult, GenImportResult, GenPreview, GenSyncCommand,
+                GenSyncPreview, GenTableRow, GenTableUpdateCommand, ImportableTable,
             },
             pagination::PageResult,
             system_admin::KeywordQuery,
@@ -35,6 +36,11 @@ pub fn router() -> Router<Arc<Container>> {
         .route("/tool/generator/import", post(import))
         .route("/tool/generator/tables/{id}/columns", get(columns))
         .route("/tool/generator/tables/{id}/preview", get(preview))
+        .route(
+            "/tool/generator/tables/{id}/sync-preview",
+            get(sync_preview),
+        )
+        .route("/tool/generator/tables/{id}/sync", post(sync))
         .route("/tool/generator/tables/{id}/generate", post(generate))
         .route("/tool/generator/tables/{id}/download", get(download))
         .route("/tool/generator/tables/{id}", put(update))
@@ -122,6 +128,31 @@ async fn update(
         .await?;
 
     Ok(done())
+}
+
+async fn sync_preview(
+    State(container): State<Arc<Container>>,
+    user: AdminUser,
+    Path(id): Path<i64>,
+) -> Result<ApiResponse<GenSyncPreview>, AppError> {
+    user.require("tool:gen:list")?;
+    Ok(ok(container.generator_service.sync_preview(id).await?))
+}
+
+async fn sync(
+    State(container): State<Arc<Container>>,
+    user: AdminUser,
+    Path(id): Path<i64>,
+    ApiJson(command): ApiJson<GenSyncCommand>,
+) -> Result<Response, AppError> {
+    user.require("tool:gen:list")?;
+    let result = container
+        .generator_service
+        .sync_table(id, command, user.username())
+        .await?;
+    let mut response = ok(result.clone()).into_response();
+    response.extensions_mut().insert(result);
+    Ok(response)
 }
 
 async fn generate(

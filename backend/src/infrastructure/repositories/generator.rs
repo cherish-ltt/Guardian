@@ -85,6 +85,28 @@ pub trait GeneratorRepository: Send + Sync {
     ) -> Result<u64, AppError>
     where
         C: ConnectionTrait;
+
+    async fn update_column<C>(
+        &self,
+        db: &C,
+        table_id: i64,
+        column: &GenColumnRow,
+    ) -> Result<(), AppError>
+    where
+        C: ConnectionTrait;
+
+    async fn delete_column<C>(&self, db: &C, table_id: i64, id: i64) -> Result<(), AppError>
+    where
+        C: ConnectionTrait;
+
+    async fn finish_sync<C>(
+        &self,
+        db: &C,
+        table: &GenTableDetail,
+        operator: &str,
+    ) -> Result<(), AppError>
+    where
+        C: ConnectionTrait;
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -277,15 +299,16 @@ impl GeneratorRepository for SeaOrmGeneratorRepository {
     {
         insert(
             db,
-            "INSERT INTO gen_table_column (table_id, column_name, rust_field, rust_type, jdbc_type, \
+            "INSERT INTO gen_table_column (table_id, column_name, rust_field, rust_type, jdbc_type, column_type, \
              column_comment, is_insert, is_edit, is_list, is_query, query_type, form_type, required, \
-             nullable, primary_key, sort) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+             nullable, primary_key, sort) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             vec![
                 column.table_id.into(),
                 column.column_name.clone().into(),
                 column.rust_field.clone().into(),
                 column.rust_type.clone().into(),
                 column.jdbc_type.clone().into(),
+                column.column_type.clone().into(),
                 column.column_comment.clone().into(),
                 column.insert.into(),
                 column.edit.into(),
@@ -310,7 +333,7 @@ impl GeneratorRepository for SeaOrmGeneratorRepository {
     {
         let row = query_opt(
             db,
-            "SELECT id, table_name, table_comment, class_name, module_name, business_name, synced \
+            "SELECT id, table_name, table_comment, class_name, module_name, business_name, synced, version \
              FROM gen_table WHERE id = ?",
             vec![id.into()],
         )
@@ -324,6 +347,7 @@ impl GeneratorRepository for SeaOrmGeneratorRepository {
             module: text(&row, "module_name").unwrap_or_default(),
             business_name: text(&row, "business_name").unwrap_or_default(),
             synced: int_or_zero(&row, "synced"),
+            version: int_or_zero(&row, "version"),
         }))
     }
 
@@ -333,8 +357,8 @@ impl GeneratorRepository for SeaOrmGeneratorRepository {
     {
         let rows = query_all(
             db,
-            "SELECT id, column_name, rust_field, rust_type, jdbc_type, column_comment, is_insert, \
-             is_edit, is_list, is_query, query_type, form_type, required, nullable, primary_key \
+            "SELECT id, column_name, rust_field, rust_type, jdbc_type, column_type, column_comment, is_insert, \
+             is_edit, is_list, is_query, query_type, form_type, required, nullable, primary_key, sort \
              FROM gen_table_column WHERE table_id = ? ORDER BY sort, id",
             vec![table_id.into()],
         )
@@ -348,6 +372,7 @@ impl GeneratorRepository for SeaOrmGeneratorRepository {
                 rust_field: text(row, "rust_field").unwrap_or_default(),
                 rust_type: text(row, "rust_type").unwrap_or_default(),
                 jdbc_type: text(row, "jdbc_type").unwrap_or_default(),
+                column_type: text(row, "column_type").unwrap_or_default(),
                 comment: text_or_none(row, "column_comment"),
                 insert: int_or_zero(row, "is_insert") == 1,
                 edit: int_or_zero(row, "is_edit") == 1,
@@ -358,6 +383,7 @@ impl GeneratorRepository for SeaOrmGeneratorRepository {
                 required: int_or_zero(row, "required") == 1,
                 nullable: int_or_zero(row, "nullable") == 1,
                 primary_key: int_or_zero(row, "primary_key") == 1,
+                sort: int_or_zero(row, "sort"),
             })
             .collect())
     }
@@ -375,7 +401,7 @@ impl GeneratorRepository for SeaOrmGeneratorRepository {
         execute(
             db,
             "UPDATE gen_table SET table_comment = COALESCE(?, table_comment), \
-             synced = COALESCE(?, synced), update_by = ?, update_time = ? WHERE id = ?",
+             synced = COALESCE(?, synced), update_by = ?, update_time = ?, version = version + 1 WHERE id = ?",
             vec![
                 command.table_comment.clone().into(),
                 command.synced.map(i64::from).into(),
@@ -385,6 +411,75 @@ impl GeneratorRepository for SeaOrmGeneratorRepository {
             ],
         )
         .await
+    }
+
+    async fn update_column<C>(
+        &self,
+        db: &C,
+        table_id: i64,
+        column: &GenColumnRow,
+    ) -> Result<(), AppError>
+    where
+        C: ConnectionTrait,
+    {
+        execute(
+            db,
+            "UPDATE gen_table_column SET rust_type = ?, jdbc_type = ?, column_type = ?, \
+             is_insert = ?, is_edit = ?, is_list = ?, form_type = ?, required = ?, nullable = ?, \
+             primary_key = ?, sort = ? WHERE table_id = ? AND id = ?",
+            vec![
+                column.rust_type.clone().into(),
+                column.jdbc_type.clone().into(),
+                column.column_type.clone().into(),
+                i64::from(column.insert).into(),
+                i64::from(column.edit).into(),
+                i64::from(column.list).into(),
+                column.form_type.clone().into(),
+                i64::from(column.required).into(),
+                i64::from(column.nullable).into(),
+                i64::from(column.primary_key).into(),
+                column.sort.into(),
+                table_id.into(),
+                column.id.into(),
+            ],
+        )
+        .await?;
+        Ok(())
+    }
+
+    async fn delete_column<C>(&self, db: &C, table_id: i64, id: i64) -> Result<(), AppError>
+    where
+        C: ConnectionTrait,
+    {
+        execute(
+            db,
+            "DELETE FROM gen_table_column WHERE table_id = ? AND id = ?",
+            vec![table_id.into(), id.into()],
+        )
+        .await?;
+        Ok(())
+    }
+
+    async fn finish_sync<C>(
+        &self,
+        db: &C,
+        table: &GenTableDetail,
+        operator: &str,
+    ) -> Result<(), AppError>
+    where
+        C: ConnectionTrait,
+    {
+        let affected = execute(
+            db,
+            "UPDATE gen_table SET synced = 0, version = version + 1, update_by = ?, update_time = ? \
+             WHERE id = ? AND version = ?",
+            vec![operator.into(), time::now().into(), table.id.into(), table.version.into()],
+        )
+        .await?;
+        if affected == 0 {
+            return Err(AppError::conflict("生成配置已变化，请重新预览结构差异"));
+        }
+        Ok(())
     }
 }
 

@@ -4,8 +4,8 @@ use crate::domain::{
     error::AppError,
     models::{
         generator::{
-            GenColumnRow, GenGenerateResult, GenImportResult, GenPreview, GenTableRow,
-            GenTableUpdateCommand, ImportableTable,
+            GenColumnRow, GenGenerateResult, GenImportResult, GenPreview, GenSyncCommand,
+            GenSyncPreview, GenSyncResult, GenTableRow, GenTableUpdateCommand, ImportableTable,
         },
         pagination::PageResult,
         system_admin::KeywordQuery,
@@ -31,6 +31,15 @@ pub trait GeneratorUseCase: Send + Sync {
     async fn columns(&self, table_id: i64) -> Result<Vec<GenColumnRow>, AppError>;
 
     async fn preview(&self, table_id: i64) -> Result<GenPreview, AppError>;
+
+    async fn sync_preview(&self, table_id: i64) -> Result<GenSyncPreview, AppError>;
+
+    async fn sync_table(
+        &self,
+        table_id: i64,
+        command: GenSyncCommand,
+        operator: &str,
+    ) -> Result<GenSyncResult, AppError>;
 
     async fn update_table(
         &self,
