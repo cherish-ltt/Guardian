@@ -146,6 +146,10 @@ IP_LOCATION_V6_DB_PATH=
 
 ### 2. 启动服务
 
+可先执行 `cargo run -- --check-config` 检查当前生效配置及已配置的本地 xdb，成功退出 `0`。
+预检不初始化服务或写入数据库 / 日志；检查边界、production 用法与环境加载规则见
+[启动前配置预检](../docs/DEPLOYMENT.md#启动前配置预检)。
+
 ```bash
 cargo run
 ```

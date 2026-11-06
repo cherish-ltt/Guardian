@@ -5,7 +5,7 @@ use std::{
     str::FromStr,
 };
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Result, anyhow};
 use axum::http::HeaderValue;
 use ipnet::IpNet;
 use tracing_appender::rolling::Rotation;
@@ -61,9 +61,9 @@ pub struct ServerConfig {
 impl ServerConfig {
     pub fn socket_addr(&self) -> Result<SocketAddr> {
         let address = format!("{}:{}", self.host, self.port);
-        address
-            .parse::<SocketAddr>()
-            .with_context(|| format!("failed to parse server listen address: {address}"))
+        address.parse::<SocketAddr>().map_err(|_| {
+            anyhow!("invalid SERVER_HOST / SERVER_PORT: expected an IP socket address")
+        })
     }
 }
 
@@ -75,6 +75,16 @@ pub struct DatabaseConfig {
     pub connect_timeout_secs: u64,
     pub idle_secs: u64,
     pub sqlx_logging: bool,
+}
+
+impl DatabaseConfig {
+    pub fn validate_url(&self) -> Result<()> {
+        sqlx::sqlite::SqliteConnectOptions::from_str(&self.url)
+            .map(|_| ())
+            .map_err(|_| {
+                anyhow!("invalid DATABASE_URL: SQLite connection options could not be parsed")
+            })
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -94,6 +104,14 @@ pub struct RedisConfig {
 }
 
 impl RedisConfig {
+    pub fn client(&self) -> Result<redis::Client> {
+        redis::Client::open(self.connection_url()?).map_err(|_| {
+            anyhow!(
+                "invalid REDIS_URL / REDIS_PASSWORD: Redis connection options could not be parsed"
+            )
+        })
+    }
+
     /// 带认证信息的连接串；`redis` 客户端要求密码作为 userinfo 的一部分。
     ///
     /// 口令必须按 userinfo 规则转义：`#` 会被当成 fragment 起点，`/` 会被当成路径分隔，
@@ -107,7 +125,7 @@ impl RedisConfig {
             .url
             .split_once("://")
             .map(|(_, rest)| rest)
-            .ok_or_else(|| anyhow!("invalid REDIS_URL: {}", self.url))?;
+            .ok_or_else(|| anyhow!("invalid REDIS_URL: expected a URL scheme"))?;
         let scheme = &self.url[..self.url.len() - rest.len() - 3];
         let encoded: String = url::form_urlencoded::byte_serialize(password.as_bytes()).collect();
 
@@ -174,17 +192,17 @@ fn parse_seed_users(raw: &str) -> Result<Vec<SeedUser>> {
         let fields: Vec<&str> = entry.split(':').map(str::trim).collect();
         let [username, nickname, email, dept_id] = fields[..] else {
             return Err(anyhow!(
-                "invalid SEED_USERS entry `{entry}`: expected username:nickname:email:deptId"
+                "invalid SEED_USERS entry: expected username:nickname:email:deptId"
             ));
         };
         if username.is_empty() || nickname.is_empty() || email.is_empty() {
             return Err(anyhow!(
-                "invalid SEED_USERS entry `{entry}`: username, nickname and email must not be empty"
+                "invalid SEED_USERS entry: username, nickname and email must not be empty"
             ));
         }
         let dept_id = dept_id
             .parse::<i64>()
-            .map_err(|error| anyhow!("invalid SEED_USERS entry `{entry}`: deptId {error}"))?;
+            .map_err(|_| anyhow!("invalid SEED_USERS entry: deptId must be an integer"))?;
 
         users.push(SeedUser {
             username: username.to_string(),
@@ -261,7 +279,7 @@ impl AppConfig {
     pub fn validate_runtime(&self) -> Result<()> {
         if self.app_env.eq_ignore_ascii_case("production") && cfg!(debug_assertions) {
             return Err(anyhow!(
-                "production requires a release build: debug authentication routes are unsafe"
+                "APP_ENV production requires a release build: debug authentication routes are unsafe"
             ));
         }
         Ok(())
@@ -312,7 +330,7 @@ impl AppConfig {
             || database.min_connections > database.max_connections
         {
             return Err(anyhow!(
-                "invalid database pool parameters: expected 0 < min_connections <= max_connections"
+                "invalid database pool parameters: expected 0 < DATABASE_MIN_CONNECTIONS <= DATABASE_MAX_CONNECTIONS"
             ));
         }
         // 迁移文件与补列逻辑都依赖 SQLite 语法（pragma_table_info / sqlite 后端），
@@ -320,12 +338,12 @@ impl AppConfig {
         let scheme = database.url.split(':').next().unwrap_or_default();
         if scheme != "sqlite" {
             return Err(anyhow!(
-                "unsupported DATABASE_URL scheme `{scheme}`: this service only supports sqlite:// URLs"
+                "unsupported DATABASE_URL scheme: this service only supports sqlite:// URLs"
             ));
         }
         if database.connect_timeout_secs == 0 || database.idle_secs == 0 {
             return Err(anyhow!(
-                "database connect timeout and idle timeout must be greater than 0"
+                "DATABASE_CONNECT_TIMEOUT_SECS / DATABASE_IDLE_SECS: database connect timeout and idle timeout must be greater than 0"
             ));
         }
 
@@ -342,7 +360,9 @@ impl AppConfig {
         };
         let redis_scheme = redis.url.split_once("://").map(|(scheme, _)| scheme);
         if !matches!(redis_scheme, Some("redis" | "rediss")) {
-            return Err(anyhow!("unsupported REDIS_URL: {}", redis.url));
+            return Err(anyhow!(
+                "unsupported REDIS_URL: expected redis:// or rediss://"
+            ));
         }
 
         let defaults = CacheConfig::default();
@@ -354,17 +374,29 @@ impl AppConfig {
             max_entries: parse_env_or("CACHE_MAX_ENTRIES", defaults.max_entries)?,
             max_value_bytes: parse_env_or("CACHE_MAX_VALUE_BYTES", defaults.max_value_bytes)?,
         };
-        if cache.ttl_secs == 0
-            || cache.ttl_secs > 86400
-            || cache.negative_ttl_secs == 0
-            || cache.negative_ttl_secs > cache.ttl_secs
-            || cache.timeout_ms == 0
-            || cache.max_loads == 0
-            || cache.max_loads > 64
-            || cache.max_entries == 0
-            || cache.max_value_bytes == 0
+        if let Some((key, _)) = [
+            (
+                "CACHE_TTL_SECS",
+                cache.ttl_secs == 0 || cache.ttl_secs > 86400,
+            ),
+            (
+                "CACHE_NEGATIVE_TTL_SECS",
+                cache.negative_ttl_secs == 0 || cache.negative_ttl_secs > cache.ttl_secs,
+            ),
+            ("CACHE_TIMEOUT_MS", cache.timeout_ms == 0),
+            (
+                "CACHE_MAX_LOADS",
+                cache.max_loads == 0 || cache.max_loads > 64,
+            ),
+            ("CACHE_MAX_ENTRIES", cache.max_entries == 0),
+            ("CACHE_MAX_VALUE_BYTES", cache.max_value_bytes == 0),
+        ]
+        .into_iter()
+        .find(|(_, invalid)| *invalid)
         {
-            return Err(anyhow!("invalid business cache configuration"));
+            return Err(anyhow!(
+                "invalid business cache configuration: {key}; values must be positive, TTL <= 86400, negative TTL <= TTL and max loads <= 64"
+            ));
         }
 
         let max_log_files = parse_env_or("LOG_MAX_LOG_FILES", 60_usize)?;
@@ -375,7 +407,9 @@ impl AppConfig {
         let batch_max_events = parse_env_or("LOG_BATCH_MAX_EVENTS", 50_usize)?;
         let batch_flush_interval_secs = parse_env_or("LOG_BATCH_FLUSH_INTERVAL_SECS", 3_u64)?;
         if batch_max_events == 0 || batch_flush_interval_secs == 0 {
-            return Err(anyhow!("log batch parameters must be greater than 0"));
+            return Err(anyhow!(
+                "LOG_BATCH_MAX_EVENTS / LOG_BATCH_FLUSH_INTERVAL_SECS: log batch parameters must be greater than 0"
+            ));
         }
 
         let seed = SeedConfig {
@@ -402,7 +436,11 @@ impl AppConfig {
                 "MINUTELY" | "Rotation::MINUTELY" => Rotation::MINUTELY,
                 "NEVER" | "Rotation::NEVER" => Rotation::NEVER,
                 "WEEKLY" | "Rotation::WEEKLY" => Rotation::WEEKLY,
-                value => return Err(anyhow!("unsupported log rotation strategy: {value}")),
+                _ => {
+                    return Err(anyhow!(
+                        "unsupported log rotation strategy: LOG_ROTATION must be DAILY, HOURLY, MINUTELY, WEEKLY or NEVER"
+                    ));
+                },
             },
             max_log_files,
             out_dir: get_env_or("LOG_OUT_DIR", "./log"),
@@ -454,21 +492,58 @@ impl AppConfig {
             slow_request_ms: parse_env_or("MIDDLEWARE_SLOW_REQUEST_MS", 1000_u64)?,
         };
 
-        if middleware.request_timeout_secs == 0
-            || middleware.max_body_bytes == 0
-            || middleware.max_concurrency == 0
-            || middleware.backpressure_queue == 0
-            || middleware.rate_limit_requests == 0
-            || middleware.rate_limit_period_secs == 0
-            || middleware.client_max_concurrency == 0
-            || middleware.client_rate_limit_requests == 0
-            || middleware.client_rate_limit_period_secs == 0
-            || middleware.client_max_entries == 0
-            || middleware.client_idle_secs == 0
-            || middleware.slow_request_ms == 0
+        if let Some((key, _)) = [
+            (
+                "MIDDLEWARE_REQUEST_TIMEOUT_SECS",
+                middleware.request_timeout_secs == 0,
+            ),
+            ("MIDDLEWARE_MAX_BODY_BYTES", middleware.max_body_bytes == 0),
+            (
+                "MIDDLEWARE_MAX_CONCURRENCY",
+                middleware.max_concurrency == 0,
+            ),
+            (
+                "MIDDLEWARE_BACKPRESSURE_QUEUE",
+                middleware.backpressure_queue == 0,
+            ),
+            (
+                "MIDDLEWARE_RATE_LIMIT_REQUESTS",
+                middleware.rate_limit_requests == 0,
+            ),
+            (
+                "MIDDLEWARE_RATE_LIMIT_PERIOD_SECS",
+                middleware.rate_limit_period_secs == 0,
+            ),
+            (
+                "MIDDLEWARE_CLIENT_MAX_CONCURRENCY",
+                middleware.client_max_concurrency == 0,
+            ),
+            (
+                "MIDDLEWARE_CLIENT_RATE_LIMIT_REQUESTS",
+                middleware.client_rate_limit_requests == 0,
+            ),
+            (
+                "MIDDLEWARE_CLIENT_RATE_LIMIT_PERIOD_SECS",
+                middleware.client_rate_limit_period_secs == 0,
+            ),
+            (
+                "MIDDLEWARE_CLIENT_MAX_ENTRIES",
+                middleware.client_max_entries == 0,
+            ),
+            (
+                "MIDDLEWARE_CLIENT_IDLE_SECS",
+                middleware.client_idle_secs == 0,
+            ),
+            (
+                "MIDDLEWARE_SLOW_REQUEST_MS",
+                middleware.slow_request_ms == 0,
+            ),
+        ]
+        .into_iter()
+        .find(|(_, invalid)| *invalid)
         {
             return Err(anyhow!(
-                "MIDDLEWARE capacity parameters must be greater than 0"
+                "MIDDLEWARE capacity parameters must be greater than 0: {key}"
             ));
         }
 
@@ -509,7 +584,8 @@ fn optional_path(key: &str) -> Option<PathBuf> {
 }
 
 fn get_required_env(key: &str) -> Result<String> {
-    env::var(key).with_context(|| format!("missing required environment variable: {key}"))
+    env::var(key)
+        .map_err(|_| anyhow!("missing required environment variable or invalid Unicode: {key}"))
 }
 
 fn get_env_or(key: &str, default: &str) -> String {
@@ -524,8 +600,8 @@ fn parse_origins(raw: &str) -> Result<Vec<String>> {
         .map(str::trim)
         .filter(|item| !item.is_empty())
     {
-        HeaderValue::from_str(origin).map_err(|error| {
-            anyhow!("invalid MIDDLEWARE_CORS_ALLOWED_ORIGINS entry {origin}: {error}")
+        HeaderValue::from_str(origin).map_err(|_| {
+            anyhow!("invalid MIDDLEWARE_CORS_ALLOWED_ORIGINS entry: expected an HTTP header value")
         })?;
         origins.push(origin.to_string());
     }
@@ -561,18 +637,19 @@ fn parse_proxy(value: &str) -> Result<IpNet> {
     value
         .parse::<IpNet>()
         .or_else(|_| value.parse::<IpAddr>().map(IpNet::from))
-        .map_err(|_| anyhow!("invalid MIDDLEWARE_TRUSTED_PROXIES entry: {value}"))
+        .map_err(|_| {
+            anyhow!("invalid MIDDLEWARE_TRUSTED_PROXIES entry: expected an IP address or CIDR")
+        })
 }
 
 fn parse_env_or<T>(key: &str, default: T) -> Result<T>
 where
     T: FromStr + Clone,
-    <T as FromStr>::Err: std::fmt::Display,
 {
     match env::var(key) {
-        Ok(value) => value
-            .parse::<T>()
-            .map_err(|error| anyhow!("failed to parse environment variable {key}: {error}")),
+        Ok(value) => value.parse::<T>().map_err(|_| {
+            anyhow!("failed to parse environment variable {key}: invalid value or out of range")
+        }),
         Err(_) => Ok(default),
     }
 }
