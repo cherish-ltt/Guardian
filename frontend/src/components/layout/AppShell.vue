@@ -6,7 +6,7 @@ import Topbar from './Topbar.vue'
 import CommandPalette from './CommandPalette.vue'
 import AppearanceDialog from './AppearanceDialog.vue'
 import PasswordDialog from './PasswordDialog.vue'
-import { logout } from '@/composables/auth'
+import { logout, sessionVersion } from '@/composables/auth'
 import { appearance } from '@/composables/appearance'
 import { pageEnter, pageLeave, playShellEntrance } from '@/composables/motion'
 import { confirm } from '@/composables/confirm'
@@ -92,7 +92,7 @@ onBeforeUnmount(() => {
         <main ref="content" class="content" tabindex="-1" @scroll.passive="onContentScroll">
           <router-view v-slot="{ Component }">
             <Transition mode="out-in" :css="false" appear @leave="pageLeave" @after-leave="content?.scrollTo({ top: 0 }); scrolled = false" @enter="pageEnter">
-              <component :is="Component" :key="route.path" />
+              <component v-if="route.meta.sessionVersion === sessionVersion" :is="Component" :key="`${route.meta.sessionVersion}:${route.path}`" />
             </Transition>
           </router-view>
         </main>

@@ -1,6 +1,7 @@
 export { default as ListPage } from './ListPage.vue'
 export { default as SearchForm } from './SearchForm.vue'
 export { default as FormDialog } from './FormDialog.vue'
+export { default as GeneratorSyncDialog } from './GeneratorSyncDialog.vue'
 export { default as ProfileSessions } from './ProfileSessions.vue'
 export { default as PermissionButton } from './PermissionButton.vue'
 export { default as DictSelect } from './DictSelect.vue'

@@ -118,6 +118,7 @@ cargo llvm-cov --features docs --summary-only
 | `tests/admin_api_tests.rs` | 认证全流程（含登录 / 退出日志的客户端来源与浏览器采集）、用户 / 角色 / 菜单 / 部门 / 岗位 / 字典 / 参数的 CRUD 与校验文案、导出、403 与数据范围、404 / 405 文案 |
 | `tests/monitor_api_tests.rs` | 写操作留痕的内容（含可信代理下的来源 IP）与脱敏、操作 / 登录日志的列表与统计、时间线、热力图、导出、删除与清空、工作台聚合 |
 | `tests/generator_api_tests.rs` | 候选表与导入幂等、字段元数据、10 个生成文件的内容、ZIP 条目、留痕动作 |
+| `tests/generator_sync_tests.rs` | 只读结构差异、同步配置保留、类型 / 可空 / 主键 / 顺序变化、过期与并发确认、事务回滚、审计隔离、ZIP 一致性与实体编译 |
 | `tests/account_api_tests.rs` | 本人资料字段白名单、2FA 绑定/启用/关闭/恢复码、动态码重放、恢复码并发单次消费、会话撤销、日志脱敏、人工重置的权限与密码校验、失败限次 |
 | `tests/account_security_tests.rs` | 待绑定密钥密文存储与过期、错误动态码不启用、`0003` 权限迁移只授予一次且不恢复已撤销授权、非超管不能重置超管 |
 | `tests/password_requirement_tests.rs` | 默认与迁移兼容、受限登录/接口/超管/骨架入口、成功改密与旧会话失效、旧快照确定性续写拒绝、密码/要求/版本的事务回滚、关联写入失败的新账号回滚、2FA 顺序 |

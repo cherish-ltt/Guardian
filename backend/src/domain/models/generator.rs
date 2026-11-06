@@ -13,7 +13,7 @@ pub struct GenTableRow {
     pub create_time: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GenColumnRow {
     pub id: i64,
@@ -21,6 +21,7 @@ pub struct GenColumnRow {
     pub rust_field: String,
     pub rust_type: String,
     pub jdbc_type: String,
+    pub column_type: String,
     pub comment: Option<String>,
     pub insert: bool,
     pub edit: bool,
@@ -32,6 +33,7 @@ pub struct GenColumnRow {
     /// 数据库列是否允许 NULL：生成物用 `Option<T>` 表示可空列。
     pub nullable: bool,
     pub primary_key: bool,
+    pub sort: i64,
 }
 
 /// 可导入的数据库表：`imported` 表示已导入过生成配置。
@@ -72,7 +74,7 @@ pub struct GenGenerateResult {
 }
 
 /// 生成配置里的一行：表信息 + 字段列表一次取回，供预览与下载复用。
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct GenTableDetail {
     pub id: i64,
     pub table_name: String,
@@ -81,6 +83,7 @@ pub struct GenTableDetail {
     pub module: String,
     pub business_name: String,
     pub synced: i64,
+    pub version: i64,
 }
 
 /// 数据库元数据里的表：SQLite 从 `sqlite_master` 读。
@@ -91,7 +94,7 @@ pub struct DatabaseTable {
 }
 
 /// 数据库元数据里的列。
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct DatabaseColumn {
     pub column_name: String,
     pub data_type: String,
@@ -123,6 +126,7 @@ pub struct NewGenColumn {
     pub rust_field: String,
     pub rust_type: String,
     pub jdbc_type: String,
+    pub column_type: String,
     pub column_comment: Option<String>,
     pub insert: i64,
     pub edit: i64,
@@ -142,4 +146,35 @@ pub struct NewGenColumn {
 pub struct GenTableUpdateCommand {
     pub table_comment: Option<String>,
     pub synced: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GenColumnChange {
+    pub column_name: String,
+    pub kind: &'static str,
+    pub before: Option<GenColumnRow>,
+    pub after: Option<GenColumnRow>,
+    pub changed_attributes: Vec<&'static str>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GenSyncPreview {
+    pub table_name: String,
+    pub revision: String,
+    pub changes: Vec<GenColumnChange>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GenSyncCommand {
+    #[serde(default)]
+    pub revision: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GenSyncResult {
+    pub table_name: String,
+    pub changed: usize,
 }

@@ -69,6 +69,22 @@ npm run build
 清空 / 重置、分页 / CSV、浏览器夏令时缺口，以及 1720 / 1440 / 820 / 390 / 320px 的控件边界与弹层。
 运行要求与脚本头部环境变量说明一致，不应连接生产数据库。
 
+## 代码生成器
+
+生成器列表的「同步结构」会只读预览新增、删除、类型、可空性、主键和顺序变化，同时展示关联推导项。
+取消保持配置原样；确认成功后变为「待确认」，可继续查看代码预览和下载。预览后数据库或生成配置变化时，
+显示服务端冲突并要求重新预览；无差异不提供确认动作。同步不会修改业务表或已下载源码，
+字段处理规则见 [后端契约](../backend/docs/ADMIN.md#已导入表的结构同步)。
+
+验收截图：[桌面](../docs/screenshots/generator-sync-desktop.png)、[窄屏](../docs/screenshots/generator-sync-mobile.png)。
+
+`scripts/generator-sync-regression.mjs` 使用真实浏览器检查预览 / 取消、实际结构变化引发的 409、重新预览、
+慢确认防重复、模拟失败、旧预览 / 旧会话晚到、同步后的代码与 ZIP，以及 1440 / 390 / 320px 弹窗边界。
+先在独立 SQLite 库启动前后端，通过 `GUARDIAN_TEST_URL`、`GUARDIAN_TEST_DB`、`GUARDIAN_TEST_PASSWORD`
+指定地址、库文件和测试管理员口令；脚本创建并删除自己的业务表与生成配置，不清空其他记录。
+需要本机 Node SQLite 支持、Python 3 / Pillow、Playwright 和 Chromium；可用 `GUARDIAN_PLAYWRIGHT_MODULE`
+指定 Playwright 模块路径、`GUARDIAN_BROWSER_CHANNEL=chrome` 使用已安装 Chrome。
+
 ## 目录
 
 | 路径 | 中文职责 |
@@ -89,6 +105,7 @@ npm run build
 | `scripts/generator-remove-regression.mjs` | 单表配置移除、末页回退、重导、会话切换与迟到响应及桌面 / 窄屏回归 |
 | `scripts/password-requirement-regression.mjs` | 待改密登录、重置开关、刷新与深链、重复提交、跨标签页及迟到响应回归 |
 | `scripts/log-window-regression.py` | 日志时间窗口、翻页、CSV、重置及桌面 / 窄屏回归 |
+| `scripts/generator-sync-regression.mjs` | 结构同步预览、取消、冲突重试、失败、慢响应与生成产物回归 |
 
 ## 扩展约定
 
@@ -167,11 +184,13 @@ GUARDIAN_TEST_PASSWORD='<测试管理员口令>' \
 node scripts/generator-remove-regression.mjs
 ```
 
-脚本连接 Vite 开发服务，创建 11 张唯一命名的业务测试表、导入配置及一个无菜单权限账号，验证取消、删除失败、
-末页回退、候选刷新、重导新 ID、预览和业务数据保留；还覆盖确认期间 401 / 跨标签换号、DELETE 和刷新迟到的
-成功 / 失败响应，确认新会话不继承旧删除、刷新或提示。结束后删除自身账号、配置和测试表；不得连接生产或共享数据库。
-桌面 / 窄屏截图写入忽略的 `.test-artifacts/`；环境变量 `GUARDIAN_BROWSER_CHANNEL` 与
-`GUARDIAN_PLAYWRIGHT_MODULE` 的含义同上。
+脚本连接 Vite 开发服务，创建 11 张唯一命名的业务测试表、导入配置、无菜单账号及仅有生成器菜单的角色和账号，
+验证取消、删除失败、末页回退、候选刷新、重导新 ID、预览和业务数据保留；还覆盖确认期间 401 / 跨标签换号、
+DELETE 和刷新迟到的成功 / 失败响应，以及同路径换号先校验身份再重建空闲页面，确认新会话不继承旧删除、刷新或提示。
+结束后删除自身账号、角色、配置和测试表；不得连接生产或共享数据库。
+脚本检查 1440 / 390 / 320px 下各行操作可点击、确认框和按钮位于视口内；截图写入忽略的 `.test-artifacts/`。
+验收截图：[桌面](../docs/screenshots/generator-remove-desktop.png)、[390px](../docs/screenshots/generator-remove-mobile.png)、
+[320px](../docs/screenshots/generator-remove-320.png)。环境变量 `GUARDIAN_BROWSER_CHANNEL` 与 `GUARDIAN_PLAYWRIGHT_MODULE` 的含义同上。
 
 强制改密回归复用同一独立环境与环境变量，需 Vite 开发服务器（迟到响应测试使用应用实际 HTTP 模块）：
 

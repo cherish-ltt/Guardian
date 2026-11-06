@@ -16,6 +16,8 @@ const api = await request.newContext({ baseURL: `${base}/api/v1/` })
 let browser
 let headers
 let otherUser
+let generatorUser
+let generatorRole
 const otherPassword = randomBytes(24).toString('hex')
 function sql(statement) { return execFileSync('sqlite3', [database, statement], { encoding: 'utf8' }).trim() }
 function solve(image) { return execFileSync('python3', [fileURLToPath(new URL('./captcha_solver.py', import.meta.url))], { input: image, encoding: 'utf8' }).trim() }
@@ -71,6 +73,14 @@ try {
   const username = `${prefix}_reader`
   const created = await json(await api.post('system/users', { headers, data: { username, nickname: '移除会话回归', 'password': otherPassword, deptId: 5, status: 1, roleIds: [], passwordChangeRequired: false } }))
   otherUser = { id: created.id, username }
+  generatorRole = await json(await api.post('system/roles', { headers, data: {
+    name: '同路径会话回归', code: `${prefix}_generator`, dataScope: 'SELF', sort: 99, status: 1, menuIds: [300, 301],
+  } }))
+  const generatorName = `${prefix}_generator`
+  const generatorAccount = await json(await api.post('system/users', { headers, data: {
+    username: generatorName, nickname: '生成器会话回归', 'password': otherPassword, deptId: 5, status: 1, roleIds: [generatorRole.id], passwordChangeRequired: false,
+  } }))
+  generatorUser = { id: generatorAccount.id, username: generatorName }
   browser = await chromium.launch({ headless: true, channel: process.env.GUARDIAN_BROWSER_CHANNEL || 'chrome' })
   const context = await browser.newContext({ viewport: { width: 1440, height: 1080 }, reducedMotion: 'reduce' })
   const page = await context.newPage()
@@ -109,18 +119,30 @@ try {
   await page.unroute(endpoint)
   console.log('PASS: 删除失败保留行且不报告成功')
 
-  await page.getByRole('button', { name: '移除配置', exact: true }).click()
-  await expect(dialog).toBeVisible()
-  await expect(dialog).toHaveCSS('opacity', '1')
-  await expect(dialog.getByRole('button', { name: '移除配置', exact: true })).toBeInViewport()
-  await page.screenshot({ path: fileURLToPath(new URL('generator-remove-desktop.png', artifacts)), animations: 'disabled' })
-  await page.setViewportSize({ width: 390, height: 844 })
-  await expect(dialog).toBeVisible()
-  await expect(dialog).toHaveCSS('opacity', '1')
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy()
-  await expect(dialog.getByRole('button', { name: '移除配置', exact: true })).toBeInViewport()
-  await page.screenshot({ path: fileURLToPath(new URL('generator-remove-mobile.png', artifacts)), animations: 'disabled' })
+  for (const width of [1440, 390, 320]) {
+    await page.setViewportSize({ width, height: width > 1000 ? 1080 : 844 })
+    const rowActions = page.locator('tr.data-row .row-actions')
+    for (const label of ['预览', '配置', '同步结构', '生成', '移除配置']) {
+      const action = rowActions.getByRole('button', { name: label, exact: true })
+      await action.scrollIntoViewIfNeeded()
+      await action.click({ trial: true })
+    }
+    await rowActions.getByRole('button', { name: '移除配置', exact: true }).click()
+    await expect(dialog).toBeVisible()
+    await expect(dialog).toHaveCSS('opacity', '1')
+    const bounds = await dialog.boundingBox()
+    expect(bounds.x).toBeGreaterThanOrEqual(0)
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(width)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy()
+    await expect(dialog.getByRole('button', { name: '移除配置', exact: true })).toBeInViewport()
+    const image = width === 1440 ? 'generator-remove-desktop.png' : width === 390 ? 'generator-remove-mobile.png' : 'generator-remove-320.png'
+    await page.screenshot({ path: fileURLToPath(new URL(image, artifacts)), animations: 'disabled' })
+    await dialog.getByRole('button', { name: '取消', exact: true }).click()
+    await expect(dialog).toHaveCount(0)
+  }
+  console.log('PASS: 1440/390/320px 行操作均可点击，确认框和按钮位于视口内')
   await page.setViewportSize({ width: 1440, height: 1080 })
+  await page.getByRole('button', { name: '移除配置', exact: true }).click()
   await dialog.getByRole('button', { name: '移除配置', exact: true }).click()
   await expect(page.locator('tr.data-row')).toHaveCount(10)
   await expect(page.locator('.pg-btn[aria-current="page"]')).toHaveText('1')
@@ -228,6 +250,77 @@ try {
     if (!(await listed()).some(row => row.id === old.id)) await json(await api.post('tool/generator/import', { headers, data: { tableNames: [old.tableName] } }))
     expect((await listed()).length).toBe(11)
   }
+  await signIn(page, 'admin', credential, await signOut(page))
+  const previous = await lastConfiguration(page)
+  const previousUrl = `${base}/api/v1/tool/generator/tables/${previous.id}`
+  let releaseDelete
+  let deleteStarted = false
+  let deleteDelivered = false
+  const oldDelete = new Promise(resolve => { releaseDelete = resolve })
+  await page.route(previousUrl, async route => {
+    const response = await route.fetch()
+    deleteStarted = true
+    await oldDelete
+    await route.fulfill({ response })
+    deleteDelivered = true
+  })
+  await page.getByRole('button', { name: '移除配置', exact: true }).click()
+  await dialog.getByRole('button', { name: '移除配置', exact: true }).click()
+  await expect.poll(() => deleteStarted).toBe(true)
+  const switcher = await context.newPage()
+  let releaseIdentity
+  let identityStarted = false
+  const identity = new Promise(resolve => { releaseIdentity = resolve })
+  const identityPath = `${base}/api/v1/auth/me`
+  const switchedRequests = []
+  const changedCaptcha = await json(await api.get('auth/captcha'))
+  const replacementSession = await json(await api.post('auth/login', { data: {
+    username: generatorUser.username, 'password': otherPassword,
+    ...(changedCaptcha.enabled ? { captcha: solve(changedCaptcha.image), captchaUuid: changedCaptcha.uuid } : {}),
+  } }))
+  page.on('request', req => {
+    if (req.headers().authorization === `Bearer ${replacementSession.token}` && new URL(req.url()).pathname.startsWith('/api/v1/tool/generator/')) switchedRequests.push(req.url())
+  })
+  await page.route(identityPath, async route => {
+    const response = await route.fetch()
+    identityStarted = true
+    await identity
+    await route.fulfill({ response })
+  })
+  try {
+    await switcher.goto(`${base}/profile`)
+    await switcher.waitForLoadState('networkidle')
+    await switcher.evaluate(async ({ login, username }) => {
+      const source = performance.getEntriesByType('resource').find(entry => new URL(entry.name).pathname === '/src/api/session.ts')
+      if (!source) throw new Error('未找到实际会话存储模块')
+      const { authSession } = await import(source.name)
+      authSession.save(login, { username, nickname: username }, true)
+    }, { login: replacementSession, username: generatorUser.username })
+    await expect.poll(() => identityStarted).toBe(true)
+    expect(switchedRequests).toEqual([])
+    releaseIdentity()
+    await expect(page.locator('.user-chip .user-name')).toHaveText('生成器会话回归')
+    await expect(page.getByPlaceholder('表名 / 表说明', { exact: true })).toHaveValue('')
+    await expect(page.locator('tr.data-row').getByRole('button', { name: '移除配置', exact: true }).first()).toBeEnabled()
+    expect(new URL(page.url()).pathname).toBe('/tool/generator')
+    await expect(page.locator('table')).toHaveAttribute('aria-busy', 'false')
+    const newRequests = generatorRequests.length
+    releaseDelete()
+    await expect.poll(() => deleteDelivered).toBe(true)
+    await page.waitForLoadState('networkidle')
+    expect(generatorRequests.length).toBe(newRequests)
+    await expect(page.getByText(`已移除「${previous.tableName}」的生成配置`, { exact: true })).toHaveCount(0)
+    await page.locator('tr.data-row').getByRole('button', { name: '移除配置', exact: true }).first().click()
+    await expect(dialog).toBeVisible()
+    await dialog.getByRole('button', { name: '取消', exact: true }).click()
+    console.log('PASS: 同路径换号先验证身份再重建页面，旧删除不遗留忙碌状态或污染新会话')
+  } finally {
+    releaseIdentity()
+    releaseDelete()
+    await page.unroute(identityPath)
+    await page.unroute(previousUrl)
+    await switcher.close()
+  }
   expect(errors).toEqual([])
 } finally {
   await browser?.close()
@@ -239,6 +332,8 @@ try {
     } finally {
       try {
         if (otherUser) await json(await api.delete(`system/users/${otherUser.id}`, { headers }))
+        if (generatorUser) await json(await api.delete(`system/users/${generatorUser.id}`, { headers }))
+        if (generatorRole) await json(await api.delete(`system/roles/${generatorRole.id}`, { headers }))
       } finally {
         await api.dispose()
       }

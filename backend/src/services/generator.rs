@@ -10,8 +10,8 @@ use crate::{
         models::{
             generator::{
                 DatabaseColumn, GenColumnRow, GenFile, GenGenerateResult, GenImportResult,
-                GenPreview, GenTableDetail, GenTableRow, GenTableUpdateCommand, ImportableTable,
-                NewGenColumn, NewGenTable,
+                GenPreview, GenSyncCommand, GenSyncPreview, GenSyncResult, GenTableDetail,
+                GenTableRow, GenTableUpdateCommand, ImportableTable, NewGenColumn, NewGenTable,
             },
             pagination::{Page, PageResult},
             system_admin::KeywordQuery,
@@ -225,6 +225,19 @@ impl GeneratorUseCase for GeneratorService {
         .await
     }
 
+    async fn sync_preview(&self, table_id: i64) -> Result<GenSyncPreview, AppError> {
+        super::generator_sync::preview(&self.database, table_id).await
+    }
+
+    async fn sync_table(
+        &self,
+        table_id: i64,
+        command: GenSyncCommand,
+        operator: &str,
+    ) -> Result<GenSyncResult, AppError> {
+        super::generator_sync::synchronize(&self.database, table_id, command, operator).await
+    }
+
     async fn generate(&self, table_id: i64) -> Result<GenGenerateResult, AppError> {
         let table = self.table_detail(table_id).await?;
         self.rendered_files(&table).await?;
@@ -260,7 +273,10 @@ impl GeneratorUseCase for GeneratorService {
     }
 }
 
-fn validate_primary_key(table_name: &str, columns: &[DatabaseColumn]) -> Result<(), AppError> {
+pub(super) fn validate_primary_key(
+    table_name: &str,
+    columns: &[DatabaseColumn],
+) -> Result<(), AppError> {
     let primary: Vec<_> = columns.iter().filter(|column| column.primary_key).collect();
     if primary.len() != 1
         || !primary[0].column_type.eq_ignore_ascii_case("INTEGER")
@@ -274,7 +290,7 @@ fn validate_primary_key(table_name: &str, columns: &[DatabaseColumn]) -> Result<
 }
 
 /// 数据库列 → 生成配置行：主键不进表单与列表，名称/编码/状态/类型默认作为查询条件。
-fn column_row(table_id: i64, column: &DatabaseColumn) -> NewGenColumn {
+pub(super) fn column_row(table_id: i64, column: &DatabaseColumn) -> NewGenColumn {
     let primary_like = column.primary_key;
     let query_field = query_field(&column.column_name);
 
@@ -284,6 +300,7 @@ fn column_row(table_id: i64, column: &DatabaseColumn) -> NewGenColumn {
         rust_field: snake_case(&column.column_name),
         rust_type: rust_type(&column.data_type).to_string(),
         jdbc_type: column.data_type.clone(),
+        column_type: column.column_type.clone(),
         column_comment: column.column_comment.clone(),
         insert: i64::from(!primary_like),
         edit: i64::from(!primary_like),
@@ -866,6 +883,7 @@ mod tests {
             rust_field: snake_case(name),
             rust_type: rust_type.to_string(),
             jdbc_type: "text".to_string(),
+            column_type: "TEXT".to_string(),
             comment: comment.map(str::to_string),
             insert: true,
             edit: true,
@@ -876,6 +894,7 @@ mod tests {
             required: true,
             nullable: false,
             primary_key: name == "id",
+            sort: 0,
         }
     }
 

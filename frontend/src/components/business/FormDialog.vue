@@ -9,6 +9,7 @@ withDefaults(defineProps<{
   width?: number
   saving?: boolean
   submitText?: string
+  submitDisabled?: boolean
 }>(), {
   width: 620,
   submitText: '保存',
@@ -25,7 +26,7 @@ const emit = defineEmits<{ (e: 'close'): void; (e: 'submit'): void }>()
     <slot name="extra" />
     <template #footer>
       <Button variant="ghost" @click="emit('close')">取消</Button>
-      <Button variant="primary" :loading="saving" @click="emit('submit')">{{ submitText }}</Button>
+      <Button variant="primary" :loading="saving" :disabled="submitDisabled" @click="emit('submit')">{{ submitText }}</Button>
     </template>
   </Modal>
 </template>

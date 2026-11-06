@@ -6,6 +6,7 @@ pub mod auth;
 pub mod dashboard;
 pub mod example;
 pub mod generator;
+mod generator_sync;
 pub mod hot_cache;
 pub mod ip_location_cache;
 pub mod monitor;

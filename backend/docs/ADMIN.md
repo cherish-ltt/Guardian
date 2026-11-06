@@ -165,12 +165,48 @@ src/middleware/audit.rs                       写操作留痕
 | POST | `/tool/generator/import` | 同上 | 按 `tableNames` 导入，重复导入复用已有配置 |
 | GET | `/tool/generator/tables/{id}/columns` | 同上 | 字段配置（`rustField` / `rustType` / `nullable` / `formType` / 增删改查开关） |
 | GET | `/tool/generator/tables/{id}/preview` | 同上 | 10 个文件的代码预览（`activeFile` 为默认展开的控制器路径） |
+| GET | `/tool/generator/tables/{id}/sync-preview` | 同上 | 只读结构差异，返回 `tableName`、`revision` 与 `changes` |
+| POST | `/tool/generator/tables/{id}/sync` | 同上 | 提交 `{revision}` 确认差异，返回 `tableName` 与变动列数 `changed` |
 | PUT | `/tool/generator/tables/{id}` | 同上 | 只接受 `tableComment` 与 `synced` |
 | DELETE | `/tool/generator/tables/{id}` | 同上 | 永久移除该生成配置及列配置，保留业务表、数据和已生成文件 |
 | POST | `/tool/generator/tables/{id}/generate` | 同上 | 生成结果提示 |
 | GET | `/tool/generator/tables/{id}/download` | 同上 | ZIP（条目为完整相对路径） |
 
 代码生成器仅支持 SQLite 单列 `INTEGER` 行号主键；文本主键、复合主键、无主键和非行号主键在导入时会被拒绝。
+
+#### 已导入表的结构同步
+
+数据库迁移完成后，在生成器列表点击「同步结构」，先查看差异再确认。预览不写配置，取消不保存；
+重复导入仍仅复用已有配置 ID。确认在 SQLite IMMEDIATE 事务内重读父配置、列配置和真实结构，
+核对 `revision` 后增删改列配置；任何写入失败整体回滚。配置或结构在预览后变化返回 409「请重新预览结构差异」，
+无差异时 `changed=0`，不更新配置、人工确认状态、更新时间或版本。实际改动后 `synced=false`，
+它仍表示待人工确认，不表示实时结构同步状态。表被移除或变为不支持的主键结构时返回 400，配置不变。
+
+`changes[]` 的 `kind` 为 `added` / `removed` / `changed`；每项含 `columnName`、`before`、`after` 和
+`changedAttributes`。新增项的 `before=null`，删除项的 `after=null`；新增项预览 ID 为 0，确认后才分配真实 ID。
+`changedAttributes` 使用 `columnType` / `nullable` / `primaryKey` / `sort`，列顺序从 0 计数。
+`before` / `after` 同时展示对应字段映射与表单推导项，客户端只提交摘要，不接受任意列配置或 DDL。
+
+| 结构变化 | 确认同步时的处理 |
+| --- | --- |
+| 同名且未变化 | 整行保持不变，包含 ID、字段名、说明、查询与表单自定义设置 |
+| 新增列 | 复用首次导入的字段命名、Rust 类型、查询、表单与主键推导规则 |
+| SQL 声明类型变化（包含长度） | 更新 `columnType`、基础类型 `jdbcType`、`rustType` 与 `formType`；类型比较忽略大小写 |
+| 可空性变化 | 更新 `nullable` 与 `required`；行号主键始终非空且不要求表单填写 |
+| 主键变化 | 更新 `primaryKey`、新增 / 编辑 / 列表开关、`required`，并按真实非空语义更新 `nullable` |
+| 顺序变化 | 只更新 `sort`，按数据库新顺序生成 |
+| 删除或重命名 | 删除仅针对该表的列配置；重命名按删除旧列与新增新列处理，不猜测映射 |
+
+表 ID、表说明、类名、模块和业务名始终保留。变化列的其他设置保持原值。
+同步不修改业务表或业务行，不覆盖已下载代码，产物仍是需要补全业务逻辑的骨架；预览与 ZIP 共用持久配置渲染。
+
+迁移 `0013_generator_sync.sql` 为表配置增加内部版本，并保存完整 SQL 声明类型。
+旧配置只记录了基础类型，迁移使用原 `jdbc_type` 回填，避免用当前结构掩盖未同步的变化；
+因此旧 `varchar` 配置第一次对照 `VARCHAR(64)` 会显示类型变化，确认后不再重复出现。
+同步写入口按「代码生成 / 同步结构」留痕，成功仅记录表名与变动列数，失败记录结果与错误，
+不记录请求中的完整配置、业务行或预览摘要；401 / 403 不留痕，审计失败不回滚已完成同步。
+
+#### 移除生成配置
 
 移除按配置 ID 定位，在同一 IMMEDIATE 事务中确认父配置存在、删除列配置再删除父配置；任一步失败均回滚。
 业务表已不存在仍可移除残留配置；目标配置不存在返回 400「代码生成表不存在」。成功返回 `data: null`。
@@ -388,7 +424,8 @@ Redis 超时/错误/坏数据触发短暂熔断，回源 SQLite；故障时不�
 | 响应体 | `{code, message, data, traceId}` | 同前 + `timestamp` | `timestamp` 是骨架既有字段，前端不读 |
 | 5xx 文案 | `系统内部错误` | 同前 | 4xx 文案逐字透出（「账号或密码错误」等） |
 | 请求体非法 | Spring 抛 `HttpMessageNotReadableException` | `ApiJson` 统一转 400「请求体格式错误」 | 前端 `http.ts` 只认 `message` |
-| 生成器 `formType` | 按 MySQL 列类型（`varchar` → 文本框） | SQLite 只有 `TEXT`，按 `text` → 文本域 | SQLite 无长度信息，无法区分 `varchar` / `text` |
+| 生成器 `formType` | 按 MySQL 列类型（`varchar` → 文本框） | 按 SQLite 声明类型推导（`text` → 文本域，`varchar` → 文本框） | 保存完整声明用于差异比较；SQLite 不强制执行 `VARCHAR(n)` 长度限制 |
+| 生成器结构同步 | 本轮未核实上游通用同步契约 | 增量 `sync-preview` / `sync` 两步确认、事务复核预览版本、只刷新相关推导属性 | 适配 SQLite 与 Rust 映射，防止预览后的并发修改被覆盖 |
 | 生成器模板 | Java 文本块：`domain` / `mapper` / `service` / `controller` 四个 Java 类 + 前端 api / 页面 + 菜单 SQL | 按本项目 axum 分层生成 Rust：sea-orm 实体、领域模型、用例接口、仓储、服务、控制器 + 前端 api / 页面 + 菜单 SQL + 接入说明，共 10 个文件 | 本项目已迁到 axum，Java 产物放不进项目也用不上 |
 | 生成器字段命名 | `javaField` / `javaType`（`Long` / `BigDecimal` / `LocalDateTime`） | `rustField` / `rustType`（`i64` / `i32` / `f64` / `String`） | 产物是 Rust，字段名与类型都按 Rust 语义 |
 | 生成器业务名 | `sys_user` → `userRole`（camelCase） | `sys_user` → `user`（snake_case） | Rust 模块、函数与前端目录都用 snake_case |
@@ -409,6 +446,7 @@ Redis 超时/错误/坏数据触发短暂熔断，回源 SQLite；故障时不�
 - `tests/admin_api_tests.rs`：认证全流程（含登录 / 退出日志的来源与浏览器采集）、七个系统管理页面的 CRUD / 树 / 导出 / 权限 403 / 数据范围 / 404 / 405 文案。
 - `tests/monitor_api_tests.rs`：留痕内容（含可信代理下的来源 IP）与脱敏、日志统计 / 时间线 / 热力图 / 导出 / 删除清空、工作台聚合。
 - `tests/generator_api_tests.rs`：候选表与导入幂等、字段元数据、10 个生成文件的内容、ZIP 条目、留痕动作。
+- `tests/generator_sync_tests.rs`：结构差异与配置保留、过期确认 / 并发、整体回滚、权限与审计、旧类型迁移、同步后的 ZIP 一致性与真实实体编译。
 - `tests/generator_remove_tests.rs`：配置移除与重导、业务数据保留、旧 ID 隔离、并发及事务回滚、权限和审计失败边界。
 - `tests/session_api_tests.rs`：本人身份边界、单目标撤销、独立失败限次、第二因素防重放、旧 JWT 与严格有效性过滤。
 - `tests/password_requirement_tests.rs`：迁移兼容、受限接口、超管与骨架绕过、无菜单改密、旧快照与事务回滚、2FA 顺序及审计脱敏。
