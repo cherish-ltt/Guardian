@@ -18,8 +18,9 @@ pub struct RedisCacheStore {
 }
 impl RedisCacheStore {
     pub async fn connect(config: &RedisConfig) -> Result<Self, AppError> {
-        let client = redis::Client::open(config.connection_url()?)
-            .map_err(|e| AppError::Config(e.to_string()))?;
+        let client = config
+            .client()
+            .map_err(|error| AppError::Config(error.to_string()))?;
         let connection = client
             .get_connection_manager()
             .await

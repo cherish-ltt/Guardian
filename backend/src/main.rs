@@ -1,7 +1,10 @@
 use anyhow::Result;
 use dotenv::dotenv;
 use guardian_backend::{
-    container::Container, create_app::create_app, infrastructure::config::AppConfig, logging,
+    container::Container,
+    create_app::create_app,
+    infrastructure::{config::AppConfig, ip_location::IpLocation},
+    logging,
 };
 use mimalloc::MiMalloc;
 use std::sync::Arc;
@@ -17,7 +20,7 @@ static GLOBAL: MiMalloc = MiMalloc;
 ///
 /// 启动流程固定为：
 ///
-/// 1. 读取环境变量
+/// 1. 读取配置并校验（`--check-config` 完成限定检查后退出）
 /// 2. 初始化日志
 /// 3. 打印生效配置
 /// 4. 构建全局状态
@@ -25,17 +28,35 @@ static GLOBAL: MiMalloc = MiMalloc;
 /// 6. 启动 HTTP 服务
 #[tokio::main]
 async fn main() -> Result<()> {
+    let mut arguments = std::env::args_os().skip(1);
+    let check_config = match (arguments.next(), arguments.next()) {
+        (None, None) => false,
+        (Some(argument), None) if argument == "--check-config" => true,
+        _ => anyhow::bail!("usage: guardian-backend [--check-config]"),
+    };
     dotenv().ok();
 
     let config = AppConfig::from_env()?;
     config.validate_runtime()?;
+    let address = config.server.socket_addr()?;
+    if check_config {
+        config.database.validate_url()?;
+        config.redis.client()?;
+        logging::validate(&config.logging)?;
+        IpLocation::load(
+            config.ip_location_db_path.as_deref(),
+            config.ip_location_v6_db_path.as_deref(),
+        )?;
+        println!(
+            "configuration check passed: configuration and configured local xdb files only; no connectivity, write access, port availability or migration checks"
+        );
+        return Ok(());
+    }
     let _log_guard = logging::init(&config)?;
     logging::log_startup_config(&config);
 
     let container = Arc::new(Container::bootstrap(config).await?);
     let app = create_app(container.clone());
-    let address = container.config.server.socket_addr()?;
-
     let listener = tokio::net::TcpListener::bind(address).await?;
     info!(address = %address, "HTTP server started successfully");
 

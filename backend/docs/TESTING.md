@@ -35,6 +35,21 @@ cargo test --features docs
 `services/transaction.rs` 的单测（在事务内主动失败后断言数据库无残留）与
 `tests/api_tests.rs` 中的 `transfer_rolls_back_every_write_when_force_fail_is_on`。
 
+## 配置预检子进程回归
+
+```bash
+cargo test --test config_check_tests --test config_tests --test logging_tests
+```
+
+`tests/config_check_tests.rs` 运行真实 `guardian-backend --check-config` 子进程，每例使用独立临时目录和
+清空后显式设置的环境变量。覆盖退出码、未知参数、`.env` 加载及环境覆盖、配置键安全诊断、日志与驱动
+纯解析、可选 xdb / 2FA，以及已配置 xdb 的头部、只读加载和协议检查。
+
+无副作用用例占住 HTTP 目标端口，并以本地监听器确认 Redis 没有收到连接；另覆盖 Redis 不可达。
+使用已存在 SQLite、日志与 IPv4 / IPv6 xdb 文件，比较检查前后的内容、修改时间和目录项；空目录用例
+断言数据库与日志目录未创建。这些用例默认执行，无需外部 Redis。成功输出只说明限定检查通过，
+不会把连通性、写权限、迁移或端口可用性当作预检结果。
+
 ## HTTP 黑盒测试（`oneshot`）
 
 `tests/api_tests.rs` 是接口层的黑盒测试：不直接调用 controller 或 service，

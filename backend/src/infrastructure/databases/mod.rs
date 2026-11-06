@@ -10,6 +10,7 @@ pub mod schema;
 pub mod seed;
 
 pub async fn connect_database(config: &DatabaseConfig) -> Result<DatabaseConnection> {
+    config.validate_url()?;
     let mut options = ConnectOptions::new(config.url.clone());
     options
         .min_connections(config.min_connections)
