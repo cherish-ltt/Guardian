@@ -7,6 +7,7 @@ pub struct Model {
     pub id: i64,
     pub username: String,
     pub password: String,
+    pub password_change_required: bool,
     pub nickname: String,
     pub phone: Option<String>,
     pub email: Option<String>,

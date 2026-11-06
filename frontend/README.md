@@ -36,7 +36,7 @@ npm run build
 
 ## 个人资料与二次验证
 
-顶栏「个人资料」进入 `/profile`，所有登录账号可访问（不要求菜单授权）。昵称、手机、邮箱可编辑；
+顶栏「个人资料」进入 `/profile`，无需改密的登录账号可访问（不要求菜单授权）。昵称、手机、邮箱可编辑；
 账号、部门、角色只读。修改密码复用既有弹窗。认证器绑定支持本地生成二维码或手动密钥，确认动态码后才启用；
 生成的恢复码仅保留本页内存，保存后重新登录。登录框只收账号、密码、验证码：账号启用 2FA 时，密码验证通过后会跳转独立页
 `/login/2fa` 输入动态码或未使用恢复码，验证成功才建立会话；挑战只存在内存，刷新即作废。
@@ -48,6 +48,12 @@ npm run build
 
 用户管理的「重置2FA」按钮由 `system:user:reset2fa` 权限控制，需输入操作者密码，不使用重置密码权限替代。
 后端密钥配置与恢复流程见 [生产部署](../docs/DEPLOYMENT.md#二次认证密钥与恢复)。
+
+用户管理的新增 / 重置密码弹窗可开启「要求用户登录后先修改密码」，每次打开默认关闭。
+登录及页面刷新先查询当前身份，`passwordChangeRequired` 为真时进入外壳之外的静态 `/password-change`，
+不加载菜单、资料或业务页面；无菜单账号也能完成，启用 2FA 的账号仍须先完成第二因素。
+修改成功后统一重新登录，记住状态的其他标签页同步退出；后端 403 中的改密标记和普通权限不足分别处理。
+验收截图：[桌面浅色](../docs/screenshots/password-required-desktop.png)、[移动深色](../docs/screenshots/password-required-mobile.png)。
 
 ## 日志时间筛选
 
@@ -81,6 +87,7 @@ npm run build
 | `scripts/account-regression.mjs` | 资料、2FA 绑定与恢复码的浏览器回归 |
 | `scripts/self-session-regression.mjs` | 本人会话列表、单项撤销隔离、故障与慢响应、浅深主题回归 |
 | `scripts/generator-remove-regression.mjs` | 单表配置移除、末页回退、重导、会话切换与迟到响应及桌面 / 窄屏回归 |
+| `scripts/password-requirement-regression.mjs` | 待改密登录、重置开关、刷新与深链、重复提交、跨标签页及迟到响应回归 |
 | `scripts/log-window-regression.py` | 日志时间窗口、翻页、CSV、重置及桌面 / 窄屏回归 |
 
 ## 扩展约定
@@ -106,7 +113,7 @@ npm run build
   `http.ts` 只认 `message` 作为错误文案。
 - 管理列表分页返回 `{pageNum, pageSize, total, rows}`；本人会话使用游标分页 `{items, nextCursor}`。
   列表页的导出走 CSV（`text/csv`），代码生成下载走 ZIP。
-- 401 触发统一会话清理并跳登录；403 表示权限不足，页面按权限码隐藏入口。
+- 401 触发统一会话清理并跳登录；带 `passwordChangeRequired: true` 的 403 进入改密流程，普通 403 表示权限不足。
 - 操作与登录日志支持可选开始 / 结束时间，输入 `YYYY-MM-DD HH:MM:SS` 服务端本地时间，
   包含开始、不含结束；只影响明细与 CSV（最多 5000 行），不转换浏览器时区或改变统计窗口。
   清空可只保留单边界，重置同时清除时间并返回第一页。
@@ -165,6 +172,16 @@ node scripts/generator-remove-regression.mjs
 成功 / 失败响应，确认新会话不继承旧删除、刷新或提示。结束后删除自身账号、配置和测试表；不得连接生产或共享数据库。
 桌面 / 窄屏截图写入忽略的 `.test-artifacts/`；环境变量 `GUARDIAN_BROWSER_CHANNEL` 与
 `GUARDIAN_PLAYWRIGHT_MODULE` 的含义同上。
+
+强制改密回归复用同一独立环境与环境变量，需 Vite 开发服务器（迟到响应测试使用应用实际 HTTP 模块）：
+
+```bash
+GUARDIAN_TEST_URL=http://localhost:5173 GUARDIAN_TEST_PASSWORD='<测试管理员口令>' node scripts/password-requirement-regression.mjs
+```
+
+脚本自建自删两个无菜单账号，验证受限登录与深链、刷新、桌面/移动浅深主题、错误密码、慢请求防重复、
+成功改密后的旧令牌 401 与跨标签页退出、管理员重置开关以及旧账号迟到 403 不影响新账号。
+截图写入 `.test-artifacts/`；2FA 顺序、数据库迁移和事务回滚由后端用例覆盖。
 
 已有 Python Playwright 与 Chromium、前后端均启动时，可运行原有会话回归：
 

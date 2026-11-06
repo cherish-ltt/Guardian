@@ -44,6 +44,11 @@ impl FromRequestParts<Arc<Container>> for CurrentUser {
             .current_user_from_authorization(authorization)
             .await?;
 
+        // 后台 JWT 的 subject 是数据库整数 ID，不能借脚手架入口绕过账号状态校验。
+        if current_user.user_id.parse::<i64>().is_ok() {
+            super::admin_user::AdminUser::from_request_parts(parts, state).await?;
+        }
+
         Ok(Self(current_user))
     }
 }
