@@ -22,8 +22,9 @@ pub struct RedisAuthStore {
 
 impl RedisAuthStore {
     pub async fn connect(config: &RedisConfig) -> Result<Self, AppError> {
-        let client = redis::Client::open(config.connection_url().map_err(AppError::from)?)
-            .map_err(|error| AppError::Config(format!("invalid redis url: {error}")))?;
+        let client = config
+            .client()
+            .map_err(|error| AppError::Config(error.to_string()))?;
         let connection = client
             .get_connection_manager()
             .await
