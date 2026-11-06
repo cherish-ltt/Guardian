@@ -80,6 +80,7 @@ npm run build
 | `scripts/session-regression.py` | 真实浏览器会话、路由竞态与低权限回归 |
 | `scripts/account-regression.mjs` | 资料、2FA 绑定与恢复码的浏览器回归 |
 | `scripts/self-session-regression.mjs` | 本人会话列表、单项撤销隔离、故障与慢响应、浅深主题回归 |
+| `scripts/generator-remove-regression.mjs` | 单表配置移除、末页回退、重导、会话切换与迟到响应及桌面 / 窄屏回归 |
 | `scripts/log-window-regression.py` | 日志时间窗口、翻页、CSV、重置及桌面 / 窄屏回归 |
 
 ## 扩展约定
@@ -96,6 +97,10 @@ npm run build
 旧请求只能更新发起时仍有效的会话。
 
 ## 后端契约要点
+
+代码生成页面的「移除配置」需确认表名及永久丢失的配置范围；取消不会请求，失败保留行，成功刷新列表与候选。
+操作保留业务表、业务数据及已生成文件；重新导入建立新配置，不恢复旧自定义设置。
+确认、删除及后续刷新均绑定发起时的会话；会话失效或页面卸载后不再执行旧确认、更新列表或显示旧结果。
 
 - 统一响应 `{code, message, data?, traceId, timestamp}`：`code` 与 HTTP 状态码一致，
   `http.ts` 只认 `message` 作为错误文案。
@@ -145,6 +150,21 @@ GUARDIAN_TEST_URL=http://localhost:5173 GUARDIAN_TEST_PASSWORD='<测试管理员
 桌面 / 移动端的浅深主题截图写入忽略的 `.test-artifacts/`，表格窄屏沿用内部横向滚动。
 验收截图：[桌面浅色](../docs/screenshots/self-sessions-desktop.png)、[移动深色](../docs/screenshots/self-sessions-mobile.png)。
 本脚本使用 Chrome 引擎；真实 2FA 撤销与 Redis 多页边界由后端回归覆盖。
+
+生成配置移除回归复用上述 Playwright 安装，需要 `sqlite3` 和独立 SQLite 测试库：
+
+```bash
+GUARDIAN_TEST_URL=http://localhost:5173 \
+GUARDIAN_TEST_DATABASE=/absolute/path/to/test.db \
+GUARDIAN_TEST_PASSWORD='<测试管理员口令>' \
+node scripts/generator-remove-regression.mjs
+```
+
+脚本连接 Vite 开发服务，创建 11 张唯一命名的业务测试表、导入配置及一个无菜单权限账号，验证取消、删除失败、
+末页回退、候选刷新、重导新 ID、预览和业务数据保留；还覆盖确认期间 401 / 跨标签换号、DELETE 和刷新迟到的
+成功 / 失败响应，确认新会话不继承旧删除、刷新或提示。结束后删除自身账号、配置和测试表；不得连接生产或共享数据库。
+桌面 / 窄屏截图写入忽略的 `.test-artifacts/`；环境变量 `GUARDIAN_BROWSER_CHANNEL` 与
+`GUARDIAN_PLAYWRIGHT_MODULE` 的含义同上。
 
 已有 Python Playwright 与 Chromium、前后端均启动时，可运行原有会话回归：
 
