@@ -210,6 +210,7 @@ export function synchronizeSession() {
 }
 
 export function requirePasswordChange() {
+  if (currentUser.value?.passwordChangeRequired) return
   sessionVersion.value += 1
   resetSessionRoutes?.()
   navGroups.value = []

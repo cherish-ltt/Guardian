@@ -142,6 +142,10 @@ try {
   await expect(dialog.getByRole('button', { name: '确认修改', exact: true })).toBeDisabled()
   await dialog.locator('form').evaluate(form => { form.requestSubmit(); form.requestSubmit() })
   expect(submissions).toBe(1)
+  expect(await page.evaluate(async () => {
+    const { httpClient } = await import('/src/api/http.ts')
+    return httpClient.get('/auth/routes').then(() => 200, error => error.status)
+  })).toBe(403)
   const changeDone = page.waitForResponse(response => response.url() === changeUrl)
   releaseChange()
   const changeResponse = await changeDone
@@ -168,7 +172,7 @@ try {
   expect(changed.passwordChangeRequired).toBe(false)
   await expect(page.getByText('暂未分配可用菜单', { exact: true })).toBeVisible()
   await expect(secondTab).toHaveURL(`${base}/no-access`)
-  console.log('PASS: 慢改密只提交一次，成功使旧令牌401、共享标签页退出，新密码进入无菜单提示')
+  console.log('PASS: 慢改密只提交一次，同令牌重复403不丢弃成功结果，旧令牌401、共享标签页退出，新密码进入无菜单提示')
 
   const adminContext = await browser.newContext({ viewport: { width: 1440, height: 1080 }, reducedMotion: 'reduce' })
   contexts.push(adminContext)
