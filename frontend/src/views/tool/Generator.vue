@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 import Icon from '@/components/Icon.vue'
 import { Button, Checkbox, Field, Modal, Tag, TextInput, type Column } from '@/components/ui'
-import { GeneratorPipeline, ListPage, PermissionButton } from '@/components/business'
+import { GeneratorPipeline, GeneratorSyncDialog, ListPage, PermissionButton } from '@/components/business'
 import { portalApi } from '@/api'
 import { useListPage } from '@/composables/list'
 import { pushToast, toastError } from '@/composables/toast'
@@ -21,7 +21,7 @@ const columns: Column[] = [
   { key: 'module', title: '模块', width: 100 },
   { key: 'synced', title: '状态', width: 100 },
   { key: 'createTime', title: '导入时间', width: 150 },
-  { key: 'actions', title: '操作', width: 210, className: 'col-actions' },
+  { key: 'actions', title: '操作', width: 280, className: 'col-actions' },
 ]
 
 /* ── 导入 ── */
@@ -70,6 +70,7 @@ async function doImport() {
 
 /* ── 流水线：表信息 → 字段映射 → 代码预览 ── */
 const pipeTable = ref<TableRow | null>(null)
+const syncTable = ref<TableRow | null>(null)
 const pipeStep = ref<1 | 2 | 3>(1)
 function openPipeline(row: TableRow, step: 1 | 2 | 3) {
   pipeStep.value = step
@@ -134,6 +135,7 @@ async function generate(row: TableRow) {
       <div class="row-actions">
         <Button variant="text" size="sm" icon="eye" @click="openPipeline(row, 3)">预览</Button>
         <Button variant="text" size="sm" icon="sliders" @click="openPipeline(row, 1)">配置</Button>
+        <PermissionButton perm="tool:gen:list" variant="text" size="sm" @click="syncTable = row">同步结构</PermissionButton>
         <Button variant="text" size="sm" icon="download" :loading="generating === row.id" @click="generate(row)">生成</Button>
       </div>
     </template>
@@ -170,5 +172,6 @@ async function generate(row: TableRow) {
     </Modal>
 
     <GeneratorPipeline :table="pipeTable" :step="pipeStep" @close="pipeTable = null" @saved="onPipelineSaved" @generate="generate(pipeTable!)" />
+    <GeneratorSyncDialog :table="syncTable" @close="syncTable = null" @saved="list.load" />
   </ListPage>
 </template>
