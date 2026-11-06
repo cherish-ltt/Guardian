@@ -64,3 +64,20 @@ test('cached user without a username is treated as corrupted', () => {
 
   assert.equal(authSession.user(), null)
 })
+
+test('refreshing identity preserves the token without publishing a temporary logout to other tabs', () => {
+  const local = memoryStorage()
+  const session = memoryStorage()
+  const removed: string[] = []
+  const remove = local.removeItem
+  local.removeItem = key => { removed.push(key); remove(key) }
+  const authSession = createAuthSession({ localStorage: local, sessionStorage: session })
+  authSession.save({ token: 'token-1', expiresIn: 7200 }, { username: 'admin', nickname: '管理员' }, true)
+  authSession.save({ token: 'token-1', expiresIn: 7100 }, { username: 'admin', nickname: '管理员', passwordChangeRequired: true }, true)
+  assert.deepEqual(removed, [])
+  assert.equal(authSession.token(), 'token-1')
+  assert.equal(authSession.user()?.passwordChangeRequired, true)
+  authSession.save({ token: 'token-2', expiresIn: 7200 }, { username: 'another', nickname: '普通账号' }, false)
+  assert.equal(local.getItem('guardian.token'), null)
+  assert.equal(authSession.token(), 'token-2')
+})

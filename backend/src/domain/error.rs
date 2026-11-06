@@ -25,6 +25,8 @@ pub enum AppError {
     /// 已认证但缺少权限码，对应 HTTP 403。
     #[error("{0}")]
     Forbidden(String),
+    #[error("请先修改密码")]
+    PasswordChangeRequired,
     /// 会话失效：未携带令牌、令牌过期或账号已停用，对应 HTTP 401。
     #[error("{0}")]
     SessionExpired(String),
@@ -75,7 +77,7 @@ impl AppError {
             Self::Config(_) | Self::Internal(_) | Self::Database(_) => 500,
             Self::BadRequest(_) | Self::Business(_) => 400,
             Self::Unauthorized(_) | Self::SessionExpired(_) => 401,
-            Self::Forbidden(_) => 403,
+            Self::Forbidden(_) | Self::PasswordChangeRequired => 403,
             Self::NotFound(_) => 404,
             Self::Conflict(_) => 409,
             Self::Unavailable(_) => 503,

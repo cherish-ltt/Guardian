@@ -44,7 +44,7 @@ pub trait AdminAuthUseCase: Send + Sync {
 
     async fn change_password(
         &self,
-        username: &str,
+        identity: &CurrentUserInfo,
         command: ChangePasswordCommand,
     ) -> Result<(), AppError>;
 

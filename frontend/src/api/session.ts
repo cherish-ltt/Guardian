@@ -16,6 +16,7 @@ export interface StoredUser {
   deptName?: string
   roles?: string[]
   permissions?: string[]
+  passwordChangeRequired?: boolean
 }
 
 export function createAuthSession(options: AuthSessionOptions = {}) {
@@ -27,11 +28,12 @@ export function createAuthSession(options: AuthSessionOptions = {}) {
   }
 
   function save(login: LoginResponse, user: StoredUser | CurrentUser, remember: boolean) {
-    clear()
     const storage = remember ? local : session
-    storage.setItem(TOKEN_KEY, login.token)
+    const other = remember ? session : local
+    ;[TOKEN_KEY, USER_KEY, EXPIRES_KEY].forEach(key => other.removeItem(key))
     storage.setItem(USER_KEY, JSON.stringify(user))
     storage.setItem(EXPIRES_KEY, String(Date.now() + login.expiresIn * 1000))
+    storage.setItem(TOKEN_KEY, login.token)
   }
 
   function token() {

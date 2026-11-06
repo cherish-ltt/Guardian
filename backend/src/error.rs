@@ -13,6 +13,15 @@ impl IntoResponse for AppError {
             StatusCode::from_u16(self.http_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
         let message = response_message(&self, status);
 
+        if matches!(self, Self::PasswordChangeRequired) {
+            return ApiResponse::with_status(
+                status,
+                message,
+                Some(serde_json::json!({ "passwordChangeRequired": true })),
+            )
+            .into_response();
+        }
+
         // 服务端错误只在日志里留原始原因，响应体用稳定文案（已含在 AppError 的 Display 里）。
         if status.is_server_error() {
             error!(status = status.as_u16(), error = %self, "request handling failed");

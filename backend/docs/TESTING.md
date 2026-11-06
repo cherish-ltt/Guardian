@@ -120,6 +120,7 @@ cargo llvm-cov --features docs --summary-only
 | `tests/generator_api_tests.rs` | 候选表与导入幂等、字段元数据、10 个生成文件的内容、ZIP 条目、留痕动作 |
 | `tests/account_api_tests.rs` | 本人资料字段白名单、2FA 绑定/启用/关闭/恢复码、动态码重放、恢复码并发单次消费、会话撤销、日志脱敏、人工重置的权限与密码校验、失败限次 |
 | `tests/account_security_tests.rs` | 待绑定密钥密文存储与过期、错误动态码不启用、`0003` 权限迁移只授予一次且不恢复已撤销授权、非超管不能重置超管 |
+| `tests/password_requirement_tests.rs` | 默认与迁移兼容、受限登录/接口/超管/骨架入口、成功改密与旧会话失效、旧快照确定性续写拒绝、密码/要求/版本的事务回滚、关联写入失败的新账号回滚、2FA 顺序 |
 | `tests/account_fault_tests.rs` | 安全设置的 Redis 清理失败时仍返回已提交恢复码、旧令牌被版本拒绝；会话存入 / 列表 / 查找 / 删除前后失败返回 503，不误撤销其他会话、已消费第二因素不恢复，新证明重试可确认失效；业务缓存故障可降级 SQLite，认证存储故障不绕过 |
 | `tests/session_api_tests.rs` | 无菜单权限账号管理本人会话、current 400 / foreign 404、单目标撤销与重复 false、密码及第二因素独立锁定、防重放与审计脱敏、旧 JWT 兼容、严格有效性过滤、分页和客户端信息不泄漏 |
 | `tests/session_redis_tests.rs` | 真实 Redis + Router 登录和撤销、旧 SET / JWT 兼容、原 TTL 与自然过期、元数据 / 索引错误类型、删除后故障 503 与重试 false；默认 `#[ignore]` |
@@ -155,3 +156,14 @@ TEST_REDIS_URL=redis://127.0.0.1:16384/1 cargo test --features docs --lib infras
 `account_fault_tests` 还用同步门闩覆盖列表请求跨越会话版本递增、同名账号重建的交错，保证旧请求不删除新登录。
 这些测试不替代前端真实浏览器的多会话、撤销弹窗与响应式样式验证，浏览器命令见
 [前端测试说明](../../frontend/README.md)。
+
+### 首次登录与重置后改密回归
+
+```bash
+cargo test --features docs --test password_requirement_tests --test account_fault_tests
+```
+
+竞态用例先取得并校验账号快照，完成管理员重置后恢复旧快照写入，确认哈希与 `auth_version` 条件拒绝续写；
+它是确定性的仓储/用例交错验证，不在生产代码插入测试暂停钩子。SQLite 触发器分别让关联写入与版本更新失败，
+验证账号创建、改密和重置的事务回滚；故障存储验证 Redis 清理失败后旧 JWT 仍由数据库版本拒绝。
+前端脚本见 `frontend/scripts/password-requirement-regression.mjs`，运行方式见上述前端测试说明。

@@ -34,6 +34,7 @@ export interface UserRow {
 export interface UserWriteRequest {
   username?: string
   password?: string
+  passwordChangeRequired?: boolean
   nickname?: string
   phone?: string
   email?: string
@@ -202,7 +203,7 @@ export function createSystemApi(client: HttpClient) {
       export: (query?: QueryParams) => client.download('/system/users/export', query),
       updateStatus: (id: number, status: number) => client.put<void>(`/system/users/${id}/status`, { status }),
       resetTwoFactor: (id: number, password: string) => client.post<void>(`/system/users/${id}/2fa/reset`, { password }),
-      resetPassword: (id: number, password: string) => client.put<void>(`/system/users/${id}/password`, { password }),
+      resetPassword: (id: number, password: string, passwordChangeRequired = false) => client.put<void>(`/system/users/${id}/password`, { password, passwordChangeRequired }),
     },
     roles: {
       ...crudPage<Record<string, unknown>, RoleWriteRequest>(client, '/system/roles'),

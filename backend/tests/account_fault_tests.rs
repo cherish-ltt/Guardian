@@ -111,6 +111,73 @@ impl CacheStore for FailedCache {
 }
 
 #[tokio::test]
+async fn required_password_change_commits_when_redis_cleanup_fails() {
+    let store = Arc::new(FaultStore::default());
+    let container = setup_container_with_store(Vec::new(), store.clone()).await;
+    let app = create_app(container.clone());
+    let admin = admin_token(&app, &store.inner).await;
+    let old = login(&app, &store.inner, "linjh", DEMO_PASSWORD).await;
+    let user = container
+        .admin_auth_service
+        .authenticate(&old)
+        .await
+        .unwrap();
+    let (status, body) = send(
+        app.clone(),
+        put_json_with_bearer(
+            &format!("/api/v1/system/users/{}/password", user.user_id),
+            &admin,
+            json!({"password": DEMO_PASSWORD, "passwordChangeRequired": true}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(store.inner.token_owner(&old).await.unwrap().is_some());
+    assert_eq!(
+        send(app.clone(), get_with_bearer("/api/v1/auth/me", &old))
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+    let token = login(&app, &store.inner, "linjh", DEMO_PASSWORD).await;
+    let (_, me) = send(app.clone(), get_with_bearer("/api/v1/auth/me", &token)).await;
+    assert_eq!(me["data"]["passwordChangeRequired"], true);
+    let (status, body) = send(
+        app.clone(),
+        put_json_with_bearer(
+            "/api/v1/auth/password",
+            &token,
+            json!({"oldPassword": DEMO_PASSWORD, "newPassword": "{{SECRET_woesu664}}"}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        AccountRepository::security(&container.database, user.user_id)
+            .await
+            .unwrap()
+            .auth_version,
+        2
+    );
+    assert!(store.inner.token_owner(&token).await.unwrap().is_some());
+    for path in ["/api/v1/auth/me", "/api/v1/transactions"] {
+        assert_eq!(
+            send(app.clone(), get_with_bearer(path, &token)).await.0,
+            StatusCode::UNAUTHORIZED
+        );
+    }
+    let fresh = login(&app, &store.inner, "linjh", "{{SECRET_woesu664}}").await;
+    let (_, me) = send(app.clone(), get_with_bearer("/api/v1/auth/me", &fresh)).await;
+    assert_eq!(me["data"]["passwordChangeRequired"], false);
+    assert_eq!(
+        send(app.clone(), get_with_bearer("/api/v1/auth/routes", &fresh))
+            .await
+            .0,
+        StatusCode::OK
+    );
+}
+
+#[tokio::test]
 async fn committed_security_returns_codes_when_redis_cleanup_fails_and_old_tokens_are_invalid() {
     let initial = setup_container(Vec::new()).await;
     let store = Arc::new(FaultStore::default());

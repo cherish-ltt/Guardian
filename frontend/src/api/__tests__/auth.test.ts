@@ -8,9 +8,9 @@ test('auth api maps login, current user, routes and logout endpoints', async () 
   const fetcher = async (url: string | URL | Request, init?: RequestInit) => {
     calls.push({ url: String(url), method: init?.method ?? 'GET', body: init?.body as string | undefined })
     const data = url.toString().endsWith('/login')
-      ? { token: 'jwt-token', expiresIn: 7200 }
+      ? { token: 'jwt-token', expiresIn: 7200, passwordChangeRequired: true }
       : url.toString().endsWith('/me')
-        ? { username: 'admin', nickname: '陈立诚', roles: ['super_admin'], permissions: ['system:user:list'] }
+        ? { username: 'admin', nickname: '陈立诚', roles: ['super_admin'], permissions: ['system:user:list'], passwordChangeRequired: true }
         : url.toString().endsWith('/routes')
           ? { routes: [{ name: '工作台', path: '/dashboard' }] }
           : null
@@ -30,6 +30,8 @@ test('auth api maps login, current user, routes and logout endpoints', async () 
   assert.ok('token' in login)
   assert.equal(login.token, 'jwt-token')
   assert.equal(me.username, 'admin')
+  assert.equal(login.passwordChangeRequired, true)
+  assert.equal(me.passwordChangeRequired, true)
   assert.deepEqual(routes.routes, [{ name: '工作台', path: '/dashboard' }])
   assert.deepEqual(calls.map(call => `${call.method} ${call.url}`), [
     'POST /api/v1/auth/login',

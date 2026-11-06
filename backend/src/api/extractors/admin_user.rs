@@ -78,13 +78,39 @@ impl FromRequestParts<Arc<Container>> for AdminUser {
         parts: &mut Parts,
         state: &Arc<Container>,
     ) -> Result<Self, Self::Rejection> {
+        let user = OwnAccountUser::from_request_parts(parts, state).await?.0;
+        if user.password_change_required {
+            return Err(AppError::PasswordChangeRequired);
+        }
+        Ok(user)
+    }
+}
+
+/// 仅用于本人信息、改密和退出：允许已认证的待改密会话。
+pub struct OwnAccountUser(AdminUser);
+
+impl Deref for OwnAccountUser {
+    type Target = AdminUser;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl FromRequestParts<Arc<Container>> for OwnAccountUser {
+    type Rejection = AppError;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &Arc<Container>,
+    ) -> Result<Self, Self::Rejection> {
         let token = bearer_token(parts).ok_or_else(session_expired)?;
         let info = state.admin_auth_service.authenticate(token).await?;
 
-        Ok(Self {
+        Ok(Self(AdminUser {
             info,
             token: token.to_string(),
-        })
+        }))
     }
 }
 
