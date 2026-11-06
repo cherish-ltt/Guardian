@@ -26,26 +26,45 @@ export class ApiError extends Error {
   status: number
   traceId?: string
 
-  constructor(message: string, code: number, status: number, traceId?: string) {
+  passwordChangeRequired: boolean
+
+  constructor(message: string, code: number, status: number, traceId?: string, passwordChangeRequired = false) {
     super(message)
     this.name = 'ApiError'
     this.code = code
     this.status = status
     this.traceId = traceId
+    this.passwordChangeRequired = passwordChangeRequired
   }
 }
 
 let unauthorizedHandler: (() => void) | null = null
+let passwordChangeHandler: (() => void) | null = null
 
 /** 登录失效（401）时的统一处理，由路由层注册 */
 export function setUnauthorizedHandler(handler: (() => void) | null) {
   unauthorizedHandler = handler
 }
 
+export function setPasswordChangeHandler(handler: (() => void) | null) {
+  passwordChangeHandler = handler
+}
+
 export function createHttpClient(options: HttpClientOptions = {}): HttpClient {
   const baseUrl = normalizeBaseUrl(options.baseUrl ?? defaultBaseUrl())
   const tokenProvider = options.tokenProvider ?? authSession.token
   const fetcher = options.fetcher ?? fetch
+
+  function responseError(payload: ApiResponse<unknown>, response: Response, token: string | null) {
+    const required = response.status === 403 && payload.code === 403
+      && typeof payload.data === 'object' && payload.data !== null
+      && 'passwordChangeRequired' in payload.data && payload.data.passwordChangeRequired === true
+    if (token && token === tokenProvider()) {
+      if (payload.code === 401 || response.status === 401) unauthorizedHandler?.()
+      else if (required) passwordChangeHandler?.()
+    }
+    return new ApiError(payload.message || '请求失败', payload.code || response.status, response.status, payload.traceId, required)
+  }
 
   async function request<T>(method: string, path: string, body?: unknown, query?: QueryParams): Promise<T> {
     const headers: Record<string, string> = { Accept: 'application/json' }
@@ -60,8 +79,7 @@ export function createHttpClient(options: HttpClientOptions = {}): HttpClient {
     const response = await fetcher(buildUrl(baseUrl, path, query), init)
     const payload = await parseJson<ApiResponse<T>>(response)
     if (!response.ok || payload.code !== 200) {
-      if ((payload.code === 401 || response.status === 401) && token && token === tokenProvider()) unauthorizedHandler?.()
-      throw new ApiError(payload.message || '请求失败', payload.code || response.status, response.status, payload.traceId)
+      throw responseError(payload, response, token)
     }
     return payload.data
   }
@@ -74,8 +92,7 @@ export function createHttpClient(options: HttpClientOptions = {}): HttpClient {
     const response = await fetcher(buildUrl(baseUrl, path, query), { method: 'GET', headers })
     if (!response.ok) {
       const payload = await parseJson<ApiResponse<unknown>>(response)
-      if ((payload.code === 401 || response.status === 401) && token && token === tokenProvider()) unauthorizedHandler?.()
-      throw new ApiError(payload.message || '下载失败', payload.code || response.status, response.status, payload.traceId)
+      throw responseError(payload, response, token)
     }
     return response.blob()
   }

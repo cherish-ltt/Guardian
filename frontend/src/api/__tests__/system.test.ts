@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { randomBytes } from 'node:crypto'
 import { createHttpClient } from '../http.ts'
 import { createSystemApi } from '../system.ts'
 
@@ -56,7 +57,8 @@ test('system api maps user list and CRUD calls to backend endpoints', async () =
   await api.users.create({ username: 'it_user', nickname: '测试用户', password: 'admin123', deptId: 6, status: 1, roleIds: [4], postIds: [6] })
   await api.users.update(99, { nickname: '测试用户已更新', status: 0, roleIds: [5], postIds: [7] })
   await api.users.updateStatus(99, 0)
-  await api.users.resetPassword(99, 'Yy@123456')
+  const resetValue = randomBytes(16).toString('hex')
+  await api.users.resetPassword(99, resetValue)
   const exportBlob = await api.users.export({ keyword: 'admin', status: 1, deptId: 6 })
   await api.users.remove(99)
 
@@ -72,11 +74,28 @@ test('system api maps user list and CRUD calls to backend endpoints', async () =
   assert.deepEqual(JSON.parse(calls[3].body ?? '{}'), { status: 0 })
   assert.equal(calls[4].method, 'PUT')
   assert.equal(calls[4].url, '/api/v1/system/users/99/password')
-  assert.deepEqual(JSON.parse(calls[4].body ?? '{}'), { password: 'Yy@123456' })
+  assert.deepEqual(JSON.parse(calls[4].body ?? '{}'), { password: resetValue, passwordChangeRequired: false })
   assert.equal(calls[5].method, 'GET')
   assert.equal(calls[5].url, '/api/v1/system/users/export?keyword=admin&status=1&deptId=6')
   assert.equal(calls[6].method, 'DELETE')
   assert.equal(calls[6].url, '/api/v1/system/users/99')
+})
+
+test('user creation and password reset explicitly carry the required-change option', async () => {
+  const bodies: unknown[] = []
+  const api = createSystemApi(createHttpClient({
+    fetcher: async (_url, init) => {
+      bodies.push(JSON.parse(String(init?.body)))
+      return new Response(JSON.stringify({ code: 200, data: { id: 1 } }))
+    },
+  }))
+  await api.users.create({ username: 'handoff', passwordChangeRequired: true })
+  const resetValue = randomBytes(16).toString('hex')
+  await api.users.resetPassword(1, resetValue, true)
+  assert.deepEqual(bodies, [
+    { username: 'handoff', passwordChangeRequired: true },
+    { password: resetValue, passwordChangeRequired: true },
+  ])
 })
 
 test('system api exposes catalog endpoints used by management pages', async () => {

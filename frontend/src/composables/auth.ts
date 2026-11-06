@@ -21,6 +21,7 @@ export const sessionVersion = ref(0)
 export const pendingLogin = ref<{ challenge: string; username: string; remember: boolean; expiresAt: number } | null>(null)
 /** 页面组件标识 → 当前账号可访问的路由路径（如 monitor/operlog/index → /monitor/operlog） */
 export const componentPaths = ref<Record<string, string>>({})
+let observedToken = authSession.token()
 
 /** 当前账号可访问时返回该页面路径，否则 null；跨页跳转统一走这里，避免写死菜单路径 */
 export function pathOf(component: string) {
@@ -34,7 +35,7 @@ export function setSessionRouteReset(handler: () => void) {
 }
 
 // 刷新页面后先用本地缓存的权限，随后由 refreshUser() 以服务端为准
-setPermissions(currentUser.value?.permissions ?? [])
+setPermissions(currentUser.value?.passwordChangeRequired ? [] : currentUser.value?.permissions ?? [])
 
 /** sys_menu.component 的取值必须在此登记 */
 const COMPONENT_MAP: Record<string, () => Promise<{ default: Component }>> = {
@@ -100,8 +101,9 @@ function buildRoutes(groups: NavGroup[], tree: RouteItem[]): RouteRecordRaw[] {
 
 export async function loadRoutes() {
   const version = sessionVersion.value
+  const token = authSession.token()
   const data = await authApi.routes()
-  if (version !== sessionVersion.value) return
+  if (version !== sessionVersion.value || token !== authSession.token()) return
   const groups = buildNav(data.routes)
   navGroups.value = groups
   dynamicRoutes.value = buildRoutes(groups, data.routes)
@@ -119,11 +121,11 @@ export async function loadRoutes() {
 /** 以服务端为准刷新当前用户与权限码 */
 export async function refreshUser() {
   const version = sessionVersion.value
-  const user = await authApi.me()
-  if (version !== sessionVersion.value) return user
-  currentUser.value = user
-  setPermissions(user.permissions ?? [])
   const token = authSession.token()
+  const user = await authApi.me()
+  if (version !== sessionVersion.value || token !== authSession.token()) return
+  currentUser.value = user
+  setPermissions(user.passwordChangeRequired ? [] : user.permissions ?? [])
   if (token) authSession.save({ token, expiresIn: remainingSeconds() }, user, authSession.isRemembered())
   return user
 }
@@ -134,11 +136,12 @@ function remainingSeconds() {
 
 async function establishSession(response: LoginResponse, username: string, remember: boolean, version: number) {
   authSession.save(response, { username, nickname: username }, remember)
+  observedToken = response.token
   const user = await authApi.me()
-  if (version !== sessionVersion.value) throw new Error('登录状态已变化，请重新登录')
+  if (version !== sessionVersion.value || response.token !== authSession.token()) throw new Error('登录状态已变化，请重新登录')
   authSession.save(response, user, remember)
   currentUser.value = user
-  setPermissions(user.permissions ?? [])
+  setPermissions(user.passwordChangeRequired ? [] : user.permissions ?? [])
   authed.value = true
   pendingLogin.value = null
   return user
@@ -175,7 +178,7 @@ export async function verifyLogin(secondFactor: string) {
   }
 }
 
-export function clearSession() {
+function resetSessionState() {
   pendingLogin.value = null
   sessionVersion.value += 1
   authed.value = false
@@ -185,9 +188,35 @@ export function clearSession() {
   dynamicRoutes.value = []
   componentPaths.value = {}
   setPermissions([])
-  authSession.clear()
   clearDictCache()
   clearDeptCache()
+}
+
+export function clearSession() {
+  resetSessionState()
+  authSession.clear()
+  observedToken = null
+}
+
+/** 其他标签页变更令牌后先丢弃旧权限，不让迟到请求写回旧身份。 */
+export function synchronizeSession() {
+  const token = authSession.token()
+  if (token === observedToken) return false
+  resetSessionState()
+  observedToken = token
+  authed.value = Boolean(token)
+  currentUser.value = token ? authSession.user() as CurrentUser | null : null
+  return true
+}
+
+export function requirePasswordChange() {
+  sessionVersion.value += 1
+  resetSessionRoutes?.()
+  navGroups.value = []
+  dynamicRoutes.value = []
+  componentPaths.value = {}
+  setPermissions([])
+  if (currentUser.value) currentUser.value.passwordChangeRequired = true
 }
 
 export async function logout() {

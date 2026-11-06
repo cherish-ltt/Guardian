@@ -43,6 +43,7 @@ export interface CaptchaResponse {
 export interface LoginResponse {
   token: string
   expiresIn: number
+  passwordChangeRequired?: boolean
 }
 
 export interface LoginChallenge { twoFactorRequired: true; challenge: string; expiresIn: number }
@@ -61,6 +62,7 @@ export interface CurrentUser {
   deptName?: string
   roles: string[]
   permissions: string[]
+  passwordChangeRequired?: boolean
 }
 
 export interface RouteItem {
