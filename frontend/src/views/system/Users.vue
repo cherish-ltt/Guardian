@@ -152,6 +152,7 @@ interface UserForm {
   username: string
   nickname: string
   password: string
+  passwordChangeRequired: boolean
   phone: string
   email: string
   deptId: number | null
@@ -161,7 +162,7 @@ interface UserForm {
 }
 const emptyForm = (): UserForm => ({
   username: '', nickname: '', password: initPassword.value, phone: '', email: '',
-  deptId: list.query.deptId, roleIds: [], postIds: [], status: 1,
+  deptId: list.query.deptId, roleIds: [], postIds: [], status: 1, passwordChangeRequired: false,
 })
 const dialog = ref(false)
 const saving = ref(false)
@@ -228,7 +229,7 @@ async function submit() {
       await systemApi.users.update(form.id, payload)
       pushToast('用户信息已更新')
     } else {
-      await systemApi.users.create({ ...payload, password: form.password })
+      await systemApi.users.create({ ...payload, password: form.password, passwordChangeRequired: form.passwordChangeRequired })
       pushToast('用户已新增')
     }
     dialog.value = false
@@ -243,17 +244,19 @@ async function submit() {
 /* ── 重置密码 ── */
 const resetTarget = ref<UserRow | null>(null)
 const resetPassword = ref('')
+const resetPasswordChangeRequired = ref(false)
 const resetError = ref('')
 const resetting = ref(false)
 
 function openReset(row: UserRow) {
   resetTarget.value = row
   resetPassword.value = initPassword.value
+  resetPasswordChangeRequired.value = false
   resetError.value = ''
 }
 
 async function submitReset() {
-  if (!resetTarget.value) return
+  if (!resetTarget.value || resetting.value) return
   const lengthError = passwordLength(resetPassword.value.trim())
   if (lengthError) {
     resetError.value = lengthError
@@ -261,7 +264,7 @@ async function submitReset() {
   }
   resetting.value = true
   try {
-    await systemApi.users.resetPassword(resetTarget.value.id, resetPassword.value)
+    await systemApi.users.resetPassword(resetTarget.value.id, resetPassword.value, resetPasswordChangeRequired.value)
     pushToast(`已重置「${resetTarget.value.nickname}」的密码`)
     resetTarget.value = null
   } catch (error) {
@@ -465,6 +468,9 @@ async function resetTwoFactor() {
       <Field v-if="!isEdit" label="初始密码" required :error="errors.password" hint="默认取自系统参数中的用户初始密码" span>
         <TextInput v-model="form.password" placeholder="6 到 64 个字符" :invalid="!!errors.password" autocomplete="new-password" />
       </Field>
+      <Field v-if="!isEdit" label="首次登录改密" group span>
+        <Switch v-model="form.passwordChangeRequired" label="要求用户登录后先修改密码" />
+      </Field>
       <Field label="手机号码" :error="errors.phone">
         <TextInput v-model="form.phone" type="tel" placeholder="选填" :invalid="!!errors.phone" />
       </Field>
@@ -497,6 +503,9 @@ async function resetTwoFactor() {
     >
       <Field label="新密码" required :error="resetError" hint="默认取自用户初始密码，请通知用户登录后修改" span>
         <TextInput v-model="resetPassword" :invalid="!!resetError" autocomplete="new-password" />
+      </Field>
+      <Field label="下次登录改密" group span>
+        <Switch v-model="resetPasswordChangeRequired" label="要求用户登录后先修改密码" />
       </Field>
     </FormDialog>
     <FormDialog :open="Boolean(twoFactorTarget)" title="重置2FA" :sub="twoFactorTarget ? `关闭 @${twoFactorTarget.username} 的二次验证并撤销其全部会话` : ''" :saving="twoFactorBusy" submit-text="确认重置" @close="twoFactorTarget = null; operatorPassword = ''" @submit="resetTwoFactor">

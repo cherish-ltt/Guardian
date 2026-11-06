@@ -324,6 +324,7 @@ pub struct UserRoleLink {
 pub struct UserWriteCommand {
     pub username: Option<String>,
     pub password: Option<String>,
+    pub password_change_required: Option<bool>,
     pub nickname: Option<String>,
     pub phone: Option<String>,
     pub email: Option<String>,
@@ -343,6 +344,14 @@ pub struct UserStatusCommand {
 #[serde(rename_all = "camelCase")]
 pub struct UserPasswordCommand {
     pub password: Option<String>,
+    #[serde(default)]
+    pub password_change_required: bool,
+}
+
+pub struct UserPasswordUpdate<'a> {
+    pub hash: &'a str,
+    pub change_required: bool,
+    pub operator: &'a str,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]

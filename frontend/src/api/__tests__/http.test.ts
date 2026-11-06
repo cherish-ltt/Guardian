@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createHttpClient, ApiError, setUnauthorizedHandler } from '../http.ts'
+import { createHttpClient, ApiError, setPasswordChangeHandler, setUnauthorizedHandler } from '../http.ts'
 
 test('http client sends bearer token and unwraps unified response data', async () => {
   const calls: Array<{ url: string; init: RequestInit }> = []
@@ -80,4 +80,50 @@ test('non-JSON error page becomes ApiError with the real status instead of Synta
     () => client.get('/system/users'),
     (error: unknown) => error instanceof ApiError && error.status === 502 && error.message === 'Bad Gateway',
   )
+})
+
+test('required-password 403 redirects requests and downloads without ending the session', async () => {
+  let requirements = 0
+  let expiries = 0
+  setPasswordChangeHandler(() => { requirements += 1 })
+  setUnauthorizedHandler(() => { expiries += 1 })
+  const client = createHttpClient({
+    tokenProvider: () => 'restricted-session',
+    fetcher: async () => new Response(JSON.stringify({ code: 403, message: '请先修改密码', data: { passwordChangeRequired: true } }), { status: 403 }),
+  })
+  try {
+    for (const operation of [() => client.get('/auth/routes'), () => client.download('/system/users/export')]) {
+      await assert.rejects(operation, (error: unknown) => error instanceof ApiError && error.passwordChangeRequired && error.status === 403)
+    }
+    assert.equal(requirements, 2)
+    assert.equal(expiries, 0)
+  } finally {
+    setPasswordChangeHandler(null)
+    setUnauthorizedHandler(null)
+  }
+})
+
+test('ordinary forbidden and late required-password responses do not restrict a new session', async () => {
+  let requirements = 0
+  let token = 'old-session'
+  let complete!: (response: Response) => void
+  setPasswordChangeHandler(() => { requirements += 1 })
+  try {
+    const ordinary = createHttpClient({
+      tokenProvider: () => token,
+      fetcher: async () => new Response(JSON.stringify({ code: 403, message: '没有访问权限' }), { status: 403 }),
+    })
+    await assert.rejects(ordinary.get('/system/users'), (error: unknown) => error instanceof ApiError && !error.passwordChangeRequired)
+    for (const download of [false, true]) {
+      token = 'old-session'
+      const client = createHttpClient({ tokenProvider: () => token, fetcher: () => new Promise<Response>(resolve => { complete = resolve }) })
+      const pending = download ? client.download('/system/users/export') : client.get('/auth/routes')
+      token = 'new-session'
+      complete(new Response(JSON.stringify({ code: 403, message: '请先修改密码', data: { passwordChangeRequired: true } }), { status: 403 }))
+      await assert.rejects(pending, ApiError)
+    }
+    assert.equal(requirements, 0)
+  } finally {
+    setPasswordChangeHandler(null)
+  }
 })

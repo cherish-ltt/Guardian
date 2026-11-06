@@ -4,7 +4,9 @@ use crate::domain::{
     error::AppError,
     models::identity::DataScope,
     models::pagination::PageResult,
-    models::system_admin::{IdResponse, UserOptions, UserQuery, UserRow, UserWriteCommand},
+    models::system_admin::{
+        IdResponse, UserOptions, UserPasswordCommand, UserQuery, UserRow, UserWriteCommand,
+    },
 };
 
 /// 系统管理的用户用例：用户列表、导出与账户维护。
@@ -48,7 +50,7 @@ pub trait UserAdminUseCase: Send + Sync {
     async fn reset_user_password(
         &self,
         id: i64,
-        password: Option<String>,
+        command: UserPasswordCommand,
         operator: &str,
     ) -> Result<(), AppError>;
 

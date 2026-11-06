@@ -135,6 +135,13 @@ async fn upgrade_grants_reset2fa_once_without_restoring_revoked_grants() {
     .unwrap();
     execute(
         db,
+        "ALTER TABLE sys_user DROP COLUMN password_change_required",
+        vec![],
+    )
+    .await
+    .unwrap();
+    execute(
+        db,
         "ALTER TABLE gen_table_column DROP COLUMN column_type",
         vec![],
     )

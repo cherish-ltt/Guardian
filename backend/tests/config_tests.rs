@@ -93,7 +93,10 @@ fn security_and_cache_config_validation() {
     ] {
         with_env(
             &[("JWT_SECRET", Some(CUSTOM_SECRET)), (key, Some("0"))],
-            || assert!(AppConfig::from_env().is_err()),
+            || {
+                let error = AppConfig::from_env().expect_err("缓存参数为 0 应被拒绝");
+                assert!(error.to_string().contains(key), "{error}");
+            },
         );
     }
     with_env(
@@ -646,6 +649,7 @@ fn zero_middleware_capacity_is_rejected() {
                         .contains("MIDDLEWARE capacity parameters must be greater than 0"),
                     "{key} 的报错信息不符合预期: {error}"
                 );
+                assert!(error.to_string().contains(key), "{error}");
             },
         );
     }

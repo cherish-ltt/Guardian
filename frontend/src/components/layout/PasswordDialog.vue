@@ -3,8 +3,8 @@ import { reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Field, TextInput } from '@/components/ui'
 import { FormDialog } from '@/components/business'
-import { authApi } from '@/api'
-import { logout } from '@/composables/auth'
+import { authApi, authSession } from '@/api'
+import { clearSession, sessionVersion } from '@/composables/auth'
 import { pushToast, toastError } from '@/composables/toast'
 import { passwordLength, required, validate } from '@/utils/validate'
 
@@ -24,6 +24,7 @@ watch(() => props.open, (open) => {
 })
 
 async function submit() {
+  if (saving.value) return
   errors.value = validate(form, {
     oldPassword: [required('请输入当前密码')],
     newPassword: [required('请输入新密码'), passwordLength],
@@ -31,15 +32,18 @@ async function submit() {
   })
   if (Object.keys(errors.value).length) return
   saving.value = true
+  const version = sessionVersion.value
+  const token = authSession.token()
   try {
     await authApi.changePassword({ oldPassword: form.oldPassword, newPassword: form.newPassword })
+    if (version !== sessionVersion.value || token !== authSession.token()) return
     /* 改密同时撤销了本账号的全部会话（含当前这个），必须先清掉本地会话再回登录页 */
     pushToast('密码已修改，请重新登录', 'ok')
     emit('close')
-    await logout()
+    clearSession()
     await router.replace({ name: 'login' })
   } catch (error) {
-    toastError(error, '密码修改失败')
+    if (version === sessionVersion.value && token === authSession.token()) toastError(error, '密码修改失败')
   } finally {
     saving.value = false
   }

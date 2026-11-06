@@ -7,7 +7,7 @@ use crate::{
     domain::models::{
         identity::DataScope,
         pagination::Page,
-        system_admin::{UserQuery, UserRow, UserWriteCommand},
+        system_admin::{UserPasswordUpdate, UserQuery, UserRow, UserWriteCommand},
     },
     error::AppError,
     infrastructure::repositories::sql::{
@@ -89,8 +89,7 @@ pub trait UserRepository: Send + Sync {
         &self,
         db: &C,
         id: i64,
-        password_hash: &str,
-        operator: &str,
+        update: UserPasswordUpdate<'_>,
     ) -> Result<u64, AppError>
     where
         C: ConnectionTrait;
@@ -250,11 +249,12 @@ impl UserRepository for SeaOrmUserRepository {
 
         insert(
             db,
-            "INSERT INTO sys_user (username, password, nickname, phone, email, dept_id, status, \
-             create_by, update_by, create_time, update_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO sys_user (username, password, password_change_required, nickname, phone, email, dept_id, status, \
+             create_by, update_by, create_time, update_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             vec![
                 command.username.clone().unwrap_or_default().into(),
                 command.password.clone().unwrap_or_default().into(),
+                command.password_change_required.unwrap_or(false).into(),
                 command.nickname.clone().unwrap_or_default().into(),
                 command.phone.clone().into(),
                 command.email.clone().into(),
@@ -327,19 +327,19 @@ impl UserRepository for SeaOrmUserRepository {
         &self,
         db: &C,
         id: i64,
-        password_hash: &str,
-        operator: &str,
+        update: UserPasswordUpdate<'_>,
     ) -> Result<u64, AppError>
     where
         C: ConnectionTrait,
     {
         execute(
             db,
-            "UPDATE sys_user SET password = ?, update_by = ?, update_time = ? \
+            "UPDATE sys_user SET password = ?, password_change_required = ?, update_by = ?, update_time = ? \
              WHERE id = ? AND deleted = 0",
             vec![
-                password_hash.into(),
-                operator.into(),
+                update.hash.into(),
+                update.change_required.into(),
+                update.operator.into(),
                 time::now().into(),
                 id.into(),
             ],

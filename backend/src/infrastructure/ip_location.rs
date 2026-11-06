@@ -9,7 +9,7 @@ use std::{
     path::Path,
 };
 
-use anyhow::{Context, Result};
+use anyhow::{Result, anyhow};
 use ip2region::{CachePolicy, Searcher};
 use tracing::info;
 
@@ -26,10 +26,10 @@ impl IpLocation {
     /// 配置了库文件却加载不了时直接失败：静默降级会让所有日志悄悄丢失地名。
     pub fn load(v4_path: Option<&Path>, v6_path: Option<&Path>) -> Result<Self> {
         let v4 = v4_path
-            .map(|path| load_searcher(path, Ipv4Addr::LOCALHOST.into()))
+            .map(|path| load_searcher(path, Ipv4Addr::LOCALHOST.into(), "IP_LOCATION_DB_PATH"))
             .transpose()?;
         let v6 = v6_path
-            .map(|path| load_searcher(path, Ipv6Addr::LOCALHOST.into()))
+            .map(|path| load_searcher(path, Ipv6Addr::LOCALHOST.into(), "IP_LOCATION_V6_DB_PATH"))
             .transpose()?;
         if v4.is_none() && v6.is_none() {
             info!("IP 地名库未配置，日志地点只区分本机 / 内网 / 外网");
@@ -76,17 +76,19 @@ impl IpLocation {
 
 /// 库头记录的是 v4 还是 v6 只影响查询结果：库版本与配置的协议不一致时查询一律报错，
 /// 上层会把它当成未命中退回「外网」，因此这里用一条本机地址探测一次，让配置错误在启动时暴露。
-fn load_searcher(path: &Path, probe: IpAddr) -> Result<Searcher> {
+fn load_searcher(path: &Path, probe: IpAddr, key: &str) -> Result<Searcher> {
     let searcher = Searcher::new(
         path.to_string_lossy().into_owned(),
         CachePolicy::VectorIndex,
     )
-    .with_context(|| format!("加载 IP 地名库失败：{}", path.display()))?;
+    .map_err(|_| anyhow!("invalid {key}: xdb file could not be read or has an invalid header"))?;
     match probe {
         IpAddr::V4(probe) => searcher.search(probe),
         IpAddr::V6(probe) => searcher.search(probe),
     }
-    .with_context(|| format!("IP 地名库版本与配置的协议不符：{}", path.display()))?;
+    .map_err(|_| {
+        anyhow!("invalid {key}: xdb data could not be read or the IP protocol does not match")
+    })?;
     info!(path = %path.display(), "IP 地名库已加载");
 
     Ok(searcher)
