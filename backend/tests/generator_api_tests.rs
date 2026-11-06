@@ -10,8 +10,8 @@ use serde_json::json;
 use zip::ZipArchive;
 
 use support::{
-    DEMO_PASSWORD, admin_token, delete_with_bearer, get_with_bearer, login, post_json_with_bearer,
-    put_json_with_bearer, send, send_raw, setup_app_with_container, setup_app_with_store,
+    DEMO_PASSWORD, admin_token, get_with_bearer, login, post_json_with_bearer,
+    put_json_with_bearer, request, send, send_raw, setup_app_with_container, setup_app_with_store,
 };
 
 async fn import_file_table(app: &axum::Router, token: &str) -> i64 {
@@ -572,14 +572,18 @@ async fn generate_and_download_returns_zip_with_every_file() {
     assert_eq!(failed_row["errorMsg"], "代码生成表不存在");
     assert_eq!(failed_row["url"], "/tool/generator/tables/999999/download");
 
-    // 生成配置只提供新增 / 修改，没有删除接口。
     let (status, body) = send(
         app.clone(),
-        delete_with_bearer(&format!("/api/v1/tool/generator/tables/{table_id}"), &token),
+        request(
+            "PATCH",
+            &format!("/api/v1/tool/generator/tables/{table_id}"),
+            None,
+            Some(&token),
+        ),
     )
     .await;
     assert_eq!(status, StatusCode::METHOD_NOT_ALLOWED);
-    assert_eq!(body["message"], "不支持的请求方法: DELETE");
+    assert_eq!(body["message"], "不支持的请求方法: PATCH");
 }
 
 #[tokio::test]

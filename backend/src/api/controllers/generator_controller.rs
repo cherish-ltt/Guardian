@@ -37,7 +37,7 @@ pub fn router() -> Router<Arc<Container>> {
         .route("/tool/generator/tables/{id}/preview", get(preview))
         .route("/tool/generator/tables/{id}/generate", post(generate))
         .route("/tool/generator/tables/{id}/download", get(download))
-        .route("/tool/generator/tables/{id}", put(update))
+        .route("/tool/generator/tables/{id}", put(update).delete(remove))
 }
 
 async fn list(
@@ -121,6 +121,16 @@ async fn update(
         .update_table(id, command, user.username())
         .await?;
 
+    Ok(done())
+}
+
+async fn remove(
+    State(container): State<Arc<Container>>,
+    user: AdminUser,
+    Path(id): Path<i64>,
+) -> Result<ApiResponse<()>, AppError> {
+    user.require("tool:gen:list")?;
+    container.generator_service.remove_table(id).await?;
     Ok(done())
 }
 

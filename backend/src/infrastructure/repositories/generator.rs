@@ -85,6 +85,14 @@ pub trait GeneratorRepository: Send + Sync {
     ) -> Result<u64, AppError>
     where
         C: ConnectionTrait;
+
+    async fn delete_columns<C>(&self, db: &C, table_id: i64) -> Result<(), AppError>
+    where
+        C: ConnectionTrait;
+
+    async fn delete_table<C>(&self, db: &C, table_id: i64) -> Result<(), AppError>
+    where
+        C: ConnectionTrait;
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -385,6 +393,31 @@ impl GeneratorRepository for SeaOrmGeneratorRepository {
             ],
         )
         .await
+    }
+    async fn delete_columns<C>(&self, db: &C, table_id: i64) -> Result<(), AppError>
+    where
+        C: ConnectionTrait,
+    {
+        execute(
+            db,
+            "DELETE FROM gen_table_column WHERE table_id = ?",
+            vec![table_id.into()],
+        )
+        .await?;
+        Ok(())
+    }
+
+    async fn delete_table<C>(&self, db: &C, table_id: i64) -> Result<(), AppError>
+    where
+        C: ConnectionTrait,
+    {
+        execute(
+            db,
+            "DELETE FROM gen_table WHERE id = ?",
+            vec![table_id.into()],
+        )
+        .await?;
+        Ok(())
     }
 }
 

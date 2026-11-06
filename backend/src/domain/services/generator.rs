@@ -39,6 +39,8 @@ pub trait GeneratorUseCase: Send + Sync {
         operator: &str,
     ) -> Result<(), AppError>;
 
+    async fn remove_table(&self, table_id: i64) -> Result<(), AppError>;
+
     async fn generate(&self, table_id: i64) -> Result<GenGenerateResult, AppError>;
 
     /// 下载包：返回 `(建议文件名, ZIP 字节)`。

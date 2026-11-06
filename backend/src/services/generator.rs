@@ -210,6 +210,21 @@ impl GeneratorUseCase for GeneratorService {
         Ok(())
     }
 
+    async fn remove_table(&self, table_id: i64) -> Result<(), AppError> {
+        in_immediate_transaction(&self.database, move |transaction| {
+            Box::pin(async move {
+                let repository = SeaOrmGeneratorRepository;
+                repository
+                    .table_detail(transaction, table_id)
+                    .await?
+                    .ok_or_else(|| AppError::business("代码生成表不存在"))?;
+                repository.delete_columns(transaction, table_id).await?;
+                repository.delete_table(transaction, table_id).await
+            })
+        })
+        .await
+    }
+
     async fn generate(&self, table_id: i64) -> Result<GenGenerateResult, AppError> {
         let table = self.table_detail(table_id).await?;
         self.rendered_files(&table).await?;

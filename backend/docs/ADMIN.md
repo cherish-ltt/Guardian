@@ -144,10 +144,18 @@ src/middleware/audit.rs                       写操作留痕
 | GET | `/tool/generator/tables/{id}/columns` | 同上 | 字段配置（`rustField` / `rustType` / `nullable` / `formType` / 增删改查开关） |
 | GET | `/tool/generator/tables/{id}/preview` | 同上 | 10 个文件的代码预览（`activeFile` 为默认展开的控制器路径） |
 | PUT | `/tool/generator/tables/{id}` | 同上 | 只接受 `tableComment` 与 `synced` |
+| DELETE | `/tool/generator/tables/{id}` | 同上 | 永久移除该生成配置及列配置，保留业务表、数据和已生成文件 |
 | POST | `/tool/generator/tables/{id}/generate` | 同上 | 生成结果提示 |
 | GET | `/tool/generator/tables/{id}/download` | 同上 | ZIP（条目为完整相对路径） |
 
 代码生成器仅支持 SQLite 单列 `INTEGER` 行号主键；文本主键、复合主键、无主键和非行号主键在导入时会被拒绝。
+
+移除按配置 ID 定位，在同一 IMMEDIATE 事务中确认父配置存在、删除列配置再删除父配置；任一步失败均回滚。
+业务表已不存在仍可移除残留配置；目标配置不存在返回 400「代码生成表不存在」。成功返回 `data: null`。
+业务表仍存在且符合导入限制时可重新导入，建立新的配置 ID 和默认列配置，不恢复旧自定义选项；
+旧 ID 的迟到移除或更新返回不存在，不影响新配置。并发导入可能合法地在移除后建立新配置。
+页面使用确认框提示永久丢失范围，取消不请求，成功后刷新列表与候选；移除不替代保留设置的结构同步。
+审计动作是「代码生成 / 移除配置」，记录含 ID 的 URL；401/403 不留痕，审计失败不回滚已完成的移除。
 
 ### 其它
 
@@ -339,6 +347,7 @@ Redis 超时/错误/坏数据触发短暂熔断，回源 SQLite；故障时不�
 
 ## 与 Spring 版的差异
 
+- 生成配置支持按 ID 原子移除父子元数据；该操作不执行真实表 DDL，不删除业务数据或生成文件，重导不保留旧配置 ID。
 - 非超级管理员不得重置任何拥有有效超级管理员角色的账号的密码。
 - 用户编辑时手机号和邮箱省略表示不修改，传空字符串表示清空。
 
@@ -376,6 +385,7 @@ Redis 超时/错误/坏数据触发短暂熔断，回源 SQLite；故障时不�
 - `tests/admin_api_tests.rs`：认证全流程（含登录 / 退出日志的来源与浏览器采集）、七个系统管理页面的 CRUD / 树 / 导出 / 权限 403 / 数据范围 / 404 / 405 文案。
 - `tests/monitor_api_tests.rs`：留痕内容（含可信代理下的来源 IP）与脱敏、日志统计 / 时间线 / 热力图 / 导出 / 删除清空、工作台聚合。
 - `tests/generator_api_tests.rs`：候选表与导入幂等、字段元数据、10 个生成文件的内容、ZIP 条目、留痕动作。
+- `tests/generator_remove_tests.rs`：配置移除与重导、业务数据保留、旧 ID 隔离、并发及事务回滚、权限和审计失败边界。
 - `tests/session_api_tests.rs`：本人身份边界、单目标撤销、独立失败限次、第二因素防重放、旧 JWT 与严格有效性过滤。
 - `tests/account_fault_tests.rs` / `tests/session_redis_tests.rs`：会话存储失败的 503、证明消费不回滚、真实 Redis 类型故障与旧索引 TTL；真实 Redis 用例默认忽略。
 
