@@ -56,6 +56,7 @@ const PERMISSION_ENDPOINTS: &[(&str, &str, &str)] = &[
     ("DELETE", "/api/v1/system/posts/1", "system:post:remove"),
     ("DELETE", "/api/v1/system/roles/1", "system:role:remove"),
     ("DELETE", "/api/v1/system/users/1", "system:user:remove"),
+    ("DELETE", "/api/v1/tool/generator/tables/1", "tool:gen:list"),
     ("GET", "/api/v1/monitor/login-logs", "monitor:loginlog:list"),
     (
         "GET",
@@ -402,7 +403,7 @@ async fn protected_endpoints_without_token_are_rejected_with_401() {
         .map(|(method, path, _)| (*method, *path))
         .chain(AUTH_ENDPOINTS.iter().copied())
         .collect();
-    assert_eq!(protected.len(), 83);
+    assert_eq!(protected.len(), 84);
 
     for (method, path) in protected {
         let (status, body) = send(

@@ -1,7 +1,8 @@
-import { reactive, ref, shallowRef, type Ref } from 'vue'
+import { onScopeDispose, reactive, ref, shallowRef, type Ref } from 'vue'
 import type { PageResult, QueryParams } from '@/api'
 import { downloadBlob } from '@/utils/download'
 import { pushToast, toastError } from './toast'
+import { captureSession } from './auth'
 
 /* ============================================================
    列表页通用逻辑：查询、重置、服务端分页、导出、勾选。
@@ -32,6 +33,8 @@ export function useListPage<Row extends Record<string, any>, Query extends Recor
   const exporting = ref(false)
   const selected = ref<(string | number)[]>([])
   let requestId = 0
+  let alive = true
+  onScopeDispose(() => { alive = false })
 
   function params(): QueryParams {
     const source = options.toParams ? options.toParams(query) : (query as QueryParams)
@@ -43,11 +46,13 @@ export function useListPage<Row extends Record<string, any>, Query extends Recor
   }
 
   async function load() {
+    const isCurrentSession = captureSession()
+    if (!alive || !isCurrentSession()) return
     const current = ++requestId
     loading.value = true
     try {
       const data = await options.fetch({ ...params(), pageNum: page.value, pageSize: pageSize.value })
-      if (current !== requestId) return
+      if (!alive || !isCurrentSession() || current !== requestId) return
       rows.value = data.rows
       total.value = data.total
       selected.value = []
@@ -57,9 +62,9 @@ export function useListPage<Row extends Record<string, any>, Query extends Recor
         await load()
       }
     } catch (error) {
-      if (current === requestId) toastError(error, '数据加载失败')
+      if (alive && isCurrentSession() && current === requestId) toastError(error, '数据加载失败')
     } finally {
-      if (current === requestId) loading.value = false
+      if (alive && isCurrentSession() && current === requestId) loading.value = false
     }
   }
 
@@ -85,16 +90,18 @@ export function useListPage<Row extends Record<string, any>, Query extends Recor
   }
 
   async function exportData() {
-    if (!options.exporter) return
+    const isCurrentSession = captureSession()
+    if (!options.exporter || !alive || !isCurrentSession()) return
     exporting.value = true
     try {
       const blob = await options.exporter(params())
+      if (!alive || !isCurrentSession()) return
       downloadBlob(blob, options.exportName ?? 'export.csv')
       pushToast('已导出当前查询结果', 'ok')
     } catch (error) {
-      toastError(error, '导出失败')
+      if (alive && isCurrentSession()) toastError(error, '导出失败')
     } finally {
-      exporting.value = false
+      if (alive && isCurrentSession()) exporting.value = false
     }
   }
 

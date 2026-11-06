@@ -1,14 +1,19 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onBeforeUnmount, ref } from 'vue'
 import Icon from '@/components/Icon.vue'
 import { Button, Checkbox, Field, Modal, Tag, TextInput, type Column } from '@/components/ui'
 import { GeneratorPipeline, GeneratorSyncDialog, ListPage, PermissionButton } from '@/components/business'
 import { portalApi } from '@/api'
 import { useListPage } from '@/composables/list'
+import { captureSession } from '@/composables/auth'
+import { confirm } from '@/composables/confirm'
 import { pushToast, toastError } from '@/composables/toast'
 import { downloadBlob } from '@/utils/download'
 
 interface TableRow { id: number; tableName: string; tableComment: string; className: string; module: string; businessName: string; synced: boolean; createTime: string }
+
+let alive = true
+onBeforeUnmount(() => { alive = false })
 
 const list = useListPage<TableRow, { keyword: string }>({
   query: { keyword: '' },
@@ -21,7 +26,7 @@ const columns: Column[] = [
   { key: 'module', title: '模块', width: 100 },
   { key: 'synced', title: '状态', width: 100 },
   { key: 'createTime', title: '导入时间', width: 150 },
-  { key: 'actions', title: '操作', width: 280, className: 'col-actions' },
+  { key: 'actions', title: '操作', width: 360, className: 'col-actions' },
 ]
 
 /* ── 导入 ── */
@@ -39,13 +44,17 @@ async function openImport() {
 }
 
 async function loadCandidates() {
+  const isCurrentSession = captureSession()
+  if (!alive || !isCurrentSession()) return
   importLoading.value = true
   try {
-    candidates.value = (await portalApi.generator.tables.importable({ keyword: importKeyword.value })) as any
+    const rows = await portalApi.generator.tables.importable({ keyword: importKeyword.value })
+    if (!alive || !isCurrentSession()) return
+    candidates.value = rows as any
   } catch (error) {
-    toastError(error, '数据库表加载失败')
+    if (alive && isCurrentSession()) toastError(error, '数据库表加载失败')
   } finally {
-    importLoading.value = false
+    if (alive && isCurrentSession()) importLoading.value = false
   }
 }
 
@@ -79,6 +88,31 @@ function openPipeline(row: TableRow, step: 1 | 2 | 3) {
 async function onPipelineSaved() {
   await list.load()
   if (pipeTable.value) pipeTable.value = list.rows.value.find(r => r.id === pipeTable.value!.id) ?? pipeTable.value
+}
+
+const removing = ref<number | null>(null)
+async function removeConfiguration(row: TableRow) {
+  const isCurrentSession = captureSession()
+  if (!alive || !isCurrentSession() || removing.value !== null) return
+  const confirmed = await confirm({
+    title: '移除生成配置',
+    message: `确定移除「${row.tableName}」的生成配置？自定义配置将永久丢失，业务表、业务数据及已生成文件都会保留。重新导入会建立新配置。`,
+    confirmText: '移除配置',
+    danger: true,
+  })
+  if (!confirmed || !alive || !isCurrentSession() || removing.value !== null) return
+  removing.value = row.id
+  try {
+    await portalApi.generator.tables.remove(row.id)
+    if (!alive || !isCurrentSession()) return
+    if (pipeTable.value?.id === row.id) pipeTable.value = null
+    pushToast(`已移除「${row.tableName}」的生成配置`)
+    await Promise.all([list.load(), loadCandidates()])
+  } catch (error) {
+    if (alive && isCurrentSession()) toastError(error, '移除配置失败')
+  } finally {
+    if (alive && isCurrentSession()) removing.value = null
+  }
 }
 
 /* ── 生成 ── */
@@ -137,6 +171,7 @@ async function generate(row: TableRow) {
         <Button variant="text" size="sm" icon="sliders" @click="openPipeline(row, 1)">配置</Button>
         <PermissionButton perm="tool:gen:list" variant="text" size="sm" @click="syncTable = row">同步结构</PermissionButton>
         <Button variant="text" size="sm" icon="download" :loading="generating === row.id" @click="generate(row)">生成</Button>
+        <PermissionButton perm="tool:gen:list" variant="text" size="sm" :loading="removing === row.id" :disabled="removing !== null" @click="removeConfiguration(row)">移除配置</PermissionButton>
       </div>
     </template>
 

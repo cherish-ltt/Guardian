@@ -5,6 +5,7 @@ import { setPermissions } from '@/directives/permission'
 import type { NavGroup, NavLeaf } from '@/data'
 import { clearDictCache } from './dict'
 import { clearDeptCache } from './dept'
+import { settleConfirm } from './confirm'
 import { menuPages } from '@/utils/menu-pages'
 
 /* ============================================================
@@ -22,6 +23,12 @@ export const pendingLogin = ref<{ challenge: string; username: string; remember:
 /** 页面组件标识 → 当前账号可访问的路由路径（如 monitor/operlog/index → /monitor/operlog） */
 export const componentPaths = ref<Record<string, string>>({})
 let observedToken = authSession.token()
+
+export function captureSession() {
+  const version = sessionVersion.value
+  const token = authSession.token()
+  return () => token !== null && version === sessionVersion.value && token === authSession.token()
+}
 
 /** 当前账号可访问时返回该页面路径，否则 null；跨页跳转统一走这里，避免写死菜单路径 */
 export function pathOf(component: string) {
@@ -181,6 +188,7 @@ export async function verifyLogin(secondFactor: string) {
 function resetSessionState() {
   pendingLogin.value = null
   sessionVersion.value += 1
+  settleConfirm(false)
   authed.value = false
   resetSessionRoutes?.()
   currentUser.value = null
@@ -212,6 +220,7 @@ export function synchronizeSession() {
 export function requirePasswordChange() {
   if (currentUser.value?.passwordChangeRequired) return
   sessionVersion.value += 1
+  settleConfirm(false)
   resetSessionRoutes?.()
   navGroups.value = []
   dynamicRoutes.value = []

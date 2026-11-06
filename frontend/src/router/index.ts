@@ -101,6 +101,8 @@ router.beforeEach(async (to) => {
   if (currentUser.value?.passwordChangeRequired) return to.name === 'password-change' || { name: 'password-change', replace: true }
   if (to.name === 'password-change') return { path: homePath(), replace: true }
   if (to.path === '/') return { path: homePath(), replace: true }
+  // 只让已完成身份与菜单校验的导航挂载当前会话的业务页。
+  to.meta.sessionVersion = sessionVersion.value
   return true
 })
 
@@ -127,7 +129,7 @@ setPasswordChangeHandler(() => {
 
 window.addEventListener('storage', (event) => {
   if (event.key !== null && !['guardian.token', 'guardian.user', 'guardian.expiresAt'].includes(event.key)) return
-  if (synchronizeSession()) void router.replace(authed.value ? '/' : '/login')
+  if (synchronizeSession()) void router.replace({ path: authed.value ? '/' : '/login', force: true })
 })
 
 export default router

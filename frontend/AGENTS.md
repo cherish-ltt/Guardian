@@ -33,6 +33,7 @@ Guardian 前端的开发规范。取自上游 `scaffold-master` 的 `scaffold-vu
 - **待改密是独立静态流程**：`/auth/me` 先于菜单加载；`passwordChangeRequired` 为真时进入外壳之外的
   `/password-change`，不请求业务或动态菜单。带此标记的 403 清理菜单并保留改密令牌，不能走 401 退出处理。
   慢请求同时核对会话版本与令牌，跨标签页换号先清旧权限，成功改密通过统一会话清理重新登录。
+  业务页只挂载已完成当前会话身份和菜单校验的导航；换号时卸载旧实例，同路径落点也必须重建。
 - **品牌与版本**：名称、简称、版权集中在 `src/data/index.ts`；版本号由 `vite.config.ts` 的
   `define` 从 `package.json` 的 `version` 注入（`APP_VERSION`），不得在页面手写版本字面量。
 - **仓库入口只有一个**：`src/components/GithubLink.vue`，地址读 `APP.repo`，置空即不渲染；

@@ -12,6 +12,7 @@ const compiled = await build({
       export * from './src/composables/auth.ts'
       export { authSession } from './src/api/session.ts'
       export { hasPermission, setPermissions } from './src/directives/permission.ts'
+      export { confirm, pendingConfirm, settleConfirm } from './src/composables/confirm.ts'
     `,
     resolveDir: root,
     loader: 'ts',
@@ -101,4 +102,38 @@ test('换账号清理旧状态后，新账号首次要求改密仍独立生效',
   assertNoAccess()
   assert.equal(subject.currentUser.value.passwordChangeRequired, true)
   assert.equal(subject.authSession.token(), 'account-b')
+})
+
+test('跨标签页换号同步取消旧确认，并保留新账号会话', async () => {
+  const old = subject.confirm({ title: '移除配置', message: '旧账号配置' })
+  const version = subject.sessionVersion.value
+  saveSession('account-b')
+  assert.equal(subject.synchronizeSession(), true)
+  assert.equal(subject.pendingConfirm.value, null)
+  assert.equal(await old, false)
+  assert.equal(subject.sessionVersion.value, version + 1)
+  assert.equal(subject.currentUser.value.username, 'account-b')
+  assert.equal(subject.authSession.token(), 'account-b')
+  assert.equal(subject.authed.value, true)
+  assertNoAccess()
+  const next = subject.confirm({ title: '移除配置', message: '新账号配置' })
+  subject.settleConfirm(true)
+  assert.equal(await next, true)
+})
+
+test('首次要求改密取消旧确认，重复响应不取消之后的新确认', async () => {
+  const old = subject.confirm({ title: '移除配置', message: '业务配置' })
+  const version = subject.sessionVersion.value
+  subject.requirePasswordChange()
+  assert.equal(subject.pendingConfirm.value, null)
+  assert.equal(await old, false)
+  assert.equal(subject.sessionVersion.value, version + 1)
+  assert.equal(subject.authSession.token(), 'account-a')
+  const next = subject.confirm({ title: '退出登录', message: '确认退出' })
+  const pending = subject.pendingConfirm.value
+  subject.requirePasswordChange()
+  assert.equal(subject.sessionVersion.value, version + 1)
+  assert.equal(subject.pendingConfirm.value, pending)
+  subject.settleConfirm(true)
+  assert.equal(await next, true)
 })

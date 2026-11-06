@@ -604,3 +604,161 @@ async fn migration_preserves_legacy_configuration_instead_of_copying_current_sch
     let row = sql_json(&database, "SELECT json_array(jdbc_type, column_type, version) AS value FROM gen_table_column c JOIN gen_table t ON t.id = c.table_id").await;
     assert_eq!(row, json!(["varchar", "varchar", 0]));
 }
+
+async fn remove_configuration(app: &Router, token: &str, id: i64) -> (StatusCode, Value) {
+    send(
+        app.clone(),
+        support::delete_with_bearer(&format!("/api/v1/tool/generator/tables/{id}"), token),
+    )
+    .await
+}
+
+#[tokio::test]
+async fn sync_confirmation_after_removal_cannot_recreate_configuration() {
+    let (app, store, container) = setup_app_with_container().await;
+    let token = admin_token(&app, store.as_ref()).await;
+    container
+        .database
+        .execute_unprepared(
+            "CREATE TABLE sync_removed (record_id INTEGER PRIMARY KEY, name TEXT NOT NULL); \
+             INSERT INTO sync_removed VALUES (7, 'keep')",
+        )
+        .await
+        .unwrap();
+    let baseline = configuration(&container.database).await;
+    let id = import(&app, &token, "sync_removed").await;
+    container
+        .database
+        .execute_unprepared("ALTER TABLE sync_removed ADD COLUMN added TEXT")
+        .await
+        .unwrap();
+    let diff = preview(&app, &token, id).await;
+    assert_eq!(diff["changes"].as_array().unwrap().len(), 1);
+    let (status, body) = remove_configuration(&app, &token, id).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(configuration(&container.database).await, baseline);
+    let (status, body) = synchronize(&app, &token, id, &diff["revision"]).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    assert_eq!(body["message"], "代码生成表不存在");
+    assert_eq!(
+        configuration(&container.database).await,
+        baseline,
+        "旧同步确认不能重新创建父表或孤儿列"
+    );
+    let data = sql_json(
+        &container.database,
+        "SELECT json_group_array(json_array(record_id, name, added)) AS value FROM sync_removed",
+    )
+    .await;
+    assert_eq!(data, json!([[7, "keep", null]]));
+}
+
+#[tokio::test]
+async fn old_sync_confirmation_cannot_modify_reimported_configuration() {
+    let (app, store, container) = setup_app_with_container().await;
+    let token = admin_token(&app, store.as_ref()).await;
+    container
+        .database
+        .execute_unprepared(
+            "CREATE TABLE sync_reimport (record_id INTEGER PRIMARY KEY, name TEXT NOT NULL); \
+             INSERT INTO sync_reimport VALUES (7, 'keep')",
+        )
+        .await
+        .unwrap();
+    let old_id = import(&app, &token, "sync_reimport").await;
+    container
+        .database
+        .execute_unprepared("ALTER TABLE sync_reimport ADD COLUMN added TEXT")
+        .await
+        .unwrap();
+    let old_diff = preview(&app, &token, old_id).await;
+    assert_eq!(old_diff["changes"].as_array().unwrap().len(), 1);
+    let (status, body) = remove_configuration(&app, &token, old_id).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let new_id = import(&app, &token, "sync_reimport").await;
+    assert_ne!(new_id, old_id);
+    let (status, body) = send(
+        app.clone(),
+        put_json_with_bearer(
+            &format!("/api/v1/tool/generator/tables/{new_id}"),
+            &token,
+            json!({"tableComment": "新配置", "synced": true}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    container
+        .database
+        .execute_unprepared("ALTER TABLE sync_reimport ADD COLUMN later INTEGER")
+        .await
+        .unwrap();
+    let new_diff = preview(&app, &token, new_id).await;
+    assert_eq!(new_diff["changes"].as_array().unwrap().len(), 1);
+    assert_eq!(new_diff["changes"][0]["columnName"], "later");
+    let before = configuration(&container.database).await;
+    let (status, body) = synchronize(&app, &token, old_id, &old_diff["revision"]).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    assert_eq!(body["message"], "代码生成表不存在");
+    assert_eq!(
+        configuration(&container.database).await,
+        before,
+        "旧 ID 的同步不能改动重导后的父子配置、版本或自定义设置"
+    );
+    assert_eq!(preview(&app, &token, new_id).await, new_diff);
+    let (status, body) = synchronize(&app, &token, new_id, &new_diff["revision"]).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["data"]["changed"], 1);
+    let current = columns(&app, &token, new_id).await;
+    assert_eq!(current.as_array().unwrap().len(), 4);
+    assert_eq!(current[3]["col"], "later");
+    let data = sql_json(
+        &container.database,
+        "SELECT json_group_array(json_array(record_id, name, added, later)) AS value FROM sync_reimport",
+    )
+    .await;
+    assert_eq!(data, json!([[7, "keep", null, null]]));
+}
+
+#[tokio::test]
+async fn concurrent_sync_and_removal_leave_parent_and_columns_consistent() {
+    let (app, store, container) = setup_app_with_container().await;
+    let token = admin_token(&app, store.as_ref()).await;
+    container
+        .database
+        .execute_unprepared(
+            "CREATE TABLE sync_remove_race (record_id INTEGER PRIMARY KEY, name TEXT NOT NULL); \
+             INSERT INTO sync_remove_race VALUES (7, 'keep')",
+        )
+        .await
+        .unwrap();
+    let baseline = configuration(&container.database).await;
+    let id = import(&app, &token, "sync_remove_race").await;
+    container
+        .database
+        .execute_unprepared("ALTER TABLE sync_remove_race ADD COLUMN added TEXT")
+        .await
+        .unwrap();
+    let diff = preview(&app, &token, id).await;
+    assert_eq!(diff["changes"].as_array().unwrap().len(), 1);
+    let (synced, removed) = tokio::join!(
+        synchronize(&app, &token, id, &diff["revision"]),
+        remove_configuration(&app, &token, id)
+    );
+    assert_eq!(removed.0, StatusCode::OK, "{removed:?}");
+    match synced.0 {
+        StatusCode::OK => assert_eq!(synced.1["data"]["changed"], 1),
+        StatusCode::BAD_REQUEST => assert_eq!(synced.1["message"], "代码生成表不存在"),
+        status => panic!("同步必须先于移除成功，或在移除后拒绝：{status} {synced:?}"),
+    }
+    assert_eq!(
+        configuration(&container.database).await,
+        baseline,
+        "两个请求结束后父子配置必须都被移除，不能遗留或复活孤儿列"
+    );
+    let data = sql_json(
+        &container.database,
+        "SELECT json_group_array(json_array(record_id, name, added)) AS value FROM sync_remove_race",
+    )
+    .await;
+    assert_eq!(data, json!([[7, "keep", null]]));
+}

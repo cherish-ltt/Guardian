@@ -494,6 +494,8 @@ msrv = "1.99.0"
   过期确认返回 409。保留表身份和同名未变列，变化属性按 `docs/ADMIN.md` 的同步规则刷新。
   实际变化才设 `synced=false` 并递增配置版本，无差异不写；与删除并发时不得重建孤儿列。
   `tests/generator_sync_tests.rs` 必须覆盖回滚、过期、并发及真实生成实体编译。
+- **生成配置移除**：只按配置 ID 在 IMMEDIATE 事务中确认父记录、先删列再删表配置，不依赖业务表存在；
+  不执行 DDL 或删除业务数据、文件。重导使用新 ID，迟到的旧 ID 操作不得触及新配置；审计失败不回滚业务。
 - **时间字段**：SQLite 没有原生日期类型，统一存 `TEXT`（`YYYY-MM-DD HH:MM:SS` 本地时间，
   `src/util/time.rs` 提供格式化与解析），比较用字典序，SQL 侧用 `strftime` / `julianday` / `substr`。
 - 日志明细与导出的可选 `startTime` / `endTime` 使用半开区间，查询 / 计数 / CSV 共用过滤；
