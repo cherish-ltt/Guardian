@@ -496,6 +496,10 @@ msrv = "1.99.0"
   显式空值、非规范时间和逆序 / 相等边界返回 400，不能用 `QueryString::text` 丢弃非法时间条件。
 - **会话与验证码必须经过 `AuthStore`**：生产用 `RedisAuthStore`（`REDIS_URL` / `REDIS_PASSWORD`），
   测试用 `MemoryAuthStore`（`Container::memory_auth_store()`）；禁止绕开抽象直接操作 Redis 客户端。
+- **待改密账号**：`AdminUser` 统一返回带 `passwordChangeRequired` 的 403，超管不能豁免；
+  `OwnAccountUser` 仅用于 `/auth/me`、本人改密、退出三个端点。骨架后台整数 subject 也须执行同一认证。
+  新建/重置只显式设置要求，普通编辑不可清除；本人改密需核对身份版本与旧哈希，
+  密码、标记、`auth_version` 在同一事务提交，Redis 清理失败由版本比较兜底。不得用前端或 JWT 缓存标记代替数据库判定。
 - **本人会话管理**：经 `AdminUser` 校验身份，无需菜单权限，只能管理本人；当前会话撤销返回 400，
   跨账号或未知 ID 返回 404。返回非凭据 ID、有效时间与客户端名称，不返回 JWT、Redis key 或 IP；
   列表严格校验 `exp`、`auth_version` 与归属，不能使用 JWT 验签宽限期展示已过期会话。

@@ -140,7 +140,7 @@ async fn reset_password(
     user.require("system:user:resetPwd")?;
     container
         .admin_service
-        .reset_user_password(id, command.password, user.username())
+        .reset_user_password(id, command, user.username())
         .await?;
 
     Ok(done())

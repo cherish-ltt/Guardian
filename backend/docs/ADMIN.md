@@ -37,7 +37,7 @@ src/middleware/audit.rs                       写操作留痕
 | POST | `/auth/login` | 公开 | 校验码 → 口令 → 账号状态；未启用 2FA 直接返回 JWT 与 `expiresIn`，启用则返回一次性挑战 |
 | POST | `/auth/login/2fa` | 公开 | 用挑战 + 动态码/恢复码完成登录，签发 JWT 与会话 |
 | POST | `/auth/logout` | 登录态 | 删除 Redis 会话令牌，令牌随后失效 |
-| GET | `/auth/me` | 登录态 | 账号、部门、角色、权限码 |
+| GET | `/auth/me` | 登录态 | 账号、部门、角色、权限码与 `passwordChangeRequired` |
 | GET | `/auth/routes` | 登录态 | 动态菜单树（只含 `dir` / `menu` 且可见） |
 | PUT | `/auth/password` | 登录态 | 改密（校验旧密码、新旧不能相同、长度 6–64） |
 | GET | `/auth/session` | 登录态 | 骨架自带的演示会话接口 |
@@ -60,7 +60,7 @@ src/middleware/audit.rs                       写操作留痕
 | POST | `/system/users` | `system:user:add` | 新增（口令留空取系统参数 `sys.user.initPassword`，参数为空才回退 `SEED_ADMIN_PASSWORD`） |
 | PUT | `/system/users/{id}` | `system:user:edit` | 修改（`roleIds` / `postIds` 全量替换） |
 | PUT | `/system/users/{id}/status` | `system:user:edit` | 启用 / 停用，内置管理员不可停用 |
-| PUT | `/system/users/{id}/password` | `system:user:resetPwd` | 重置口令 |
+| PUT | `/system/users/{id}/password` | `system:user:resetPwd` | 重置口令，可要求下次登录先改密 |
 | POST | `/system/users/{id}/2fa/reset` | `system:user:reset2fa` | 校验操作者密码后重置他人 2FA |
 | DELETE | `/system/users/{id}` | `system:user:remove` | 逻辑删除，内置管理员不可删除 |
 | GET | `/system/roles` | `system:role:list` | 分页列表（`dataScope` 返回中文标签） |
@@ -88,6 +88,28 @@ src/middleware/audit.rs                       写操作留痕
 | POST / PUT / DELETE | `/system/configs`、`/system/configs/{id}` | `system:config:add` / `edit` / `remove` | 内置参数不可改删，键名唯一 |
 
 新增用户采用指定密码或系统初始密码，密码长度须为 6 至 64 个 Unicode 字符；重置和修改密码同样适用此限制。
+
+### 首次登录与重置后改密
+
+- 新增用户及重置密码请求可传 `passwordChangeRequired: true`；省略或传 `false` 保持直接进入业务的既有行为。
+  重置仍须显式提供新密码，权限与非超管不得重置超管的限制不变。普通编辑接口传此字段返回 400，不能用编辑清除要求。
+- 标记存于 `sys_user.password_change_required`，迁移 `0012` 为历史与种子账号填 `false`，不修改已有口令。
+  新建同一 INSERT 写口令与标记；重置在同一事务写口令、标记并递增 `auth_version`，旧会话失效。
+- `/auth/login` 直接登录成功及 `/auth/login/2fa` 成功的响应均为 `{token, expiresIn, passwordChangeRequired}`；
+  `/auth/me` 也返回该标记。已启用 2FA 的账号仍须先通过第二因素，再签发待改密会话。
+- 待改密会话仅可读取 `GET /auth/me`、提交 `PUT /auth/password`、执行 `POST /auth/logout`。
+  菜单、资料、本人会话、安全设置、业务读写及导出均返回 HTTP 403，统一响应中
+  `code: 403`、`data: {passwordChangeRequired: true}`；公开健康检查与登录入口不受此限制。
+  `AdminUser` 从数据库账号快照统一拦截，超管也不能绕过；上述三个本人入口才使用 `OwnAccountUser`。
+  骨架 `CurrentUser` 对数据库整数 subject 的后台令牌执行同一校验，`/transactions` 与 `/auth/session` 不构成绕过入口。
+  调试令牌的整数 subject 保留给后台账号，独立调试身份应使用默认 UUID 或非整数标识。
+- 本人改密沿用 `{oldPassword, newPassword}`，必须正确提交旧密码，新旧不能相同，新密码须为 6–64 个 Unicode 字符。
+  密码写入、清除标记与递增版本在同一事务内完成；写入核对认证时版本、校验时旧哈希和当前启用状态，
+  管理员重置后继续提交的旧快照不能覆盖新口令或清除新要求。验证或事务失败保留全部原状态。
+  事务成功后才清理 Redis；清理失败不回滚已完成的改密，残留令牌由版本比较拒绝。
+- 前端登录及页面刷新先核实 `/auth/me`；待改密账号进入外壳之外的静态 `/password-change`，
+  不加载动态菜单，无菜单账号同样可用。改密成功清除本地会话并重新登录；403 不按 401 清除待改密令牌，
+  迟到响应不能覆盖新会话，记住登录状态的多个标签页同步退出。
 
 ### 监控（`/monitor`）
 
@@ -248,7 +270,7 @@ Redis Cluster 未验证，部署限制见 [生产部署](../../docs/DEPLOYMENT.m
 
 ## 本人会话管理
 
-个人资料页 `/profile` 提供本人会话列表与单会话撤销，所有已登录账号均可使用，无需菜单权限。
+个人资料页 `/profile` 提供本人会话列表与单会话撤销，无需改密的已登录账号均可使用，无需菜单权限。
 超级管理员也只能管理本人会话，不能通过这组接口管理其他账号。
 
 - `GET /auth/sessions?cursor=<游标>` 返回 `data: {items: [{id, current, issuedAt, expiresAt, browser, os}], nextCursor}`。
@@ -276,7 +298,8 @@ Redis Cluster 未验证，部署限制见 [生产部署](../../docs/DEPLOYMENT.m
 
 ## 本人资料与二次认证
 
-所有可登录账号均可自愿启用/关闭，不强制开启；登录与安全操作使用第二因素，不改变既有改密契约。
+无需改密的已登录账号均可自愿启用/关闭，不强制开启；待改密账号须先完成上述改密流程。
+登录与安全操作使用第二因素，不改变既有改密契约。
 前端静态受保护页 `/profile` 无需菜单授权，顶栏「个人资料」进入；账号、部门和角色只读。
 
 - GET `/auth/profile` 返回 `username/nickname/phone/email/deptName/roles/twoFactorEnabled/recoveryCodesRemaining`。
@@ -284,11 +307,11 @@ Redis Cluster 未验证，部署限制见 [生产部署](../../docs/DEPLOYMENT.m
   邮箱最多 254 字节且包含非空的 @ 两侧；手机、邮箱可传 null 清空。额外字段一律 400。
 - 登录分两阶段，原登录框只收账号、密码、验证码：
 
-  - `POST /auth/login` 请求体不含第二因素。密码与账号状态通过后：未启用 2FA 直接返回 `{token, expiresIn}`；
+  - `POST /auth/login` 请求体不含第二因素。密码与账号状态通过后：未启用 2FA 直接返回 `{token, expiresIn, passwordChangeRequired}`；
     启用 2FA 返回 `{twoFactorRequired: true, challenge, expiresIn: 300}`，**此时不签发 JWT、不建立会话**。
     挑战是 32 字节随机串，库里只存 SHA256。
   - 前端拿到挑战后跳转独立页 `/login/2fa` 提交 `POST /auth/login/2fa` `{challenge, secondFactor}`，
-    动态码或未使用恢复码正确才返回 `{token, expiresIn}`。密码不落前端持久化存储，挑战只放在内存里，
+    动态码或未使用恢复码正确才返回 `{token, expiresIn, passwordChangeRequired}`。密码不落前端持久化存储，挑战只放在内存里，
     刷新或离开该页即作废。
   - 挑战一次性：成功或被拒（包括失败计数达上限）都会清除；过期（300 秒）、密码此后变更、
     账号停用、2FA 关闭或重置后均视为无效，需回登录页重新走验证码与密码。
@@ -344,6 +367,7 @@ Redis 超时/错误/坏数据触发短暂熔断，回源 SQLite；故障时不�
 
 | 项 | Spring 版 | 本实现 | 原因 |
 | --- | --- | --- | --- |
+| 首次登录与重置后改密 | 本轮未核实上游对应契约 | 新建及重置显式标记、认证统一 403、独立改密页，成功改密原子清标记并撤销旧会话 | 本次明确需求，历史账号及省略字段保持原行为，普通编辑不具备清标记能力 |
 | 本人会话管理 | 本轮未核实上游对应契约 | 本人有效会话游标列表、经安全证明撤销其他单会话、非凭据 ID、失败 503 与新证明重试 | 本次明确需求，保留旧 Redis SET 与 JWT 兼容，不声称兼容上游会话接口 |
 | 日志明细时间窗口 | 列表与导出仅关键词、结果 / 状态 | 增加可选 `startTime` / `endTime`，服务端本地时间半开区间，非法边界返回 400 | 按事件窗口排查与导出，沿用既有时间索引及导出上限，不改变统计窗口 |
 | 个人资料与 2FA | 本轮环境未提供参考目录，未核实上游对应契约 | 按本文新增本人接口、第二因素与独立重置权限 | 本次明确需求，非声称逐字兼容 |
@@ -377,6 +401,7 @@ Redis 超时/错误/坏数据触发短暂熔断，回源 SQLite；故障时不�
 - `tests/monitor_api_tests.rs`：留痕内容（含可信代理下的来源 IP）与脱敏、日志统计 / 时间线 / 热力图 / 导出 / 删除清空、工作台聚合。
 - `tests/generator_api_tests.rs`：候选表与导入幂等、字段元数据、10 个生成文件的内容、ZIP 条目、留痕动作。
 - `tests/session_api_tests.rs`：本人身份边界、单目标撤销、独立失败限次、第二因素防重放、旧 JWT 与严格有效性过滤。
+- `tests/password_requirement_tests.rs`：迁移兼容、受限接口、超管与骨架绕过、无菜单改密、旧快照与事务回滚、2FA 顺序及审计脱敏。
 - `tests/account_fault_tests.rs` / `tests/session_redis_tests.rs`：会话存储失败的 503、证明消费不回滚、真实 Redis 类型故障与旧索引 TTL；真实 Redis 用例默认忽略。
 
 测试要求与命令见 [测试与构建检查](TESTING.md)。

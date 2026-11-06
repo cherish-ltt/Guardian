@@ -6,7 +6,10 @@ use crate::{
         models::{
             identity::DataScope,
             pagination::{Page, PageResult},
-            system_admin::{IdResponse, UserOptions, UserQuery, UserRow, UserWriteCommand},
+            system_admin::{
+                IdResponse, UserOptions, UserPasswordCommand, UserPasswordUpdate, UserQuery,
+                UserRow, UserWriteCommand,
+            },
         },
         services::admin::users::UserAdminUseCase,
     },
@@ -217,6 +220,9 @@ impl UserAdminUseCase for AdminService {
         command: UserWriteCommand,
         operator: &str,
     ) -> Result<(), AppError> {
+        if command.password_change_required.is_some() {
+            return Err(AppError::business("改密要求只能在新增用户或重置密码时设置"));
+        }
         let _cache_write = self.cache.begin_write().await;
         // 昵称为空字符串时按「不修改」处理，与 Spring 的 trimToNull 一致。
         let command = UserWriteCommand {
@@ -337,11 +343,11 @@ impl UserAdminUseCase for AdminService {
     async fn reset_user_password(
         &self,
         id: i64,
-        password: Option<String>,
+        command: UserPasswordCommand,
         operator: &str,
     ) -> Result<(), AppError> {
         // 不再有默认口令：重置必须显式指定新口令，否则一律拒绝。
-        let plain = required(password, "新密码不能为空")?;
+        let plain = required(command.password, "新密码不能为空")?;
         if !password::valid_length(&plain) {
             return Err(AppError::business("密码长度必须在6到64位之间"));
         }
@@ -381,7 +387,15 @@ impl UserAdminUseCase for AdminService {
                     return Err(AppError::forbidden("不能重置超级管理员的密码"));
                 }
                 if SeaOrmUserRepository
-                    .reset_user_password(transaction, id, &hashed, &operator)
+                    .reset_user_password(
+                        transaction,
+                        id,
+                        UserPasswordUpdate {
+                            hash: &hashed,
+                            change_required: command.password_change_required,
+                            operator: &operator,
+                        },
+                    )
                     .await?
                     == 0
                 {

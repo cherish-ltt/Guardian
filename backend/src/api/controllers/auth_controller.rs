@@ -11,7 +11,9 @@ use crate::{
         done,
         dto::auth::{AccessTokenResponse, CurrentUserResponse, DevLoginRequest},
         extractors::{
-            admin_user::AdminUser, api_json::ApiJson, client_source::ClientSource,
+            admin_user::{AdminUser, OwnAccountUser},
+            api_json::ApiJson,
+            client_source::ClientSource,
             current_user::CurrentUser,
         },
         ok,
@@ -115,7 +117,7 @@ pub async fn verify_login(
 ))]
 pub async fn logout(
     State(container): State<Arc<Container>>,
-    user: AdminUser,
+    user: OwnAccountUser,
     source: ClientSource,
 ) -> Result<ApiResponse<()>, AppError> {
     container
@@ -137,7 +139,7 @@ pub async fn logout(
         (status = 401, description = "Unauthorized or invalid token", body = DocErrorResponse)
     )
 ))]
-pub async fn me(user: AdminUser) -> Result<ApiResponse<CurrentUserInfo>, AppError> {
+pub async fn me(user: OwnAccountUser) -> Result<ApiResponse<CurrentUserInfo>, AppError> {
     Ok(ok(user.info().clone()))
 }
 
@@ -171,12 +173,12 @@ pub async fn routes(
 ))]
 pub async fn change_password(
     State(container): State<Arc<Container>>,
-    user: AdminUser,
+    user: OwnAccountUser,
     ApiJson(command): ApiJson<ChangePasswordCommand>,
 ) -> Result<ApiResponse<()>, AppError> {
     container
         .admin_auth_service
-        .change_password(user.username(), command)
+        .change_password(user.info(), command)
         .await?;
 
     Ok(done())

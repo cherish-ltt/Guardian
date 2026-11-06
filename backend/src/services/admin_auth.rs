@@ -93,6 +93,7 @@ impl AdminAuthService {
         Ok(LoginResult {
             token: token.access_token,
             expires_in: token.expires_in_seconds,
+            password_change_required: user.password_change_required,
         })
     }
 
@@ -188,12 +189,7 @@ impl AdminAuthUseCase for AdminAuthService {
         }
 
         let user = self.current_user(&claims.username).await?;
-        let state = crate::infrastructure::repositories::account::AccountRepository::security(
-            &self.database,
-            user.user_id,
-        )
-        .await?;
-        if claims.auth_version != state.auth_version {
+        if claims.auth_version != user.auth_version || claims.sub != user.user_id.to_string() {
             return Err(session_expired());
         }
         Ok(user)
@@ -318,6 +314,8 @@ impl AdminAuthUseCase for AdminAuthService {
             dept_name: user.dept_name,
             roles,
             permissions,
+            password_change_required: user.password_change_required,
+            auth_version: user.auth_version,
         })
     }
 
@@ -330,14 +328,17 @@ impl AdminAuthUseCase for AdminAuthService {
 
     async fn change_password(
         &self,
-        username: &str,
+        identity: &CurrentUserInfo,
         command: ChangePasswordCommand,
     ) -> Result<(), AppError> {
         if !password::valid_length(&command.new_password) {
             return Err(AppError::business("newPassword 长度必须在6到64位之间"));
         }
 
-        let user = self.active_user(username).await?;
+        let user = self.active_user(&identity.username).await?;
+        if user.id != identity.user_id || user.auth_version != identity.auth_version {
+            return Err(session_expired());
+        }
         if !password::verify_password(&command.old_password, &user.password)? {
             return Err(AppError::business("旧密码不正确"));
         }
@@ -347,16 +348,15 @@ impl AdminAuthUseCase for AdminAuthService {
 
         let hashed = password::hash_password(&command.new_password)?;
         let user_id = user.id;
-        let username = user.username.clone();
         super::support::in_immediate_transaction(&self.database, |transaction| {
             let hashed = hashed.clone();
-            let username = username.clone();
+            let user = user.clone();
             Box::pin(async move {
                 let updated = SeaOrmAdminAuthRepository
-                    .update_password(transaction, user_id, &username, &hashed)
+                    .update_password(transaction, &user, &hashed)
                     .await?;
                 if updated == 0 {
-                    return Err(AppError::business("密码修改失败"));
+                    return Err(AppError::session_expired("账号信息已变更，请重新登录"));
                 }
                 // 与管理员重置口令同口径：光删 Redis 会话不够，Redis 清理失败或令牌索引
                 // 缺失时旧 JWT 仍能验签通过，递增 auth_version 让版本校验兜住残留。

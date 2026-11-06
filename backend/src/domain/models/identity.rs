@@ -8,6 +8,8 @@ pub struct AuthUserRow {
     pub id: i64,
     pub username: String,
     pub password: String,
+    pub password_change_required: bool,
+    pub auth_version: i64,
     pub nickname: String,
     pub status: i64,
     pub dept_id: Option<i64>,
@@ -25,6 +27,9 @@ pub struct CurrentUserInfo {
     pub dept_name: Option<String>,
     pub roles: Vec<String>,
     pub permissions: Vec<String>,
+    pub password_change_required: bool,
+    #[serde(skip)]
+    pub auth_version: i64,
 }
 
 /// `/auth/login` 的业务数据。
@@ -33,6 +38,7 @@ pub struct CurrentUserInfo {
 pub struct LoginResult {
     pub token: String,
     pub expires_in: i64,
+    pub password_change_required: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]

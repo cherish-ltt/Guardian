@@ -60,8 +60,7 @@ pub trait AdminAuthRepository: Send + Sync {
     async fn update_password<C>(
         &self,
         db: &C,
-        user_id: i64,
-        username: &str,
+        user: &AuthUserRow,
         password_hash: &str,
     ) -> Result<u64, AppError>
     where
@@ -99,8 +98,9 @@ pub trait AdminAuthRepository: Send + Sync {
 pub struct SeaOrmAdminAuthRepository;
 
 const FIND_USER: &str = "SELECT u.id, u.username, u.password, u.nickname, u.status, u.dept_id, \
-     d.dept_name AS dept_name \
+     u.password_change_required, COALESCE(s.auth_version, 0) AS auth_version, d.dept_name AS dept_name \
      FROM sys_user u LEFT JOIN sys_dept d ON d.id = u.dept_id \
+     LEFT JOIN sys_user_security s ON s.user_id = u.id \
      WHERE u.username = ? AND u.deleted = 0 LIMIT 1";
 
 const ROLE_CODES: &str = "SELECT r.role_code FROM sys_user_role ur \
@@ -147,6 +147,8 @@ impl AdminAuthRepository for SeaOrmAdminAuthRepository {
             id: int_or_zero(&row, "id"),
             username: text(&row, "username").unwrap_or_default(),
             password: text(&row, "password").unwrap_or_default(),
+            password_change_required: int_or_zero(&row, "password_change_required") != 0,
+            auth_version: int_or_zero(&row, "auth_version"),
             nickname: text(&row, "nickname").unwrap_or_default(),
             status: int_or_zero(&row, "status"),
             dept_id: int(&row, "dept_id"),
@@ -248,8 +250,7 @@ impl AdminAuthRepository for SeaOrmAdminAuthRepository {
     async fn update_password<C>(
         &self,
         db: &C,
-        user_id: i64,
-        username: &str,
+        user: &AuthUserRow,
         password_hash: &str,
     ) -> Result<u64, AppError>
     where
@@ -257,13 +258,16 @@ impl AdminAuthRepository for SeaOrmAdminAuthRepository {
     {
         execute(
             db,
-            "UPDATE sys_user SET password = ?, update_by = ?, update_time = ? \
-             WHERE id = ? AND deleted = 0",
+            "UPDATE sys_user SET password = ?, password_change_required = 0, update_by = ?, update_time = ? \
+             WHERE id = ? AND deleted = 0 AND status = 1 AND password = ? \
+             AND COALESCE((SELECT auth_version FROM sys_user_security WHERE user_id = sys_user.id), 0) = ?",
             vec![
                 password_hash.into(),
-                username.into(),
+                user.username.clone().into(),
                 time::now().into(),
-                user_id.into(),
+                user.id.into(),
+                user.password.clone().into(),
+                user.auth_version.into(),
             ],
         )
         .await
