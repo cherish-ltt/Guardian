@@ -44,7 +44,7 @@ npm run build
 「登录会话」展示本人有效登录、当前项、浏览器 / 系统及按浏览器本地格式显示的登录 / 到期时间，支持刷新和加载更多。
 撤销其他会话须输入当前密码，已启用 2FA 时还需动态码或恢复码；当前会话仍通过账号菜单退出。
 列表不代表实时在线，客户端名称仅供识别，不展示 IP 或原始令牌。撤销失败保留列表项，重试需重新提供安全证明。
-新前端须与 v0.11.0 后端配套更新，旧会话兼容与故障语义见 [发布说明](../docs/version/v0.11.0.md)。
+新前端须与 v0.12.0 后端配套更新，升级要求、旧会话兼容与故障语义见 [发布说明](../docs/version/v0.12.0.md)。
 
 用户管理的「重置2FA」按钮由 `system:user:reset2fa` 权限控制，需输入操作者密码，不使用重置密码权限替代。
 后端密钥配置与恢复流程见 [生产部署](../docs/DEPLOYMENT.md#二次认证密钥与恢复)。
@@ -82,7 +82,7 @@ npm run build
 慢确认防重复、模拟失败、旧预览 / 旧会话晚到、同步后的代码与 ZIP，以及 1440 / 390 / 320px 弹窗边界。
 先在独立 SQLite 库启动前后端，通过 `GUARDIAN_TEST_URL`、`GUARDIAN_TEST_DB`、`GUARDIAN_TEST_PASSWORD`
 指定地址、库文件和测试管理员口令；脚本创建并删除自己的业务表与生成配置，不清空其他记录。
-需要本机 Node SQLite 支持、Python 3 / Pillow、Playwright 和 Chromium；可用 `GUARDIAN_PLAYWRIGHT_MODULE`
+需要本机 Node SQLite 支持、Python 3、Playwright 和 Chromium；可用 `GUARDIAN_PLAYWRIGHT_MODULE`
 指定 Playwright 模块路径、`GUARDIAN_BROWSER_CHANNEL=chrome` 使用已安装 Chrome。
 
 ## 目录
