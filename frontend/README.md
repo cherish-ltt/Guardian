@@ -69,6 +69,22 @@ npm run build
 清空 / 重置、分页 / CSV、浏览器夏令时缺口，以及 1720 / 1440 / 820 / 390 / 320px 的控件边界与弹层。
 运行要求与脚本头部环境变量说明一致，不应连接生产数据库。
 
+## 代码生成器
+
+生成器列表的「同步结构」会只读预览新增、删除、类型、可空性、主键和顺序变化，同时展示关联推导项。
+取消保持配置原样；确认成功后变为「待确认」，可继续查看代码预览和下载。预览后数据库或生成配置变化时，
+显示服务端冲突并要求重新预览；无差异不提供确认动作。同步不会修改业务表或已下载源码，
+字段处理规则见 [后端契约](../backend/docs/ADMIN.md#已导入表的结构同步)。
+
+验收截图：[桌面](../docs/screenshots/generator-sync-desktop.png)、[窄屏](../docs/screenshots/generator-sync-mobile.png)。
+
+`scripts/generator-sync-regression.mjs` 使用真实浏览器检查预览 / 取消、实际结构变化引发的 409、重新预览、
+慢确认防重复、模拟失败、旧预览 / 旧会话晚到、同步后的代码与 ZIP，以及 1440 / 390 / 320px 弹窗边界。
+先在独立 SQLite 库启动前后端，通过 `GUARDIAN_TEST_URL`、`GUARDIAN_TEST_DB`、`GUARDIAN_TEST_PASSWORD`
+指定地址、库文件和测试管理员口令；脚本创建并删除自己的业务表与生成配置，不清空其他记录。
+需要本机 Node SQLite 支持、Python 3 / Pillow、Playwright 和 Chromium；可用 `GUARDIAN_PLAYWRIGHT_MODULE`
+指定 Playwright 模块路径、`GUARDIAN_BROWSER_CHANNEL=chrome` 使用已安装 Chrome。
+
 ## 目录
 
 | 路径 | 中文职责 |
@@ -88,6 +104,7 @@ npm run build
 | `scripts/self-session-regression.mjs` | 本人会话列表、单项撤销隔离、故障与慢响应、浅深主题回归 |
 | `scripts/password-requirement-regression.mjs` | 待改密登录、重置开关、刷新与深链、重复提交、跨标签页及迟到响应回归 |
 | `scripts/log-window-regression.py` | 日志时间窗口、翻页、CSV、重置及桌面 / 窄屏回归 |
+| `scripts/generator-sync-regression.mjs` | 结构同步预览、取消、冲突重试、失败、慢响应与生成产物回归 |
 
 ## 扩展约定
 

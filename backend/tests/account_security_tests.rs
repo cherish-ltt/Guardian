@@ -142,6 +142,16 @@ async fn upgrade_grants_reset2fa_once_without_restoring_revoked_grants() {
     .unwrap();
     execute(
         db,
+        "ALTER TABLE gen_table_column DROP COLUMN column_type",
+        vec![],
+    )
+    .await
+    .unwrap();
+    execute(db, "ALTER TABLE gen_table DROP COLUMN version", vec![])
+        .await
+        .unwrap();
+    execute(
+        db,
         "DELETE FROM _sqlx_migrations WHERE version >= 3",
         vec![],
     )

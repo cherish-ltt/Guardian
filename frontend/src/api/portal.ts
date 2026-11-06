@@ -36,6 +36,34 @@ export interface GeneratorImportRequest {
   tableNames: string[]
 }
 
+export interface GeneratorSyncColumn {
+  col: string
+  columnType: string
+  nullable: boolean
+  primaryKey: boolean
+  sort: number
+  rustType: string
+  formType: string
+  required: boolean
+  insert: boolean
+  edit: boolean
+  list: boolean
+}
+
+export interface GeneratorColumnChange {
+  columnName: string
+  kind: 'added' | 'removed' | 'changed'
+  before: GeneratorSyncColumn | null
+  after: GeneratorSyncColumn | null
+  changedAttributes: Array<'columnType' | 'nullable' | 'primaryKey' | 'sort'>
+}
+
+export interface GeneratorSyncPreview {
+  tableName: string
+  revision: string
+  changes: GeneratorColumnChange[]
+}
+
 /** 服务健康：status 运行状态（UP 正常）、time 服务端时间 */
 export interface HealthStatus {
   status: string
@@ -55,6 +83,8 @@ export function createPortalApi(client: HttpClient) {
         import: (body: GeneratorImportRequest) => client.post<Record<string, unknown>>('/tool/generator/import', body),
         columns: (id: number) => client.get<Record<string, unknown>[]>(`/tool/generator/tables/${id}/columns`),
         preview: (id: number) => client.get<GeneratorPreview>(`/tool/generator/tables/${id}/preview`),
+        syncPreview: (id: number) => client.get<GeneratorSyncPreview>(`/tool/generator/tables/${id}/sync-preview`),
+        sync: (id: number, revision: string) => client.post<{ tableName: string; changed: number }>(`/tool/generator/tables/${id}/sync`, { revision }),
         update: (id: number, body: GeneratorTableUpdate) => client.put<void>(`/tool/generator/tables/${id}`, body),
         generate: (id: number) => client.post<Record<string, unknown>>(`/tool/generator/tables/${id}/generate`),
         download: (id: number) => client.download(`/tool/generator/tables/${id}/download`),

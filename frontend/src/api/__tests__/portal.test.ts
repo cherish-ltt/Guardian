@@ -30,6 +30,8 @@ test('portal api maps dashboard and generator endpoints', async () => {
   await api.generator.tables.update(3, { tableComment: '用户表', synced: false })
   await api.generator.tables.generate(3)
   const zip = await api.generator.tables.download(3)
+  await api.generator.tables.syncPreview(3)
+  await api.generator.tables.sync(3, 'preview-revision')
 
   assert.deepEqual(calls.map(call => `${call.method} ${call.url}`), [
     'GET /api/v1/health',
@@ -42,8 +44,11 @@ test('portal api maps dashboard and generator endpoints', async () => {
     'PUT /api/v1/tool/generator/tables/3',
     'POST /api/v1/tool/generator/tables/3/generate',
     'GET /api/v1/tool/generator/tables/3/download',
+    'GET /api/v1/tool/generator/tables/3/sync-preview',
+    'POST /api/v1/tool/generator/tables/3/sync',
   ])
   assert.equal(await zip.text(), 'zip-bytes')
   assert.deepEqual(JSON.parse(calls[4].body ?? '{}'), { tableNames: ['sys_file'] })
   assert.deepEqual(JSON.parse(calls[7].body ?? '{}'), { tableComment: '用户表', synced: false })
+  assert.deepEqual(JSON.parse(calls[11].body ?? '{}'), { revision: 'preview-revision' })
 })

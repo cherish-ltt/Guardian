@@ -12,11 +12,13 @@ use serde_json::Value;
 use tracing::{error, warn};
 
 use crate::{
-    container::Container, domain::models::audit_log::OperationLogEntry, middleware::client_ip,
+    container::Container,
+    domain::models::{audit_log::OperationLogEntry, generator::GenSyncResult},
+    middleware::client_ip,
 };
 
 /// 需要留痕的写操作：路径按 `nest("/api/v1")` 之后的段匹配，`:id` 匹配任意一段。
-const AUDIT_ROUTES: [(Method, &[&str], &str, &str); 38] = [
+const AUDIT_ROUTES: [(Method, &[&str], &str, &str); 39] = [
     (
         Method::POST,
         &["auth", "sessions", ":id", "revoke"],
@@ -170,6 +172,12 @@ const AUDIT_ROUTES: [(Method, &[&str], &str, &str); 38] = [
     ),
     (
         Method::POST,
+        &["tool", "generator", "tables", ":id", "sync"],
+        "代码生成",
+        "同步结构",
+    ),
+    (
+        Method::POST,
         &["tool", "generator", "tables", ":id", "generate"],
         "代码生成",
         "生成代码",
@@ -210,6 +218,8 @@ pub async fn record_operation(
         return response;
     }
 
+    let params = operation_params(action, &response, params);
+
     let (response, error_message) = extract_error(status, response).await;
     let entry = OperationLogEntry {
         module: module.to_string(),
@@ -229,6 +239,15 @@ pub async fn record_operation(
     }
 
     response
+}
+
+fn operation_params(action: &str, response: &Response, params: Option<String>) -> Option<String> {
+    if action != "同步结构" {
+        return params;
+    }
+    response.extensions().get::<GenSyncResult>().map(|result| {
+        serde_json::json!({"tableName": result.table_name, "changed": result.changed}).to_string()
+    })
 }
 
 /// 读走请求体用于留痕，再按原字节重建请求；读取失败时按空体重放。
